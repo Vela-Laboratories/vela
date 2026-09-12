@@ -650,7 +650,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Vercel and frontend deployment
 
-- [ ] Install the missing Vercel CLI with `npm i -g vercel`.
+- [x] Install the Vercel CLI with `npm i -g vercel` and authenticate the operator workstation.
 - [ ] Use `vercel env pull` to manage and verify frontend environments.
 - [ ] Use separate Vercel preview, staging, and production environments.
 - [x] Validate that no private secret uses a `NEXT_PUBLIC_*` name in source, ignored local files, or deployed Vercel configuration.
