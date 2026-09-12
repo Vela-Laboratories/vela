@@ -70,7 +70,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Use redundant RPC providers.
 - [ ] Add RPC disagreement and stale-head detection.
 - [x] Decide which ledger is authoritative.
-- [ ] Implement a proper double-entry financial ledger.
+- [ ] Complete integration of the double-entry financial ledger; the schema and atomic posting primitive are implemented, but exchange financial flows do not use it yet.
 - [ ] Journal every deposit.
 - [ ] Journal every trade.
 - [ ] Journal every fee.
@@ -79,7 +79,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Journal every completed withdrawal.
 - [ ] Journal every failed or reversed withdrawal.
 - [ ] Journal every administrative adjustment.
-- [ ] Require balanced debits and credits for every journal transaction.
+- [x] Require balanced debits and credits for every journal transaction at the PostgreSQL commit boundary.
 - [ ] Make ledger writes durable before acknowledging financial operations.
 - [ ] Give every financial operation a globally unique idempotency key.
 - [ ] Prevent test, synthetic, bridge, and real-money balances from mixing.
@@ -90,7 +90,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Halt affected operations automatically when reconciliation fails.
 - [ ] Generate daily proof-of-liabilities snapshots.
 - [ ] Generate daily reconciliation reports.
-- [ ] Preserve an immutable history of reconciliation results.
+- [x] Preserve reconciliation results in an immutable PostgreSQL history table.
 
 ## Settlement-contract architecture
 

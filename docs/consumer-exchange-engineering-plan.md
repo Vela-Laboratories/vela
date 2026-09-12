@@ -123,18 +123,18 @@ The implementation and tests must preserve these invariants at all times:
 
 ### Required data model
 
-- [ ] Define accounts for customer available, customer locked, customer pending, custody, fees, rebates, and operational adjustments.
-- [ ] Define immutable journal transactions and journal legs.
-- [ ] Define external references and idempotency keys.
-- [ ] Define deposits and their observed chain events.
-- [ ] Define withdrawals and their full state history.
-- [ ] Define custody snapshots and reconciliation results.
-- [ ] Define administrative corrections with reason, evidence, actor, and approval records.
-- [ ] Define schema versioning and migration rules.
+- [x] Define accounts for customer available, customer locked, customer pending, custody, fees, rebates, and operational adjustments.
+- [x] Define immutable journal transactions and journal legs.
+- [x] Define external references and idempotency keys.
+- [x] Define deposits and their observed chain events.
+- [x] Define withdrawals and their full state history.
+- [x] Define custody snapshots and reconciliation results.
+- [x] Define administrative corrections with reason, evidence, actor, and approval records.
+- [x] Define schema versioning and migration rules.
 
 ### M1 acceptance criteria
 
-- [ ] Each core invariant maps to a documented owner and test strategy.
+- [x] Each core invariant maps to a documented owner and test strategy.
 - [x] Deposit and withdrawal state transitions are explicit and exhaustive.
 - [x] Failure behavior is documented for every external dependency in the accepted architecture.
 - [x] The matching engine can be rebuilt from the planned financial journal.
@@ -148,13 +148,13 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M2 tasks
 
-- [ ] Add the selected durable database and migration tooling.
-- [ ] Implement append-only journal transactions and balanced journal legs.
-- [ ] Reject unbalanced journal transactions at the database boundary.
-- [ ] Add globally unique idempotency keys.
-- [ ] Add account-level sequence or version controls for concurrency.
-- [ ] Implement atomic balance materialization from journal entries.
-- [ ] Implement available, locked, and pending balance categories.
+- [ ] Provision the selected managed durable database; PostgreSQL 16 schema, SQLx migrations, and CI test service are implemented.
+- [x] Implement append-only journal transactions and balanced journal legs.
+- [x] Reject unbalanced journal transactions at the database boundary.
+- [x] Add globally unique idempotency keys.
+- [x] Add account-level sequence or version controls for concurrency.
+- [x] Implement atomic balance materialization from journal entries.
+- [x] Implement available, locked, and pending balance categories.
 - [ ] Journal fees and maker rebates explicitly.
 - [ ] Add auditable administrative adjustment transactions.
 - [ ] Require dual approval for production administrative adjustments.
@@ -166,8 +166,8 @@ The implementation and tests must preserve these invariants at all times:
 ### M2 acceptance criteria
 
 - [ ] Property tests prove every journal transaction balances.
-- [ ] Concurrent operations cannot overspend an account.
-- [ ] Duplicate requests return the original result without applying twice.
+- [x] Concurrent operations cannot overspend an account.
+- [x] Duplicate requests return the original result without applying twice.
 - [ ] A full ledger replay reproduces all materialized balances exactly.
 - [ ] A completed trade moves base, quote, fees, and rebates atomically.
 - [ ] Engine restart does not change customer ownership.
@@ -425,6 +425,15 @@ Work should begin in this order. Each item should land as a small, independently
    - Root cause, recovery actions, and verification evidence: [Fly engine health runbook](operations/fly-health.md).
 10. [x] **EX-010: ADR set**
     - Complete ADR-001 through ADR-008 before starting the financial ledger implementation.
+11. [x] **EX-011: Ledger data model and migrations**
+    - Add the PostgreSQL schema for accounts, journal records, deposits, withdrawals, custody snapshots, reconciliation, administrative corrections, and the transactional outbox.
+    - Document migration rules, invariant ownership, and test strategy.
+12. [x] **EX-012: Atomic ledger posting primitive**
+    - Commit balanced journal legs, balance projections, versions, and outbox records in one serializable transaction.
+    - Prove database balance enforcement, immutability, idempotent retry behavior, projection consistency, and concurrent overspend prevention against PostgreSQL.
+13. [ ] **EX-013: Managed PostgreSQL and runtime integration**
+    - Select and provision the managed production and staging PostgreSQL service.
+    - Add database roles, secret injection, readiness, pooling, backup policy, and deployment migrations before connecting the API or matcher.
 
 ## Parallel nonengineering work
 
