@@ -254,8 +254,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Implement least-privilege access for Fly, Vercel, RPC providers, and monitoring.
 - [ ] Establish a credential-rotation schedule.
 - [ ] Never expose admin credentials through `NEXT_PUBLIC_*` variables.
-- [ ] Remove `NEXT_PUBLIC_ADMIN_TOKEN`.
-- [ ] Replace frontend admin API access with a public, sanitized reserves endpoint.
+- [ ] Remove stale `NEXT_PUBLIC_ADMIN_TOKEN` entries from ignored local and deployed environment configuration; source usage has been removed.
+- [x] Replace frontend admin API access with a public, sanitized reserves endpoint.
 - [ ] Use constant-time token verification for any remaining shared-secret controls.
 - [ ] Prefer short-lived, scoped administrative credentials over one global token.
 

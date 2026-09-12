@@ -88,8 +88,8 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Restrict the current direct-credit `POST /deposit` behavior to `testnet-demo`.
 - [x] Rename or label demo credits so they cannot be confused with verified chain deposits.
 - [x] Disable production withdrawal signing until ledger reservation exists.
-- [ ] Remove any frontend use of `NEXT_PUBLIC_ADMIN_TOKEN`.
-- [ ] Add a public sanitized reserves endpoint that does not require an exposed administrative credential.
+- [x] Remove any frontend use of `NEXT_PUBLIC_ADMIN_TOKEN`.
+- [x] Add a public sanitized reserves endpoint that does not require an exposed administrative credential.
 - [ ] Correct homepage, README, and in-app claims about custody, settlement, fraud proofs, forced inclusion, and withdrawals.
 - [ ] Keep the testnet and no-real-funds banner prominent.
 - [ ] Diagnose the deployed Fly engine health and status timeouts.
@@ -100,7 +100,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Production cannot create or credit a synthetic account.
 - [x] Production cannot call the current unverified deposit-credit path.
 - [x] Production cannot issue a withdrawal signature through the current unreserved flow.
-- [ ] No private value is bundled into the frontend through a `NEXT_PUBLIC_*` variable.
+- [x] No private value is bundled into the frontend through a `NEXT_PUBLIC_*` variable.
 - [ ] Public documentation consistently describes the current testnet trust model.
 - [x] Existing Rust, Solidity, and frontend checks continue to pass.
 
@@ -414,7 +414,7 @@ Work should begin in this order. Each item should land as a small, independently
    - Restrict unverified credits to `testnet-demo` and label them as demo credits.
 5. [x] **EX-005: Withdrawal-signing containment**
    - Refuse production signing until a durable reservation adapter exists.
-6. **EX-006: Frontend secret boundary**
+6. [x] **EX-006: Frontend secret boundary**
    - Remove `NEXT_PUBLIC_ADMIN_TOKEN` and replace the reserves data flow.
 7. **EX-007: Trust-model copy correction**
    - Align README, homepage, docs, and product banners with actual guarantees.

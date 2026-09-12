@@ -12,7 +12,6 @@ const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? ''
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? '0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686'
 const ALCHEMY_URL = process.env.NEXT_PUBLIC_ALCHEMY_API_URL ?? 'https://eth-sepolia.g.alchemy.com/v2/demo'
 
@@ -83,14 +82,11 @@ export default function TransparencyPage() {
   }, [])
 
   const fetchEngineReserves = useCallback(async () => {
-    if (!ADMIN_TOKEN) return
     try {
-      const res = await fetch(`${API_URL}/admin/reserves`, {
-        headers: { 'x-admin-token': ADMIN_TOKEN },
-      })
+      const res = await fetch(`${API_URL}/reserves/public`)
       const data = await res.json()
-      if (data.ok && data.data?.engine_balances?.ETH !== undefined) {
-        setEngineEth(data.data.engine_balances.ETH / 1_000_000)
+      if (data.ok && data.data?.liabilities_by_asset?.ETH !== undefined) {
+        setEngineEth(data.data.liabilities_by_asset.ETH / 1_000_000)
       }
     } catch {
       // silently ignore
@@ -154,7 +150,7 @@ export default function TransparencyPage() {
 
   useEffect(() => { fetchTrades() }, [activeMarket, fetchTrades])
 
-  const solvent = contractEth !== null && engineEth !== null && contractEth >= engineEth
+  const coverageObserved = contractEth !== null && engineEth !== null && contractEth >= engineEth
 
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
@@ -186,13 +182,13 @@ export default function TransparencyPage() {
 
       <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
-          Proof of Reserves
+          Testnet Balance Comparison
         </p>
         <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: 0 }}>
-          Vela holds exactly what it owes.
+          Compare public testnet balances.
         </h2>
         <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginTop: '12px', marginBottom: '32px' }}>
-          The VelaSettlement contract on Ethereum holds all deposited funds. The engine tracks all credited balances. These numbers must match — and you can verify it yourself, right now.
+          This compares Sepolia ETH held by VelaSettlement with aggregate ETH credits reported by the demo engine. It is not a production proof of reserves or an independent reconciliation.
         </p>
 
         {contractEth === null ? (
@@ -232,10 +228,10 @@ export default function TransparencyPage() {
               ETH Credited
             </p>
             <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#0C0C0C', margin: '0 0 6px' }}>
-              {!ADMIN_TOKEN ? '—' : engineEth !== null ? `${engineEth.toFixed(4)} ETH` : '—'}
+              {engineEth !== null ? `${engineEth.toFixed(4)} ETH` : '—'}
             </p>
             <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
-              Across all user accounts
+              Aggregate demo-engine liability
             </p>
           </div>
 
@@ -245,17 +241,17 @@ export default function TransparencyPage() {
             </p>
             {contractEth === null || engineEth === null ? (
               <p style={{ fontFamily: IN, fontSize: '14px', color: 'rgba(12,12,12,0.3)', margin: 0 }}>Checking…</p>
-            ) : solvent ? (
+            ) : coverageObserved ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
                     <circle cx="16" cy="16" r="15" stroke="#6B8A5A" strokeWidth="2" />
                     <path d="M9 16.5L13.5 21L23 11" stroke="#6B8A5A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#6B8A5A' }}>SOLVENT</span>
+                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#6B8A5A' }}>COVERAGE OBSERVED</span>
                 </div>
                 <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', margin: 0 }}>
-                  Contract holds sufficient ETH to cover all withdrawals.
+                  Sepolia contract ETH is at least the engine-reported ETH credits at this snapshot.
                 </p>
               </>
             ) : (

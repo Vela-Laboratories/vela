@@ -254,6 +254,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/admin/fees", get(admin_fees_handler))
         .route("/admin/state", get(admin_state_handler))
         .route("/admin/reserves", get(admin_reserves_handler))
+        .route("/reserves/public", get(public_reserves_handler))
         .route("/batches", get(list_batches))
         .route("/batches/:batch_id", get(get_batch))
         .route("/state-root", get(get_state_root))
@@ -1614,6 +1615,33 @@ async fn admin_reserves_handler(
         }))),
     )
         .into_response()
+}
+
+async fn public_reserves_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let us = state.shards.user_state.read().await;
+
+    let mut liabilities_by_asset: std::collections::BTreeMap<String, u64> =
+        std::collections::BTreeMap::new();
+    for ((_, asset), balance) in &us.balances {
+        *liabilities_by_asset
+            .entry(asset.as_str().to_string())
+            .or_insert(0) += balance.total();
+    }
+
+    let snapshot_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "liabilities_by_asset": liabilities_by_asset,
+        "unit": "engine_base_units",
+        "snapshot_time": snapshot_time,
+        "runtime_mode": state.runtime_mode.as_str(),
+        "scope": "aggregate_engine_liabilities_only",
+        "custody_assets_included": false,
+        "reconciliation_status": "not_verified",
+    })))
 }
 
 async fn cancel_order(

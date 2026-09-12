@@ -39,7 +39,7 @@ fn engine_with_market() -> MatchingEngine {
     e
 }
 
-fn funded_engine() -> EngineWithUser {
+fn funded_engine() -> MatchingEngine {
     let mut e = engine_with_market();
     let user = types::UserId::from_hex(&user_addr()).unwrap();
     e.process(
@@ -64,15 +64,8 @@ fn funded_engine() -> EngineWithUser {
         }),
         2,
     );
-    EngineWithUser { engine: e, user }
+    e
 }
-
-struct EngineWithUser {
-    engine: EngineWithUser2,
-    user: types::UserId,
-}
-
-type EngineWithUser2 = MatchingEngine;
 
 fn test_server(engine: MatchingEngine) -> TestServer {
     test_server_with_mode(engine, types::RuntimeMode::Development)
@@ -165,6 +158,23 @@ async fn test_get_balances_after_deposit() {
     assert_eq!(balances.len(), 1);
     assert_eq!(balances[0]["asset"], "USDC");
     assert_eq!(balances[0]["available"], "50000");
+}
+
+#[tokio::test]
+async fn test_public_reserves_is_sanitized_and_requires_no_admin_token() {
+    let server = test_server(funded_engine());
+    let response = server.get("/reserves/public").await;
+
+    response.assert_status_ok();
+    let body: Value = response.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["scope"], "aggregate_engine_liabilities_only");
+    assert_eq!(body["data"]["custody_assets_included"], false);
+    assert_eq!(body["data"]["reconciliation_status"], "not_verified");
+    assert_eq!(body["data"]["runtime_mode"], "development");
+    assert!(body["data"]["liabilities_by_asset"]["USDC"].is_number());
+    assert!(body["data"].get("total_users").is_none());
+    assert!(body["data"].get("user_balances").is_none());
 }
 
 #[tokio::test]

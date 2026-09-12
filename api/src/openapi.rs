@@ -347,6 +347,12 @@ pub fn openapi_spec() -> serde_json::Value {
             "/deposit/bridges": {
                 "get": { "summary": "Public bridge allowlist", "responses": { "200": { "description": "Bridges + pubkeys" } } }
             },
+            "/reserves/public": {
+                "get": {
+                    "summary": "Sanitized aggregate engine liabilities",
+                    "responses": { "200": { "description": "Aggregate liabilities with scope and verification status" } }
+                }
+            },
             "/withdrawals": {
                 "post": { "summary": "Submit signed withdrawal", "responses": { "200": { "description": "Queued" } } }
             },

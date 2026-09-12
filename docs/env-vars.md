@@ -133,4 +133,3 @@ required infrastructure vars are unset.
 | `NEXT_PUBLIC_WS_URL` | Engine WebSocket endpoint. |
 | `NEXT_PUBLIC_CONTRACT_ADDRESS` | `VelaSettlement.sol` address for on-chain reads. |
 | `NEXT_PUBLIC_ALCHEMY_API_URL` | Alchemy RPC for client-side reads. |
-| `NEXT_PUBLIC_ADMIN_TOKEN` | Only set for internal tools; do not ship. |
