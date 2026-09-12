@@ -3,7 +3,7 @@ title: "Fraud Proofs"
 description: "How Vela's fraud proof system works."
 ---
 
-A fraud proof is a cryptographic demonstration that the exchange operator produced an incorrect state transition. Anyone with access to the DA layer can generate a fraud proof for any batch where the engine deviated from the deterministic matching rules.
+A fraud proof would be a cryptographic demonstration that the exchange operator produced an incorrect state transition. Vela currently has deterministic replay code and proof-provider interfaces, but the default provider emits placeholder records. Public data availability, real SP1 proving, an on-chain verifier, and enforcement are not active.
 
 ## When Fraud Proofs Matter
 
@@ -20,10 +20,10 @@ Any of these constitutes fraud, and a fraud proof provides cryptographic evidenc
 
 <Steps>
   <Step title="Batch published">
-    The engine commits a batch and publishes `ZkvmInput { pre_root, requests, expected_post_root }` to the DA layer. Any observer can download this.
+    Target design: the engine commits a batch and publishes `ZkvmInput { pre_root, requests, expected_post_root }` to a public DA layer. The current demo stores data locally under operator control.
   </Step>
   <Step title="Prover re-executes">
-    An independent prover (anyone running the zkvm crate) fetches the batch from the DA layer and calls `verify_execution()`:
+    A developer with local access can use the zkvm crate to replay available batch input with `verify_execution()`:
 
     ```rust
     let input = da_client.fetch(sequence).await?;
@@ -34,7 +34,7 @@ Any of these constitutes fraud, and a fraud proof provides cryptographic evidenc
     If the prover's computed `post_root` differs from the `expected_post_root` published by the engine, the prover has found fraud. The divergence is pinpointed to the specific request where the results first differ.
   </Step>
   <Step title="Fraud proof generated">
-    The prover generates a `FraudProof` struct identifying:
+    The replay code can generate a `FraudProof` data structure identifying:
     - Which batch (sequence number)
     - Which request in the batch (index)
     - What diverged (fill amount, balance delta, state root)
@@ -71,30 +71,23 @@ In the current beta, the on-chain verifier contract has not been deployed. This 
 - Fraud proofs are **not submitted** on-chain
 - The operator is **not penalized** on-chain for fraud
 
-This is honestly disclosed in the [Trust Model](/security/trust-model). The fraud proof system is fully functional end-to-end except for the final on-chain submission step.
+The current default prover is a placeholder, not a cryptographic proof system.
+Local deterministic replay and proof-provider interfaces exist, but real SP1
+proving and on-chain verification require additional infrastructure.
 
 <Warning>
 In beta, the fraud proof system provides auditability but not enforcement. Enforcement requires the M7 on-chain verifier contract.
 </Warning>
 
-## Running the Prover Yourself
+## Running Local Replay Code
 
-The zkvm crate is included in the open-source repository. To run the prover against the current beta's published batches:
+There is currently no supported public prover CLI or guaranteed public batch feed. Developers with repository and local batch access can run the crate's tests:
 
 ```bash
-# Clone the repository
-git clone https://github.com/arpjw/vela
-
-# Build the prover
-cargo build --release -p zkvm
-
-# Run against a specific batch sequence
-./target/release/vela-prover \
-  --da-path /path/to/da_batches/ \
-  --sequence 42
+cargo test -p zkvm
 ```
 
-The prover outputs either `VALID` (batch is correct) or a detailed `FraudProof` struct identifying the specific divergence.
+This validates local deterministic-replay behavior. It does not independently verify the deployed service.
 
 ## Fraud Proof Size
 

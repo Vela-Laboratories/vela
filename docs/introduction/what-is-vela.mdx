@@ -1,9 +1,9 @@
 ---
 title: "What is Vela?"
-description: "A high-performance verifiable spot DEX built by Monolith Systematic LLC"
+description: "A high-performance spot-exchange research preview built by Monolith Systematic LLC"
 ---
 
-Vela is a central limit order book (CLOB) spot exchange that combines the speed of a centralized exchange with the verifiability of a blockchain system. Every trade is cryptographically signed, every match is deterministic, and every batch of state transitions is provable.
+Vela is a central limit order book (CLOB) research system. Orders are wallet-signed and matching is deterministic, but the current public deployment is a Sepolia demo without production custody, reconciliation, real SP1 proving, or on-chain proof enforcement.
 
 ## The Problem
 
@@ -18,8 +18,8 @@ The exchange landscape today forces a hard choice:
 Vela runs a high-performance matching engine off-chain while keeping a cryptographic audit trail of every trade on-chain. Users get:
 
 - **CEX speed** — 1.066μs p50 match latency, 85.4k ops/sec
-- **DEX transparency** — every order is wallet-signed, every batch is provable via optimistic-ZK fraud proofs
-- **On-chain settlement** — funds held in a smart contract, withdrawals verifiable on Ethereum
+- **Inspectable execution** — wallet-signed orders, deterministic matching, and local state commitments
+- **Settlement research** — a Sepolia contract demo; authoritative ledger and custody integration remain roadmap work
 
 ## Engine Features
 
@@ -38,21 +38,20 @@ Vela runs a high-performance matching engine off-chain while keeping a cryptogra
 
 ## Current Status
 
-Vela is in **public beta** on Ethereum Sepolia testnet.
+Vela is a **testnet demo** on Ethereum Sepolia. Do not use real funds.
 
 | Feature | Status |
 |---------|--------|
 | Spot trading (16 markets) | ✓ Live |
 | Wallet-signed orders | ✓ Live |
-| On-chain ETH deposits/withdrawals | ✓ Live (Sepolia) |
-| On-chain USDC deposits | ✓ Live (Sepolia) |
-| Trust-based ERC20 deposits | ✓ Live (beta) |
+| Sepolia contract deposit/withdrawal demo | Preview; not production custody |
+| Engine deposit credits | Unverified demo credits only |
 | Live order books (CoinGecko) | ✓ Live |
 | Real OHLCV candlestick data | ✓ Live |
 | Full WebSocket real-time feeds | ✓ Live |
 | Referral program | ✓ Live |
 | Trading leaderboard | ✓ Live |
-| Persistent engine state | ✓ Live |
+| Persistent engine state | Single-region preview storage |
 | Mainnet deployment | Coming soon |
 
 ## Access Vela

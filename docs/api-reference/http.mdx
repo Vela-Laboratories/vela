@@ -306,7 +306,7 @@ Returns a data availability proof for a filled order. Used by external parties t
 ```
 
 ### POST /force-include
-Submit a signed transaction directly to the delayed inbox. The engine must include it within 24 hours or face an on-chain challenge.
+Test-only API scaffolding for submitting a signed transaction to the in-process delayed-inbox queue. No deployed L1 inbox, enforceable deadline, on-chain challenge, or slashing mechanism is active.
 
 ```json
 {

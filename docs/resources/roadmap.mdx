@@ -3,10 +3,10 @@ title: "Roadmap"
 description: "Vela Exchange development roadmap."
 ---
 
-This roadmap tracks Vela's development milestones from initial research through full trustless mainnet. Completed milestones are marked with their completion status; active and future milestones show planned scope.
+This is the legacy research roadmap. Its completion labels refer to prototypes and demos, not consumer-exchange production readiness. The authoritative forward plan is the [consumer exchange engineering plan](/consumer-exchange-engineering-plan).
 
 <Info>
-The roadmap shows direction and priority — not a release schedule. No dates are promised for future milestones.
+No mainnet release is scheduled. Custody, ledger, compliance, security, and operational launch gates remain open, and no item below authorizes real-fund use.
 </Info>
 
 ## Milestone Overview
@@ -86,24 +86,24 @@ The roadmap shows direction and priority — not a release schedule. No dates ar
 
 ---
 
-## M6 — Live Trading
+## M6 — Legacy Target Design
 
 **Status: In Progress**
 
-The M6 milestone transitions Vela from a trust-based beta to a system with on-chain deposit and withdrawal guarantees.
+The original M6 milestone described the target ideas below. They are not implemented production guarantees and have been superseded by the ledger-first plan.
 
 <CardGroup cols={2}>
   <Card title="On-chain Deposit Contract" icon="file-contract">
-    Solidity deposit contract deployed. Users call `deposit()` to lock funds in the contract. Engine observes `Deposited` events and credits accounts. Deposits are held by the contract, not the operator.
+    Target: an audited custody contract plus a finalized, idempotent indexer and authoritative ledger credit.
   </Card>
   <Card title="On-chain Withdrawal Settlement" icon="arrow-up-from-bracket">
-    Engine approves withdrawal requests and signs a message authorizing the contract to release funds. Users call `withdraw()` on the contract with the signed authorization. Funds transfer directly to the user's wallet.
+    Target: durable reservation before policy approval, hardware-backed signing, controlled broadcast, confirmation, and exactly-once failure reversal.
   </Card>
   <Card title="Forced Inclusion (DelayedInbox)" icon="inbox">
-    `DelayedInbox.sol` deployed on L1. Users can submit signed transactions directly. Engine must include forced transactions within 24 hours or face on-chain challenge. Prevents operator censorship.
+    Stage 2 target only: an audited L1 inbox with an actually enforceable deadline and remedy. No such guarantee is active.
   </Card>
   <Card title="Mainnet Deployment" icon="server">
-    Engine and contracts deployed to mainnet (Ethereum or L2). Real wallet deposits activated. Beta trust-based deposits migrated or wound down.
+    Blocked until every consumer-exchange launch gate, legal approval, and external audit is complete.
   </Card>
 </CardGroup>
 

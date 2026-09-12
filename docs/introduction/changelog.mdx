@@ -5,7 +5,11 @@ description: "Release history for Vela Exchange"
 
 ## v0.2.0 — April 2026
 
-### Phase 2 — Production Engine
+<Warning>
+Historical feature names below describe research prototypes and testnet UI behavior, not production custody, settlement, forced inclusion, or real-fund readiness.
+</Warning>
+
+### Phase 2 — Engine Prototype
 
 - Parallel signature verification (100k+ ops/sec ceiling)
 - HFT rolling 20-window nonce scheme (20 concurrent in-flight orders)
@@ -18,7 +22,7 @@ description: "Release history for Vela Exchange"
 - Depth-32 sparse Merkle tree with O(dirty×32) root recompute
 - Forced inclusion / delayed inbox (`/force-include`)
 
-### Phase 3 — Mainnet Readiness
+### Phase 3 — Testnet Integration Prototype
 
 - ERC20 on-chain deposits (USDC two-step approve then deposit)
 - Real OHLCV candlestick data from trade history (LIVE/SIMULATED badge)
@@ -58,7 +62,7 @@ Initial public beta. Core exchange, transparency layer, ETH settlement, 11 marke
 - Contract: `0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686`
 - On-chain ETH deposits via `depositETH()` payable function
 - Operator-signed on-chain ETH withdrawals
-- 7-day emergency exit timelock for trustless fund recovery
+- 7-day emergency-exit contract prototype, disconnected from authoritative post-trade ownership
 
 ### Infrastructure
 

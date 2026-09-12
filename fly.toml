@@ -3,6 +3,13 @@ primary_region = 'sjc'
 
 [build]
 
+# This deployment is intentionally a testnet demo. Production startup has a
+# separate fail-closed configuration contract and must use a different app.
+[env]
+  VELA_RUNTIME_MODE = 'testnet-demo'
+  VELA_CHAIN_ID = '11155111'
+  SNAPSHOT_DIR = '/data'
+
 [http_service]
   internal_port = 3001
   force_https = true

@@ -263,6 +263,75 @@ mod tests {
     }
 
     #[test]
+    fn production_guard_matrix_rejects_each_unsafe_setting_independently() {
+        type Mutator = fn(&mut RuntimeSettings);
+        let cases: &[(&str, Mutator, &str)] = &[
+            (
+                "sepolia chain",
+                |s| s.chain_id = SEPOLIA_CHAIN_ID,
+                "Sepolia",
+            ),
+            (
+                "missing settlement address",
+                |s| s.settlement_address = None,
+                "VELA_SETTLEMENT_ADDRESS is not configured",
+            ),
+            (
+                "sepolia settlement address",
+                |s| s.settlement_address = Some(SEPOLIA_SETTLEMENT_ADDRESS.to_string()),
+                "known Sepolia settlement address",
+            ),
+            (
+                "missing rpc",
+                |s| s.rpc_url = None,
+                "ALCHEMY_API_URL is not configured",
+            ),
+            (
+                "demo rpc",
+                |s| s.rpc_url = Some(DEFAULT_SEPOLIA_RPC.to_string()),
+                "placeholder endpoint",
+            ),
+            (
+                "localhost rpc",
+                |s| s.rpc_url = Some("http://localhost:8545".to_string()),
+                "placeholder endpoint",
+            ),
+            (
+                "temporary state",
+                |s| s.snapshot_dir = std::env::temp_dir().join("vela"),
+                "temporary storage",
+            ),
+            (
+                "placeholder prover",
+                |s| s.zkvm_provider = "placeholder".to_string(),
+                "placeholder prover",
+            ),
+            (
+                "simulated tee",
+                |s| s.tee_platform = "placeholder".to_string(),
+                "simulated attestations",
+            ),
+        ];
+
+        for (name, mutate, expected) in cases {
+            let mut settings = valid_production_settings();
+            mutate(&mut settings);
+            let error = match settings.validate() {
+                Ok(()) => panic!("{name} unexpectedly passed validation"),
+                Err(error) => error,
+            };
+            assert!(
+                error
+                    .problems
+                    .iter()
+                    .any(|problem| problem.contains(expected)),
+                "{name} failed for the wrong reason: {:?}",
+                error.problems
+            );
+        }
+    }
+
+    #[test]
     fn only_testnet_demo_enables_synthetic_state_and_internal_mm() {
         let mut settings = valid_production_settings();
         assert!(!settings.synthetic_state_enabled());

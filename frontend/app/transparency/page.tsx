@@ -169,7 +169,7 @@ export default function TransparencyPage() {
             </span>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '560px', marginTop: '20px' }}>
-            Every trade. Every order. Every dollar. Verifiable on-chain, in real time, forever. No other exchange has ever done this.
+            Inspect the current testnet engine, aggregate demo liabilities, local commitments, and roadmap limitations. These views are operational telemetry, not production attestations.
           </p>
           <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', marginTop: '16px' }}>
             {COMPLETE_COUNT}/25 transparency criteria complete ·{' '}
@@ -307,7 +307,7 @@ export default function TransparencyPage() {
           Published in real time.
         </h2>
         <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginBottom: '32px' }}>
-          Vela charges 5 bps on taker fills and pays 1 bps rebates to makers. This is the complete revenue record since launch. No other exchange publishes this.
+          This view reports fee counters emitted by the current demo engine. It is operational telemetry, not audited revenue or an authoritative financial ledger.
         </p>
 
         {!feeData ? (
@@ -536,7 +536,7 @@ export default function TransparencyPage() {
             {
               href: '/transparency-score',
               title: 'Transparency Score',
-              desc: '25 criteria across 5 categories. Scored honestly — complete means verifiable right now. The industry standard for exchange transparency.',
+              desc: 'A self-assessment across 25 criteria. It is project telemetry, not an independent audit or industry standard.',
               link: 'View scorecard →',
             },
             {
@@ -548,13 +548,13 @@ export default function TransparencyPage() {
             {
               href: '/batches',
               title: 'Batch Explorer',
-              desc: 'Every batch has a keccak256 state root. State roots are anchored to Ethereum every 10 minutes — a permanent, immutable record verifiable on Etherscan.',
+              desc: 'Inspect locally produced batch records and state roots. Anchoring is testnet telemetry and does not provide production data availability or proof enforcement.',
               link: 'Explore batches →',
             },
             {
               href: '/verify',
               title: 'Fraud Proof System',
-              desc: 'Understand the ZK architecture. Verify state roots. Submit a challenge if you find a discrepancy.',
+              desc: 'Understand the planned proof architecture, inspect local state roots, and report a discrepancy. On-chain challenges are not active.',
               link: 'Verify trades →',
             },
             {

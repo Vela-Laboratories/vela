@@ -5,7 +5,7 @@ description: "Complete reference for algorithmic and professional market making 
 
 ## Overview
 
-Vela is purpose-built for high-frequency and professional market makers. Most DEXs force you to choose between capital efficiency and throughput. Vela eliminates that tradeoff.
+Vela includes research-oriented matching and market-maker interfaces. The current system is a testnet demo, not a production venue, and the figures below are local benchmark or configured-demo properties rather than live execution guarantees.
 
 **What makes Vela different:**
 
@@ -20,7 +20,7 @@ Vela is purpose-built for high-frequency and professional market makers. Most DE
 
 ### Credit System
 
-Vela is the first DEX to let market makers quote beyond their deposited amount. Your total quoted notional across all open orders must be ≤ your deposited balance — but you can have many orders open simultaneously as long as the aggregate stays within that cap. A $10,000 deposit supports $10,000 of live quotes spread across as many orders as you like.
+The demo credit model lets an account maintain many open orders while enforcing an aggregate configured notional cap. This mechanism is excluded from the first consumer production release unless it is redesigned around funded collateral and the authoritative ledger.
 
 ### HFT Nonce Scheme
 
@@ -28,7 +28,7 @@ Instead of a strict per-user sequence number, Vela maintains a rolling window of
 
 ### Sub-microsecond Matching
 
-The matching engine runs on a custom Rust CLOB with a 1.066μs p50 match latency at 85,400 operations per second. Benchmarks use a single-threaded, in-process setup to reflect the actual latency you experience, not a theoretical maximum.
+The custom Rust CLOB measured 1.066μs p50 match latency and 85,400 operations per second in a single-threaded, in-process benchmark. These measurements exclude network, durable-ledger, custody, and production risk-control latency and do not predict a customer's end-to-end experience.
 
 ---
 
@@ -839,7 +839,7 @@ No. The public trade feed shows fills (price, quantity, timestamp) but does not 
 
 **How do I exit if Vela goes offline?**
 
-Vela uses a 7-day forced exit mechanism. Call `initiateEmergencyExit()` on the `VelaSettlement` contract. After the 7-day delay, call `executeEmergencyExit()` to withdraw all your funds directly from the contract without any operator involvement.
+There is no production forced-exit mechanism in the current testnet demo. The existing contract and UI are research scaffolding and are not connected to an authoritative post-trade ledger. Do not rely on them for recovery of real funds.
 
 **What is the minimum deposit to market make?**
 

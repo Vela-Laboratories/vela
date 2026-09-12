@@ -5,15 +5,13 @@ description: "Frequently asked questions about Vela Exchange."
 
 <AccordionGroup>
   <Accordion title="Is Vela live?" icon="circle-question">
-    Yes. Vela is in **public beta** as of April 2026. The exchange is live at [vela.monolithsystematic.com](https://vela.monolithsystematic.com) with 16 spot markets, a full trading UI, and a working API.
+    Vela has a **testnet research demo** at [vela.monolithsystematic.com](https://vela.monolithsystematic.com) with a trading UI and API. It is not a production exchange and must not be used with real funds.
 
     Beta means the on-chain components (deposit contracts, fraud proof enforcement, forced inclusion) are not yet deployed. See [Trust Model](/security/trust-model) for what this means in practice.
   </Accordion>
 
   <Accordion title="Are deposits safe?" icon="shield">
-    ETH and USDC deposits are settled on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Your funds are held by the contract, not the operator.
-
-    Other assets (BTC, SOL, etc.) are trust-based during the beta period — held by Monolith Systematic LLC and tracked in Vela's state layer.
+    No current deposit flow should be treated as production custody. ETH and USDC can exercise a Sepolia contract demo, but demo-engine credits are not an authoritative, reconciled ledger. Other asset deposits are unverified demo credits and do not represent accepted custody.
 
     See [Deposit Funds](/getting-started/deposit) and [Trust Model](/security/trust-model) for the full picture.
   </Accordion>
@@ -39,7 +37,7 @@ description: "Frequently asked questions about Vela Exchange."
   </Accordion>
 
   <Accordion title="Is the source code available?" icon="code">
-    Yes. The Vela engine is open source on GitHub at [github.com/arpjw/vela](https://github.com/arpjw/vela). The repository includes the full six-crate Rust workspace: types, engine, state, api, committer, and zkvm.
+    The source is maintained in a private repository while the consumer-exchange redesign is underway. Public release will be reconsidered after security and launch-readiness review.
 
     The matching engine benchmarks are reproducible: `cargo bench --bench engine`.
   </Accordion>
@@ -108,7 +106,7 @@ description: "Frequently asked questions about Vela Exchange."
   </Accordion>
 
   <Accordion title="When is mainnet?" icon="calendar">
-    Mainnet development is in progress (M6 milestone). M6 includes on-chain deposit contracts, withdrawal settlement, and forced inclusion. See the [Roadmap](/resources/roadmap) for current milestone status.
+    Mainnet is gated on the ledger, custody, deposit, withdrawal, compliance, security, and operational work in the consumer-exchange plan. The older M6/M7 roadmap is design history, not a launch commitment.
 
     No date is promised. The roadmap shows direction and priority, not schedule.
   </Accordion>

@@ -27,7 +27,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'Vela Exchange',
-  description: 'High-performance verifiable spot DEX',
+  description: 'High-performance spot exchange research preview on Ethereum Sepolia',
   icons: { icon: '/favicon.ico' },
 }
 

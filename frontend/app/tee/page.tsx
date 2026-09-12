@@ -129,10 +129,10 @@ export default function TeePage() {
             Trusted hardware.
           </h1>
           <h2 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: 'rgba(232,228,216,0.4)', margin: '0 0 24px', lineHeight: 1.15 }}>
-            Verified execution.
+            Verification research.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', color: 'rgba(232,228,216,0.4)', lineHeight: 1.8, maxWidth: '560px', margin: 0 }}>
-            In addition to ZK proofs, Vela is building hardware-based attestation using AMD SEV-SNP Trusted Execution Environments. The TEE hardware itself proves that the correct matching engine binary ran on tamper-proof infrastructure — without trusting the operator.
+            Vela is researching hardware-based attestation using AMD SEV-SNP Trusted Execution Environments. The current demo emits simulated records; no production hardware attestation or independently verified deployment is active.
           </p>
         </div>
       </div>
@@ -158,12 +158,12 @@ export default function TeePage() {
               Trust model: No hardware trust required. Pure math.
             </p>
             <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', margin: '0 0 20px' }}>
-              Status: Infra built. SP1 integration: June 2026
+              Status: Research design only. The current default prover is a placeholder.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {[
-                ['✓', 'Trustless — no hardware dependency'],
-                ['✓', 'Publicly verifiable by anyone'],
+                ['○', 'Target: no hardware dependency'],
+                ['○', 'Target: publicly verifiable inputs and proofs'],
                 ['✗', 'Computationally expensive to generate'],
                 ['✗', 'Requires ZK-compatible circuit design'],
               ].map(([mark, text]) => (
@@ -179,19 +179,19 @@ export default function TeePage() {
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>TEE Attestation (VEL-T1-04)</p>
             <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#0C0C0C', margin: '0 0 16px' }}>Hardware trust</h3>
             <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.55)', lineHeight: 1.7, margin: '0 0 12px' }}>
-              The correct binary ran on tamper-proof AMD SEV-SNP hardware. The hardware itself guarantees no modification occurred.
+              Target design: an attestation would bind a measured binary to supported AMD SEV-SNP hardware. This is not active in the deployed demo and would still depend on hardware, firmware, cloud, and verification assumptions.
             </p>
             <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.45)', margin: '0 0 16px' }}>
               Trust model: Requires trusting AMD/Intel hardware. Stronger operational trust than software alone.
             </p>
             <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', margin: '0 0 20px' }}>
-              Status: Infra built. AMD SEV-SNP deployment: June 2026
+              Status: Simulated records only. No hardware-backed deployment is active.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {[
-                ['✓', 'Fast — attestation in milliseconds'],
-                ['✓', 'Available on standard cloud VMs today'],
-                ['✓', 'Binary hash proves which code ran'],
+                ['○', 'Target: low-latency attestation'],
+                ['○', 'Requires a supported confidential-compute VM'],
+                ['○', 'Measurement can bind a binary hash to a report'],
                 ['✗', 'Requires trusting hardware manufacturer (AMD/Intel)'],
               ].map(([mark, text]) => (
                 <p key={text} style={{ fontFamily: IN, fontSize: '11px', color: mark === '✓' ? 'rgba(12,12,12,0.55)' : 'rgba(12,12,12,0.3)', margin: 0 }}>

@@ -83,7 +83,7 @@ export default function BetaBanner() {
         {statusText}
       </span>
       <span style={{ color: 'rgba(232,228,216,0.25)' }}>
-        Ethereum Sepolia Testnet — Do not use real funds
+        TESTNET DEMO ONLY · NO REAL FUNDS · NOT PRODUCTION CUSTODY
       </span>
       <a
         href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"

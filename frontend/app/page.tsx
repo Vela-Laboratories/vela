@@ -35,13 +35,13 @@ const HOW_IT_WORKS = [
   },
   {
     num: '02',
-    title: 'OPTIMISTIC-ZK PROOFS',
-    body: 'Every batch of trades is provable on-chain. Challenge any batch and receive a cryptographic fraud proof. Trust the math, not the operator.',
+    title: 'LOCAL VERIFICATION PIPELINE',
+    body: 'The repository includes deterministic replay and placeholder proof plumbing. Real SP1 proving and on-chain enforcement are not active in this beta.',
   },
   {
     num: '03',
-    title: 'ON-CHAIN SETTLEMENT',
-    body: 'Funds are held in a smart contract on Ethereum. Withdraw directly to your wallet. Emergency exit available after a 7-day timelock — no permission needed.',
+    title: 'SEPOLIA CONTRACT DEMO',
+    body: 'A test contract demonstrates deposits and withdrawals on Sepolia. Engine credits are not yet reconciled to an authoritative production ledger.',
   },
 ]
 
@@ -97,26 +97,26 @@ export default function HomePage() {
                   marginBottom: '24px',
                 }}
               >
-                Monolith Systematic — Public Beta
+                Monolith Systematic — Testnet Research Demo
               </div>
               <div>
                 <span
                   style={{ display: 'block', fontFamily: PF, fontWeight: 900, color: '#E8E4D8', lineHeight: 0.95 }}
                   className="text-[44px] lg:text-[72px]"
                 >
-                  Trade with
+                  Explore a
                 </span>
                 <span
                   style={{ display: 'block', fontFamily: PF, fontWeight: 400, fontStyle: 'italic', color: 'rgba(232,228,216,0.38)', lineHeight: 0.95 }}
                   className="text-[44px] lg:text-[72px]"
                 >
-                  provable
+                  verifiable
                 </span>
                 <span
                   style={{ display: 'block', fontFamily: PF, fontWeight: 900, color: '#E8E4D8', lineHeight: 0.95 }}
                   className="text-[44px] lg:text-[72px]"
                 >
-                  fairness.
+                  engine.
                 </span>
               </div>
               <p
@@ -130,7 +130,7 @@ export default function HomePage() {
                   marginTop: '28px',
                 }}
               >
-                A central limit order book exchange where every match is cryptographically verified. The first DEX that doesn&apos;t make you choose between speed and transparency.
+                A testnet interface for Vela&apos;s deterministic matching research. Production custody, an authoritative financial ledger, real proving, and on-chain enforcement are not active. Do not use real funds.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 mt-10">
                 <button
@@ -148,7 +148,7 @@ export default function HomePage() {
                     cursor: 'pointer',
                   }}
                 >
-                  Launch Exchange →
+                  Open Testnet Demo →
                 </button>
                 <button
                   type="button"
@@ -367,7 +367,7 @@ export default function HomePage() {
                     lineHeight: 1.05,
                   }}
                 >
-                  Exchange-grade
+                  Matching-engine
                 </div>
                 <div
                   style={{
@@ -378,7 +378,7 @@ export default function HomePage() {
                     lineHeight: 1.05,
                   }}
                 >
-                  infrastructure.
+                  research.
                 </div>
                 <div
                   style={{
@@ -390,7 +390,7 @@ export default function HomePage() {
                     lineHeight: 1.05,
                   }}
                 >
-                  On-chain proof.
+                  Transparent limits.
                 </div>
               </div>
             </div>
@@ -404,7 +404,7 @@ export default function HomePage() {
                   color: 'rgba(232,228,216,0.32)',
                 }}
               >
-                Every order signed by your wallet. Every batch provable on-chain. Funds held in a smart contract. Withdraw without asking anyone&apos;s permission — ever.
+                Wallet-signed orders and deterministic matching are live in the testnet demo. Production custody, reconciled settlement, real proofs, and permissionless exits remain roadmap work.
               </p>
             </div>
           </div>
@@ -491,7 +491,7 @@ export default function HomePage() {
                 lineHeight: 0.98,
               }}
             >
-              Join the
+              Follow the
             </span>
             <span
               style={{
@@ -504,7 +504,7 @@ export default function HomePage() {
                 lineHeight: 0.98,
               }}
             >
-              beta.
+              research.
             </span>
           </div>
           <p
@@ -517,7 +517,7 @@ export default function HomePage() {
               marginTop: '18px',
             }}
           >
-            Get early access updates, trading incentives, and the mainnet launch announcement.
+            Get engineering updates. No mainnet date or trading incentive is promised.
           </p>
           {submitted ? (
             <div
@@ -606,7 +606,7 @@ export default function HomePage() {
               color: '#E8E4D8',
             }}
           >
-            Ready to trade?
+            Ready to test?
           </div>
           <div
             style={{
@@ -637,7 +637,7 @@ export default function HomePage() {
                 marginTop: '32px',
               }}
             >
-              Launch Exchange →
+              Open Testnet Demo →
             </button>
           </div>
           <span

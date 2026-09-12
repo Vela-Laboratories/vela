@@ -31,8 +31,8 @@ const STEPS = [
   },
   {
     num: '03',
-    title: 'Submit a challenge',
-    desc: 'If you find an invalid batch, submit a challenge below. Vela will produce a fraud proof within 24 hours. If the proof fails, affected users are made whole.',
+    title: 'Report a discrepancy',
+    desc: 'Send the batch ID and your reproduction details to the operator. The beta has no on-chain challenge, slashing, or make-whole mechanism.',
   },
 ]
 
@@ -121,14 +121,14 @@ export default function VerifyPage() {
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
-              Verify any trade.
+              Inspect any batch.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,228,216,0.3)', display: 'block', lineHeight: 1.1 }}>
-              Challenge anything.
+              Report discrepancies.
             </span>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '560px', marginTop: '20px' }}>
-            Vela uses an optimistic-ZK architecture. Every batch of trades produces a state root. If you believe any batch was processed incorrectly, you can submit a challenge. Honest batches are always provably correct.
+            The beta publishes local state commitments and includes deterministic replay code. SP1 proofs, an on-chain verifier, enforceable challenges, and operator slashing are not active.
           </p>
         </div>
       </div>
@@ -193,14 +193,14 @@ export default function VerifyPage() {
           Found a discrepancy?
         </h2>
         <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.5)', maxWidth: '520px', marginBottom: '36px' }}>
-          If you believe a batch was processed incorrectly, submit a challenge here. Include the batch ID, the discrepancy you found, and your wallet address. We will respond within 24 hours.
+          If you believe a batch was processed incorrectly, send a report with the batch ID and reproduction details. This form opens an email; it does not submit an on-chain challenge.
         </p>
 
         {submitted ? (
           <div style={{ background: 'white', border: '1px solid rgba(12,12,12,0.1)', padding: '28px', maxWidth: '520px' }}>
-            <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 8px' }}>Challenge submitted.</p>
+            <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 8px' }}>Report prepared.</p>
             <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.55)', margin: 0 }}>
-              We will respond to {wallet || 'your address'} within 24 hours.
+              Your email client was opened for you to send the report. This is not an on-chain challenge and no response time is guaranteed.
             </p>
           </div>
         ) : (

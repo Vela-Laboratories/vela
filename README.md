@@ -1,6 +1,6 @@
 # Vela Exchange
 
-A high-performance verifiable spot DEX built by [Monolith Systematic LLC](https://monolithsystematic.com).
+A high-performance spot-exchange research preview built by [Monolith Systematic LLC](https://monolithsystematic.com).
 
 **Live:** [vela.monolithsystematic.com](https://vela.monolithsystematic.com) · **Docs:** [monolithsystematicllc.mintlify.app](https://monolithsystematicllc.mintlify.app) · **White Paper:** [SSRN 6579199](https://ssrn.com/abstract=6579199)
 
@@ -8,16 +8,11 @@ A high-performance verifiable spot DEX built by [Monolith Systematic LLC](https:
 
 ## Overview
 
-Vela is a central limit order book (CLOB) spot exchange that combines 
-the speed of a centralized exchange with the verifiability of a 
-blockchain system. Every order is cryptographically signed by the 
-user's wallet, every match is deterministic and auditable, and every 
-batch of state transitions is provable via optimistic-ZK fraud proofs. 
-User funds are held in a smart contract on Ethereum — not in a database 
-controlled by the operator.
-
-Most exchanges ask you to trust them. Vela is designed so you don't 
-have to.
+Vela is a central limit order book (CLOB) spot-exchange research system.
+Orders are wallet-signed and matching is deterministic, but the current
+public beta is a Sepolia demo. It does not have an authoritative production
+ledger, reconciled custody, real SP1 proofs, an on-chain fraud-proof verifier,
+or enforceable forced inclusion. Do not use real funds.
 
 ---
 
@@ -95,16 +90,16 @@ The batch dispatcher coalesces multiple orders into a single engine lock acquisi
 
 ## Transparency
 
-Vela publishes what no other exchange has published at launch:
+Vela exposes research and testnet telemetry for inspection:
 
 | Feature | Description |
 |---------|-------------|
 | Live trade feed | Every fill, every counterparty, no anonymization, real time |
-| Proof of reserves | Contract ETH vs. engine credited balances, verified every 60s |
+| Testnet balance comparison | Sepolia contract ETH vs. aggregate demo-engine credits; not an independent proof of reserves |
 | Order audit trail | Every order's full lifecycle, wallet signature, and fill history |
 | Operator disclosure | Named operator, signed commitments, exact powers and limits |
-| Batch explorer | Every batch with keccak256 state roots, verifiable by anyone |
-| Fraud proof interface | Download any state root, verify any batch, submit challenges |
+| Batch explorer | Locally produced batch records and keccak256 state roots; public data availability is not yet guaranteed |
+| Verification research UI | Inspect local commitments and report discrepancies; no on-chain challenge enforcement |
 
 All live at [vela.monolithsystematic.com/transparency](https://vela.monolithsystematic.com/transparency).
 
@@ -115,7 +110,7 @@ All live at [vela.monolithsystematic.com/transparency](https://vela.monolithsyst
 **Order types:** GTC · Post-Only · IOC · FOK
 
 **Market maker infrastructure:**
-- Credit system: quote beyond deposited amount (first in DEX history)
+- Credit-system research: enforce aggregate quote limits across markets
 - HFT nonce scheme: rolling 20-window, 20 concurrent in-flight orders
 - Client order IDs: assign and cancel by your own identifiers
 - Auto-cancel on credit breach: oldest orders cancelled to make room
@@ -133,7 +128,7 @@ All live at [vela.monolithsystematic.com/transparency](https://vela.monolithsyst
 **Data layer:**
 - Depth-32 sparse Merkle tree with O(dirty×32) root recompute
 - DA layer: all fills posted async, content-addressed, retrievable
-- Forced inclusion: /force-include endpoint + DelayedInbox
+- Forced-inclusion scaffolding: API/admin queue only; no deployed L1 delayed inbox
 
 **Real-time feeds:**
 - WebSocket: orderbook:{market}, trades:{market}, markets, account:{address}
@@ -164,7 +159,9 @@ Etherscan: https://sepolia.etherscan.io/address/0xAa8E680c11a883F9bf6eb980B2D4E9
 | `initiateEmergencyExit(asset)` | User-triggered 7-day timelock |
 | `executeEmergencyExit(asset)` | Reclaim funds after timelock, no operator needed |
 
-The operator can sign withdrawals. The operator cannot steal funds.
+The contract enforces its own accounting rules, but this beta does not yet
+connect contract balances to an authoritative post-trade ledger. Do not infer
+production custody or solvency guarantees from the contract alone.
 
 ---
 
@@ -346,17 +343,19 @@ vela/
 
 ## Project Status
 
-Currently in **public beta** on Ethereum Sepolia. Do not deposit mainnet funds.
+Currently a **testnet demo** on Ethereum Sepolia. Do not use real funds. Engine
+credits are not production custody balances, withdrawals are not backed by a
+durable reservation workflow, and proof/forced-inclusion enforcement is not live.
 
 **Phase 1 — Core Exchange**
 - [x] Rust matching engine (6-crate workspace)
 - [x] Wallet-signed orders and cancellations
-- [x] On-chain ETH and ERC20 (USDC) deposit and withdrawal
+- [~] Sepolia contract deposit/withdrawal demo; engine reconciliation is incomplete
 - [x] Live market maker bot (CoinGecko, 16 markets)
 - [x] Persistent engine state (60s snapshots)
 - [x] Rate limiting and input validation
 
-**Phase 2 — Production Engine**
+**Phase 2 — Engine Prototype**
 - [x] Parallel signature verification (100k+ ops/sec ceiling)
 - [x] HFT rolling 20-window nonce scheme
 - [x] Client order IDs with cancel-by-client-id
@@ -366,9 +365,9 @@ Currently in **public beta** on Ethereum Sepolia. Do not deposit mainnet funds.
 - [x] Configurable maker/taker fee framework
 - [x] DA layer (content-addressed fill storage)
 - [x] Depth-32 sparse Merkle tree (SMT)
-- [x] Forced inclusion / delayed inbox
+- [~] Forced-inclusion engine scaffolding; deployed delayed inbox pending
 
-**Phase 3 — Mainnet Readiness**
+**Phase 3 — Testnet Integration Prototype**
 - [x] ERC20 on-chain deposits (USDC two-step approve/deposit)
 - [x] Real OHLCV from trade history with LIVE/SIMULATED badge
 - [x] Full WebSocket real-time feeds (orderbook, trades, account)
@@ -412,7 +411,7 @@ behind feature flags. Treat as public preview, not production.
 ## Changelog
 
 ### v0.2.0 (April 2026)
-Phase 2 + Phase 3 complete. Full production engine with HFT nonces, 
+Phase 2 + Phase 3 research implementation. Non-custodial production launch work remains. HFT nonces,
 CoW semantics, fee framework, WebSocket feeds, real OHLCV, ERC20 
 deposits, 16 markets, referral program, and benchmark suite.
 

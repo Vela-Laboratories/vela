@@ -8,7 +8,7 @@ description: "How to withdraw funds from your Vela account"
 Withdrawals work differently depending on the asset:
 
 - **ETH** — on-chain withdrawal via the VelaSettlement contract, signed by the Vela operator
-- **Other assets** — manually processed within 24 hours during the beta period
+- **Other assets** — manual beta requests with no guaranteed completion time
 
 ## Withdrawing ETH (On-Chain)
 
@@ -20,7 +20,9 @@ Withdrawals work differently depending on the asset:
    - Prompt MetaMask to submit the signed withdrawal to the contract
 5. Once the transaction confirms, ETH arrives in your wallet
 
-The withdrawal is authorized by the Vela operator's signature and verified on-chain by the smart contract. The operator cannot steal funds — the contract only releases funds to your connected wallet address.
+The Sepolia contract checks the operator signature and destination. This does
+not establish production custody safety because the engine has no durable,
+atomic withdrawal-reservation ledger yet.
 
 ## Withdrawing Other Assets
 
@@ -28,7 +30,7 @@ For non-ETH assets, withdrawals are processed manually:
 
 1. Submit a withdrawal request from the withdraw page
 2. Sign the request with your wallet (MetaMask popup)
-3. Monolith Systematic processes the withdrawal within 24 hours
+3. Monolith Systematic reviews the request; no completion-time guarantee applies
 4. Funds are sent to your connected wallet address
 
 ## Emergency Exit

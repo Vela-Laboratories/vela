@@ -120,13 +120,13 @@ export default function ProofsPage() {
             Vela Exchange — ZK Proof System
           </p>
           <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#E8E4D8', margin: '0 0 4px', lineHeight: 1.15 }}>
-            Mathematically proven.
+            Proof pipeline status.
           </h1>
           <h2 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: 'rgba(232,228,216,0.4)', margin: '0 0 24px', lineHeight: 1.15 }}>
-            Every trade.
+            Testnet research preview.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', color: 'rgba(232,228,216,0.4)', lineHeight: 1.8, maxWidth: '540px', margin: 0 }}>
-            Vela&apos;s optimistic-ZK architecture produces a cryptographic proof for every batch of trades. Anyone can verify that the matching engine processed orders correctly without trusting the operator.
+            The current beta defaults to a placeholder prover and optimistic skipped records. Real SP1 proofs require separate provider infrastructure, and no on-chain verifier currently enforces them.
           </p>
         </div>
       </div>
@@ -140,7 +140,7 @@ export default function ProofsPage() {
           <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>CURRENT PROVER MODE</p>
           <p style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#0C0C0C', margin: '0 0 12px' }}>OPTIMISTIC</p>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.55)', lineHeight: 1.7, maxWidth: '480px', margin: '0 0 24px' }}>
-            Proofs are generated on-demand when a batch is challenged. Full per-batch proving with SP1 ships post-Stanford AFT Lab (June 2026).
+            Placeholder records are emitted by default. SP1 integration exists behind explicit provider configuration and is not part of the public beta deployment.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(180,140,60,0.8)', margin: 0 }}>● NOW — Optimistic mode (challenge → prove)</p>
@@ -179,7 +179,7 @@ export default function ProofsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
             {[
               ['01', 'Batch execution', 'Every 30 seconds, the matching engine produces a batch of fills and computes a state root — a cryptographic commitment to the result.'],
-              ['02', 'Optimistic acceptance', 'The state root is accepted as correct by default. Anyone can challenge it during the 7-day window by submitting a fraud proof at /verify.'],
+              ['02', 'Optimistic record', 'The beta records the state root without an enforceable on-chain challenge window. The /verify page is an operator contact flow.'],
               ['03', 'ZK proving (coming soon)', 'With SP1 integration, a ZK proof of correct execution is generated for every batch. The proof is published publicly and verifiable by anyone, eliminating the need for the challenge period.'],
             ].map(([step, title, desc]) => (
               <div key={step} style={{ background: 'rgba(232,228,216,0.04)', padding: '24px 28px', display: 'flex', gap: '24px' }}>
@@ -205,7 +205,7 @@ export default function ProofsPage() {
           <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.3)' }}>Loading proofs…</p>
         ) : proofs.length === 0 ? (
           <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.35)', padding: '32px 0' }}>
-            No proofs yet. Proofs are generated as batches execute.
+            No proof records yet. In placeholder mode, batches may be recorded as skipped rather than cryptographically proven.
           </p>
         ) : (
           <>

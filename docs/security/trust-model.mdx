@@ -5,72 +5,62 @@ description: "What you trust when using Vela in public beta."
 
 Honest trust model documentation matters. This page clearly states what Vela does and does not guarantee in the current public beta, and what the path to full trustlessness looks like.
 
-## Current Status: Public Beta
+## Current Status: Testnet Research Demo
 
-Vela is in public beta. Some components of the trustless architecture are fully implemented; others are on the roadmap. The table below is the ground truth.
+Vela is not a production exchange. It uses synthetic and unverified demo credits, and no current flow should be treated as real-money custody. The table below is the ground truth.
 
-## What Is Trustless Right Now
+## What Can Be Inspected Right Now
 
-These properties hold today, in the current beta:
+These properties are useful for research and testing, but they do not make the current system trustless:
 
 | Property | How it works |
 |---|---|
 | **Order authentication** | Every order is signed with your ECDSA private key. The engine verifies signatures before accepting orders. No one can place orders in your name without your private key. |
-| **Matching correctness (auditable)** | The matching engine is deterministic. Every batch is published to the local DA layer. Anyone with access to the batch files can run `verify_execution()` to confirm the engine applied price-time priority correctly. |
+| **Matching correctness (locally reproducible)** | The matching engine is deterministic. A developer with the required local batch data can replay transitions. Public, durable data availability is not currently guaranteed. |
 | **Order book transparency** | The public WebSocket feed shows all resting orders in real time. You can verify that your order is in the book at the price you specified. |
 | **Fill reporting** | Fills are reported via private WebSocket channels with tamper-evident data (order ID, fill price, quantity, is_maker). |
 | **Open source** | The full engine source code is available on GitHub. The code you're trusting is the code you can read. |
 
 ## What Requires Trust in Beta
 
-These properties require trusting the operator (Monolith Systematic LLC) in the current beta:
+These properties are absent or require trusting the operator in the current demo:
 
 <Warning>
-The following are trust-based in beta. If you are uncomfortable with these trust assumptions, wait for mainnet.
+Do not use real funds. These limitations are launch blockers, not acceptable production trust assumptions.
 </Warning>
 
 | Property | Current State | Planned Trustless Version |
 |---|---|---|
-| **Deposit custody** | Deposits are held by the operator. No on-chain contract. The operator can theoretically abscond with deposits. | On-chain deposit contract (M6). Funds held by smart contract, not operator. |
-| **Withdrawal execution** | Withdrawal requests are recorded but not settled on-chain. The operator controls when and if funds are returned. | On-chain withdrawal settlement (M6). Forced inclusion (M6) guarantees operator must process or face on-chain challenge. |
-| **Fraud proof enforcement** | Fraud proofs are generated locally but not submitted on-chain. There is no on-chain penalty for operator fraud. | On-chain verifier contract with operator bond slashing (M7). |
-| **Censorship resistance** | The operator can refuse to process orders from specific accounts. No forced inclusion mechanism is active. | L1 DelayedInbox contract with 24-hour timeout (M6). |
-| **Batch availability** | DA batches are written to local storage on the operator's server. The operator controls access. | Celestia or EigenDA integration (M7). Batches are publicly accessible. |
+| **Deposit custody** | ETH and USDC can exercise a Sepolia contract demo, while demo credits are maintained separately. Other deposit calls create unverified credits. There is no authoritative reconciled production ledger. | Audited custody vault plus finalized chain indexing and double-entry ledger credit. |
+| **Withdrawal execution** | Production signing is disabled. Testnet requests are not backed by an atomic durable ledger reservation and have no completion guarantee. | Durable reservation, policy-controlled signing, broadcast tracking, and exactly-once reversal. |
+| **Fraud proof enforcement** | The default proof provider emits placeholder records. There is no on-chain verifier or penalty. | Fixed audited prover, public inputs and data availability, and enforceable verification if retained in the final design. |
+| **Censorship resistance** | No deployed forced-inclusion mechanism is active. | A separately audited and enforceable forced path in a later trust-minimization stage. |
+| **Batch availability** | Batch data is local to the operator. The operator controls access and retention. | Publicly reproducible finalized balance data with defined retention and availability guarantees. |
 
 ## Risk Summary for Beta Users
 
-**Low risk:**
-- Having orders matched incorrectly — matching logic is open source, deterministic, and auditable
-- Having signatures forged — ECDSA prevents this cryptographically
-
-**Medium risk:**
-- Deposit loss due to operator insolvency or operational failure — covered by trust in the operator
-- Temporary inability to withdraw — the operator controls withdrawal processing in beta
-
-**The operator is Monolith Systematic LLC.** The beta is run in good faith for research and product development purposes. However, good faith is not a cryptographic guarantee.
+The demo can lose or reset credits, become unavailable, report incomplete telemetry, or require manual intervention. Source-level determinism and ECDSA checks do not provide custody, solvency, availability, or recovery guarantees.
 
 <Info>
-**Recommended approach for beta:** Use only funds you are willing to lose. The beta is for testing and trading experience, not for holding significant value. The on-chain guarantees are coming — they require the smart contract work in M6 and M7.
+**Required approach:** Use testnet assets only. Do not use real funds. Future guarantees require the ledger-first consumer-exchange milestones and external review; they are not promised by a date or legacy milestone label.
 </Info>
 
-## The Trustless Roadmap
+## Planned Trust-Minimization Work
 
-The path from the current beta to full trustlessness is defined and in progress:
+The current engineering plan first establishes ordinary exchange accounting and custody guarantees, then may add progressive trust minimization:
 
 <Steps>
-  <Step title="M6 — On-chain Settlement">
-    - Deploy deposit contract: funds held by smart contract, not operator
-    - On-chain withdrawal settlement: engine approves, contract releases
-    - Forced inclusion (DelayedInbox): users can force transaction processing via L1
-    
-    **After M6:** Deposits and withdrawals are trustless. The operator cannot steal funds or prevent withdrawals.
+  <Step title="Stage 1 — Ledger-first exchange">
+    - Audited on-chain custody vault
+    - Authoritative double-entry ledger and finalized deposit indexing
+    - Atomically reserved, policy-controlled withdrawals
+    - Continuous asset-by-asset reconciliation and automatic halts
   </Step>
-  <Step title="M7 — On-chain Verification">
-    - Deploy fraud proof verifier contract with operator bond
-    - Integrate Celestia or EigenDA for public batch availability
-    - On-chain enforcement: fraud proof submission slashes operator bond
-    
-    **After M7:** Matching correctness is enforced on-chain. The operator cannot modify fills or balances without detection and on-chain consequences.
+  <Step title="Stage 2 — Progressive trust minimization">
+    - Commit finalized post-trade balance roots
+    - Make finalized data independently reproducible
+    - Add proof-based withdrawal rights and forced inclusion
+    - Add enforceable fraud proofs or validity proofs if supported by the final audited design
   </Step>
 </Steps>
 
@@ -79,9 +69,9 @@ The path from the current beta to full trustlessness is defined and in progress:
 | System | Deposit custody | Matching trustless | Censorship resistant |
 |---|---|---|---|
 | Centralized exchange | Trust exchange | No | No |
-| Vela Beta | Trust operator | Auditable | No |
-| Vela M6 | Smart contract | Auditable | Yes (forced inclusion) |
-| Vela M7 | Smart contract | On-chain enforced | Yes |
+| Vela current demo | No production custody model | Locally reproducible with operator data | No |
+| Vela Stage 1 target | Audited omnibus vault and ledger | Operationally controlled and audited | No |
+| Vela Stage 2 target | Audited vault plus proof-based rights | Depends on final proof design | Planned |
 | On-chain CLOB (e.g. Serum) | Smart contract | On-chain enforced | Yes |
 
-Vela M7 provides equivalent trustlessness to a fully on-chain CLOB while operating at orders of magnitude better performance.
+The Stage 2 properties are design goals. They must not be described as guarantees until implemented, independently reproducible, audited, and deployed.

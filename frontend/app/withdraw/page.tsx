@@ -220,7 +220,7 @@ export default function WithdrawPage() {
                 </p>
                 <p className="text-sm text-brown mb-5">
                   Your withdrawal of {success.amount} {success.asset} has been submitted.
-                  Funds will arrive in your wallet within 24 hours.
+                  This testnet request requires manual operator handling and has no guaranteed completion time.
                 </p>
                 <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
                   REFERENCE NUMBER
@@ -294,8 +294,8 @@ export default function WithdrawPage() {
               >
                 <p className="text-[0.72rem] text-brown leading-relaxed">
                   {isOnChain
-                    ? '● Ethereum Sepolia — on-chain withdrawal'
-                    : '● Manual withdrawal — processed within 24 hours'}
+                    ? '● Ethereum Sepolia test withdrawal'
+                    : '● Manual beta request; no completion-time guarantee'}
                 </p>
                 {!isOnChain && (
                   <p className="text-[0.68rem] text-brown mt-1 opacity-70">

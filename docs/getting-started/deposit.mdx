@@ -1,22 +1,21 @@
 ---
 title: "Deposit Funds"
-description: "How to fund your Vela account — ETH and USDC on-chain, or trust-based for other assets"
+description: "How to exercise Vela's testnet-only deposit demo"
 ---
 
 ## Overview
 
-Vela supports two deposit modes depending on the asset:
+Vela currently exposes testnet-only deposit demos. None of these flows represents production custody or an authoritative, reconciled customer ledger.
 
 | Asset | Settlement |
 |-------|------------|
-| ETH | On-chain (VelaSettlement.sol) |
-| USDC | On-chain (VelaSettlement.sol, ERC20) |
-| Other assets | Trust-based (beta) |
+| ETH | Sepolia contract demo plus demo-engine credit |
+| USDC | Sepolia contract demo plus demo-engine credit |
+| Other assets | Unverified demo-engine credit only |
 
 
-- **ETH** — fully on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Your funds are locked in the contract, not held by Vela.
-- **USDC** — fully on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Requires a two-step approve + deposit flow.
-- **Other assets (BTC, SOL, AVAX, etc.)** — trust-based beta deposits. Funds are credited directly to your engine balance.
+- **ETH and USDC** exercise a Sepolia contract path and a separate demo-engine credit path. The two are not a production-grade atomic custody and ledger system.
+- **Other assets (BTC, SOL, AVAX, etc.)** create unverified demo credits only. Do not transfer assets expecting custody.
 
 ## Depositing ETH (On-Chain)
 
@@ -25,7 +24,7 @@ Vela supports two deposit modes depending on the asset:
 3. Select **ETH** as the asset
 4. Enter the amount and click **Deposit**
 5. MetaMask will prompt you to confirm a transaction to the VelaSettlement contract
-6. Once confirmed, your ETH is locked on-chain and your engine balance is credited
+6. Once confirmed, the demo attempts to credit the separate engine state. Do not infer a production custody guarantee from this testnet flow.
 
 **Contract address:** `0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686`  
 **Network:** Ethereum Sepolia (chainId: 11155111)
@@ -34,7 +33,7 @@ You can verify your deposit on [Sepolia Etherscan](https://sepolia.etherscan.io/
 
 ## Depositing USDC (On-Chain)
 
-USDC deposits are settled on-chain via the VelaSettlement contract. This is a two-step process:
+The USDC demo calls the Sepolia VelaSettlement contract in two steps:
 
 1. Go to [vela.monolithsystematic.com/deposit](https://vela.monolithsystematic.com/deposit)
 2. Connect your MetaMask wallet
@@ -42,7 +41,7 @@ USDC deposits are settled on-chain via the VelaSettlement contract. This is a tw
 4. Enter the amount and click **Deposit**
 5. **Step 1 — Approve:** MetaMask will prompt you to approve the VelaSettlement contract to spend your USDC. Confirm this transaction.
 6. **Step 2 — Deposit:** MetaMask will prompt you to deposit the USDC into the contract. Confirm this transaction.
-7. Once both transactions are mined, your USDC is locked on-chain and your engine balance is credited.
+7. Once both transactions are mined, the demo attempts to credit the separate engine state. This is not a production ledger guarantee.
 
 **USDC contract (Sepolia):** `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`  
 **Get Sepolia USDC:** [faucet.circle.com](https://faucet.circle.com) — Circle's official Sepolia USDC faucet
@@ -62,7 +61,7 @@ For BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, and DOGE:
 5. Your balance is credited immediately — no on-chain transaction required
 
 <Warning>
-Trust-based deposits are held by Monolith Systematic LLC during the beta period. Only ETH and USDC are settled on-chain.
+These actions create unverified testnet demo credits. Vela is not accepting custody of the named assets through this path.
 </Warning>
 
 ## Limits
