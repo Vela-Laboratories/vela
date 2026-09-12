@@ -1,0 +1,661 @@
+# Vela Consumer Exchange Launch Checklist
+
+This is the master checklist for turning Vela from its current public beta into a real consumer crypto exchange. It includes product decisions, removals, implementation work, compliance, security, operations, liquidity, testing, and deployment.
+
+The ordered execution plan is documented in the [consumer exchange engineering plan](consumer-exchange-engineering-plan.md).
+
+## Product and legal structure
+
+- [ ] Decide whether Vela will be:
+  - [ ] A regulated custodial exchange with an authoritative off-chain ledger
+  - [ ] A genuinely trust-minimized DEX or rollup with enforceable on-chain settlement
+  - [ ] A hybrid exchange operated through licensed custody and compliance partners
+- [ ] Define exactly which entity operates Vela.
+- [ ] Define where that entity is incorporated and physically operated.
+- [ ] Define the initial launch jurisdictions.
+- [ ] Decide whether U.S. residents will be permitted.
+- [ ] Decide whether California residents will be permitted.
+- [ ] Decide whether New York residents will be permitted.
+- [ ] Decide whether the initial launch is consumer, institutional, or invite-only.
+- [ ] Decide whether Vela will custody assets or use a qualified or licensed custody partner.
+- [ ] Decide whether Vela will ever support fiat.
+- [ ] Decide whether Vela will support only spot markets at launch.
+- [ ] Keep perps out of the initial consumer launch.
+- [ ] Keep retail leverage and margin out of the initial launch.
+- [ ] Keep lending and borrowing out of the initial launch.
+- [ ] Keep public LP and MM vaults out of the initial launch.
+- [ ] Keep reputation-based credit out of the initial launch.
+- [ ] Keep permissionless token listings out of the initial launch.
+- [ ] Keep bridge-attested deposits out until the direct deposit system is secure.
+- [ ] Engage specialist U.S. crypto regulatory counsel.
+- [ ] Obtain a written legal analysis of Vela's custody and exchange model.
+- [ ] Obtain a written legal analysis for every initially listed asset.
+- [ ] Determine whether Vela must register with FinCEN as an MSB.
+- [ ] Complete FinCEN MSB registration if required.
+- [ ] Establish a Bank Secrecy Act compliance program.
+- [ ] Determine applicable state money-transmission licenses.
+- [ ] Determine California DFAL requirements before serving Californians.
+- [ ] Determine New York BitLicense or trust-charter requirements before serving New Yorkers.
+- [ ] Determine licensing requirements in every supported state.
+- [ ] Determine applicable international licensing requirements.
+- [ ] Establish a formal restricted-jurisdiction policy.
+- [ ] Implement geographic restrictions based on the approved jurisdiction list.
+- [ ] Establish a policy for VPN, proxy, and sanctions-evasion behavior.
+- [ ] Determine whether any feature creates broker-dealer, exchange, ATS, or clearing-agency obligations.
+- [ ] Obtain securities-law review for each token before listing it.
+- [ ] Obtain CFTC review before offering perps, futures, options, margin, or financed commodity transactions.
+- [ ] Document Vela's regulatory assumptions and update them when the product changes.
+
+## Critical custody and settlement redesign
+
+- [ ] Disable the current unauthenticated `POST /deposit` crediting path.
+- [ ] Stop accepting a user-provided address, asset, and amount as sufficient evidence of a deposit.
+- [ ] Stop generating synthetic transaction hashes for deposits.
+- [ ] Require the real chain ID and transaction hash for every direct deposit.
+- [ ] Verify that the transaction was sent to the correct settlement contract.
+- [ ] Verify that the correct deposit event was emitted.
+- [ ] Verify the depositor address.
+- [ ] Verify the asset address.
+- [ ] Verify the actual amount received.
+- [ ] Wait for an asset-specific number of confirmations before final credit.
+- [ ] Handle chain reorganizations.
+- [ ] Reverse or quarantine deposits invalidated by a reorganization.
+- [ ] Make deposit crediting idempotent.
+- [ ] Prevent the same transaction or event from being credited twice.
+- [ ] Store block number, block hash, transaction index, and log index for every deposit.
+- [ ] Add pending, confirming, confirmed, failed, and reversed deposit states.
+- [ ] Build a dedicated deposit indexer.
+- [ ] Use redundant RPC providers.
+- [ ] Add RPC disagreement and stale-head detection.
+- [ ] Decide which ledger is authoritative.
+- [ ] Implement a proper double-entry financial ledger.
+- [ ] Journal every deposit.
+- [ ] Journal every trade.
+- [ ] Journal every fee.
+- [ ] Journal every rebate.
+- [ ] Journal every withdrawal reservation.
+- [ ] Journal every completed withdrawal.
+- [ ] Journal every failed or reversed withdrawal.
+- [ ] Journal every administrative adjustment.
+- [ ] Require balanced debits and credits for every journal transaction.
+- [ ] Make ledger writes durable before acknowledging financial operations.
+- [ ] Give every financial operation a globally unique idempotency key.
+- [ ] Prevent test, synthetic, bridge, and real-money balances from mixing.
+- [ ] Add separate environments and ledger namespaces for testnet and production.
+- [ ] Establish per-asset custody accounts.
+- [ ] Reconcile each asset independently.
+- [ ] Continuously compare custody assets against total customer liabilities.
+- [ ] Halt affected operations automatically when reconciliation fails.
+- [ ] Generate daily proof-of-liabilities snapshots.
+- [ ] Generate daily reconciliation reports.
+- [ ] Preserve an immutable history of reconciliation results.
+
+## Settlement-contract architecture
+
+- [ ] Replace the current disconnected per-user deposit accounting model.
+- [ ] Ensure trades change the balances users can ultimately withdraw.
+- [ ] Prevent a seller from emergency-exiting an asset after selling it.
+- [ ] Ensure a buyer can withdraw an asset acquired through trading.
+- [ ] Decide between:
+  - [ ] An omnibus custody vault backed by an authoritative off-chain ledger
+  - [ ] An on-chain committed post-trade balance tree
+  - [ ] A validity-proof settlement system
+  - [ ] An optimistic settlement system with enforceable challenges
+- [ ] If using an off-chain ledger, define the legal and technical custody model explicitly.
+- [ ] If using committed balances, make withdrawals derive from the latest finalized post-trade state.
+- [ ] Implement a finalized state-root format that includes all user balances.
+- [ ] Include deposits, trades, fees, rebates, withdrawals, and nonces in the committed state.
+- [ ] Define deterministic transition rules for every state mutation.
+- [ ] Implement forced transaction inclusion.
+- [ ] Implement a real delayed inbox.
+- [ ] Allow users to submit deposits and withdrawals through the forced-inclusion path.
+- [ ] Enforce the inclusion deadline on-chain.
+- [ ] Define the system response when the operator misses the deadline.
+- [ ] Implement enforceable fraud proofs or validity proofs.
+- [ ] Implement operator bonding and slashing if using optimistic proofs.
+- [ ] Make the emergency-exit mechanism use finalized post-trade balances.
+- [ ] Define how emergency exits work when data availability fails.
+- [ ] Define how emergency exits work during chain reorganizations.
+- [ ] Define how emergency exits work while the contract is paused.
+- [ ] Define how partially settled batches are handled.
+- [ ] Define how failed withdrawals restore ledger availability.
+- [ ] Prevent simultaneous ordinary withdrawal and emergency-exit claims.
+- [ ] Add an explicit on-chain asset allowlist.
+- [ ] Reject unsupported and fee-on-transfer assets.
+- [ ] Credit token deposits using the actual balance increase, not the requested transfer amount.
+- [ ] Reassess whether contracts should be immutable.
+- [ ] If contracts remain immutable, create a safe migration mechanism.
+- [ ] Define how customer claims move from a compromised contract to a replacement.
+- [ ] Build contract-to-engine integration tests.
+- [ ] Test deposit, trade, withdrawal, and emergency exit as one complete flow.
+- [ ] Test buyers withdrawing acquired assets.
+- [ ] Test sellers being unable to reclaim sold assets.
+- [ ] Test insolvency and reconciliation invariants across the complete system.
+
+## Withdrawal system
+
+- [ ] Replace the current independent withdrawal-signature flow.
+- [ ] Require authenticated customer authorization before generating a withdrawal.
+- [ ] Atomically reserve the withdrawal amount in the ledger.
+- [ ] Check available balance before signing.
+- [ ] Check open-order and locked-balance exposure before signing.
+- [ ] Check compliance restrictions before signing.
+- [ ] Check sanctions status before signing.
+- [ ] Check withdrawal velocity and risk limits.
+- [ ] Store the withdrawal request before producing a signature.
+- [ ] Bind signatures to chain ID, contract, user, asset, amount, nonce, and request ID.
+- [ ] Mark signatures as issued and prevent duplicate issuance.
+- [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts.
+- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions.
+- [ ] Restore reserved funds if a withdrawal fails permanently.
+- [ ] Prevent an on-chain withdrawal from succeeding without the corresponding ledger debit.
+- [ ] Prevent a ledger debit from becoming permanent if the chain transfer never succeeds.
+- [ ] Implement complete ERC-20 withdrawal support.
+- [ ] Remove the manual "processed within 24 hours" ERC-20 workflow.
+- [ ] Add configurable withdrawal confirmation requirements.
+- [ ] Add per-user, per-asset, and platform-wide withdrawal limits.
+- [ ] Add cooling-off periods for suspicious account changes.
+- [ ] Add large-withdrawal review thresholds.
+- [ ] Add a withdrawal allowlist option.
+- [ ] Add a global withdrawal kill switch.
+- [ ] Add clear customer-visible withdrawal status and failure recovery.
+
+## Remove test and synthetic behavior from production
+
+- [ ] Remove unconditional synthetic user funding from production startup.
+- [ ] Remove unconditional synthetic market seeding from production startup.
+- [ ] Prevent the `0x...01` seed account from existing in production state.
+- [ ] Prevent the internal bot from trading with invented collateral.
+- [ ] Add an explicit environment type rather than relying only on an environment string.
+- [ ] Make production startup reject all test fixtures.
+- [ ] Make production startup reject testnet contract addresses.
+- [ ] Make production startup reject Sepolia chain ID.
+- [ ] Make production startup reject placeholder RPC URLs.
+- [ ] Make production startup reject demo Alchemy URLs.
+- [ ] Make production startup reject mock provers.
+- [ ] Make production startup reject simulated TEE attestations.
+- [ ] Make production startup reject writable temporary storage.
+- [ ] Add tests proving production mode cannot seed balances.
+- [ ] Add tests proving production mode cannot start with testnet configuration.
+
+## Persistence and financial data integrity
+
+- [ ] Stop falling back to a temporary WAL directory.
+- [ ] Fail closed if the WAL cannot be initialized.
+- [ ] Stop starting from a fresh seeded state when snapshot restoration fails.
+- [ ] Fail closed when a financial snapshot is corrupt.
+- [ ] Require explicit operator recovery procedures for corrupted state.
+- [ ] Store the financial journal in replicated durable storage.
+- [ ] Separate the matching-engine cache from the authoritative ledger.
+- [ ] Rebuild engine state from the authoritative journal.
+- [ ] Add cryptographic checksums to snapshots and journal segments.
+- [ ] Sign production snapshots.
+- [ ] Store snapshot version and deployed code version.
+- [ ] Verify snapshot compatibility before loading.
+- [ ] Replicate WAL and ledger data across failure domains.
+- [ ] Create encrypted offsite backups.
+- [ ] Define recovery point objectives.
+- [ ] Define recovery time objectives.
+- [ ] Test point-in-time recovery.
+- [ ] Test recovery from a lost engine machine.
+- [ ] Test recovery from corrupted snapshots.
+- [ ] Test recovery from incomplete journal writes.
+- [ ] Test recovery while chain deposits or withdrawals are in flight.
+- [ ] Add fencing so two engine leaders cannot process orders simultaneously.
+- [ ] Define an active-passive or consensus-backed availability design.
+- [ ] Preserve regulatory records for the legally required retention period.
+- [ ] Make audit records tamper-evident.
+- [ ] Give administrative corrections a dual-approval process.
+
+## Security and key management
+
+- [ ] Commission an external smart-contract audit after redesigning settlement.
+- [ ] Commission an external Rust engine and API security review.
+- [ ] Commission a frontend and wallet-interaction security review.
+- [ ] Commission an independent penetration test.
+- [ ] Fix every Critical and High finding.
+- [ ] Freeze the audited release at a specific commit.
+- [ ] Publish the final audit report.
+- [ ] Publish the audited commit hash.
+- [ ] Launch a funded public bug bounty.
+- [ ] Move the operator signing key out of an environment variable.
+- [ ] Use an HSM or MPC-backed signing service.
+- [ ] Define signing policies inside the HSM or MPC system.
+- [ ] Require multiple approvals for key rotation.
+- [ ] Put contract ownership under a real multisig.
+- [ ] Use separate physical devices for owner, operator, and guardian roles.
+- [ ] Define backup and recovery procedures for each key.
+- [ ] Define what happens if a signer dies, disappears, or loses access.
+- [ ] Test operator-key rotation.
+- [ ] Test guardian-key rotation.
+- [ ] Test multisig signer replacement.
+- [ ] Add withdrawal-signing rate limits.
+- [ ] Add withdrawal-signing policy checks.
+- [ ] Add anomalous signing alerts.
+- [ ] Store a tamper-evident log of every signature request and result.
+- [ ] Require code review for changes to authentication, ledger, withdrawal, and custody code.
+- [ ] Make dependency security scanning blocking.
+- [ ] Remove `continue-on-error` from `cargo-audit`.
+- [ ] Make secret scanning blocking.
+- [ ] Remove `continue-on-error` from gitleaks.
+- [ ] Add frontend dependency auditing.
+- [ ] Add Solidity static analysis.
+- [ ] Add fuzzing for the Rust API boundary.
+- [ ] Add fuzzing for deposit and withdrawal parsers.
+- [ ] Add fuzzing for chain event decoding.
+- [ ] Add supply-chain controls and dependency pinning.
+- [ ] Generate software bills of materials.
+- [ ] Sign release artifacts and container images.
+- [ ] Restrict production deploy permissions.
+- [ ] Require protected branches and deployment approvals.
+- [ ] Implement least-privilege access for Fly, Vercel, RPC providers, and monitoring.
+- [ ] Establish a credential-rotation schedule.
+- [ ] Never expose admin credentials through `NEXT_PUBLIC_*` variables.
+- [ ] Remove `NEXT_PUBLIC_ADMIN_TOKEN`.
+- [ ] Replace frontend admin API access with a public, sanitized reserves endpoint.
+- [ ] Use constant-time token verification for any remaining shared-secret controls.
+- [ ] Prefer short-lived, scoped administrative credentials over one global token.
+
+## Authentication and customer privacy
+
+- [ ] Require authentication for customer balance endpoints.
+- [ ] Require authentication for open-order endpoints.
+- [ ] Require authentication for portfolio endpoints.
+- [ ] Require authentication for CSV and tax exports.
+- [ ] Require authentication for private fill history.
+- [ ] Verify that a wallet can only access its own records.
+- [ ] Add authorization tests for every customer-data endpoint.
+- [ ] Reconcile HTTP authentication with WebSocket authentication.
+- [ ] Use server-issued, single-use challenges.
+- [ ] Expire authentication challenges.
+- [ ] Rate-limit challenge issuance.
+- [ ] Prevent replay across domains and environments.
+- [ ] Implement session keys so users do not approve every order manually.
+- [ ] Add session-key creation UI.
+- [ ] Add session-key revocation UI.
+- [ ] Add expiration and per-market scopes.
+- [ ] Add order-side and order-type scopes.
+- [ ] Add per-order and cumulative notional limits.
+- [ ] Add on-chain or independently enforceable revocation.
+- [ ] Add compromised-session emergency revocation.
+- [ ] Support WalletConnect and mobile wallets.
+- [ ] Test MetaMask, Rabby, Coinbase Wallet, Brave, and WalletConnect.
+- [ ] Remove direct `window.ethereum` usage where wagmi or viem can provide typed flows.
+- [ ] Avoid storing sensitive authentication material in local storage.
+- [ ] Define session timeout and reauthentication behavior.
+
+## Compliance program
+
+- [ ] Appoint a qualified BSA and AML compliance officer.
+- [ ] Conduct and document an enterprise AML risk assessment.
+- [ ] Implement customer identification and KYC.
+- [ ] Implement identity-document verification where required.
+- [ ] Implement beneficial-owner checks for business accounts.
+- [ ] Implement sanctions screening at onboarding.
+- [ ] Implement continuous sanctions rescreening.
+- [ ] Implement wallet-address sanctions screening.
+- [ ] Implement transaction-risk scoring.
+- [ ] Implement source-of-funds review for high-risk customers.
+- [ ] Implement enhanced due diligence for high-risk accounts.
+- [ ] Implement suspicious-activity monitoring.
+- [ ] Implement case management for compliance alerts.
+- [ ] Establish SAR investigation and filing workflows.
+- [ ] Establish currency-transaction reporting workflows if applicable.
+- [ ] Implement Travel Rule workflows where applicable.
+- [ ] Implement record-retention requirements.
+- [ ] Train relevant employees and contractors.
+- [ ] Conduct independent AML-program testing.
+- [ ] Establish blocked-property procedures.
+- [ ] Establish OFAC reporting procedures.
+- [ ] Maintain records of blocked digital assets.
+- [ ] Define prohibited customers, jurisdictions, and transaction types.
+- [ ] Implement account freezes that preserve customer and regulator records.
+- [ ] Add law-enforcement request procedures.
+- [ ] Add subpoena and information-request procedures.
+- [ ] Add privacy-request and data-deletion procedures consistent with financial-record obligations.
+- [ ] Establish a formal token-listing committee.
+- [ ] Establish a written listing standard.
+- [ ] Review securities, commodities, sanctions, technical, liquidity, and concentration risks for each asset.
+- [ ] Establish token-monitoring and delisting procedures.
+
+## Market integrity and risk controls
+
+- [ ] Establish a market-surveillance program.
+- [ ] Detect wash trading across linked wallets and accounts.
+- [ ] Detect spoofing.
+- [ ] Detect layering.
+- [ ] Detect quote stuffing.
+- [ ] Detect pump-and-dump activity.
+- [ ] Detect self-dealing involving the operator or internal market maker.
+- [ ] Preserve raw order and cancellation records for investigations.
+- [ ] Preserve deterministic market-event sequencing.
+- [ ] Add account-linkage analysis.
+- [ ] Add IP, device, funding-source, and wallet-cluster signals where legally permitted.
+- [ ] Add price collars.
+- [ ] Add fat-finger checks.
+- [ ] Add maximum order-value controls.
+- [ ] Add maximum position and exposure controls.
+- [ ] Add per-market circuit breakers.
+- [ ] Add exchange-wide circuit breakers.
+- [ ] Add cancel-on-disconnect.
+- [ ] Add mass-cancel functionality.
+- [ ] Add an operator kill switch.
+- [ ] Define stale-oracle behavior.
+- [ ] Define crossed or unavailable reference-market behavior.
+- [ ] Define chain-congestion behavior.
+- [ ] Define market reopening procedures.
+- [ ] Establish error-trade and trade-bust policies.
+- [ ] Establish fair-access and order-priority policies.
+- [ ] Publish clear maker and taker fee schedules.
+- [ ] Define rebate accounting and funding.
+- [ ] Validate that negative maker fees cannot create undercollateralized liabilities.
+- [ ] Disable MM credit until collateral and loss allocation are production-ready.
+- [ ] Define how MM losses are absorbed.
+- [ ] Define default waterfalls.
+- [ ] Define exposure caps per market maker.
+- [ ] Require approved market makers to maintain funded accounts.
+- [ ] Monitor spread, depth, uptime, and execution quality.
+- [ ] Detect toxic or stale quoting.
+- [ ] Establish formal market-maker agreements.
+- [ ] Prevent the operator's internal MM from trading on privileged information.
+- [ ] Separate exchange operations from proprietary market making.
+- [ ] Publish conflicts-of-interest disclosures.
+
+## Liquidity and asset support
+
+- [ ] Replace synthetic order books with real, funded liquidity.
+- [ ] Contract with multiple independent market makers.
+- [ ] Avoid dependence on a single market maker.
+- [ ] Avoid dependence on CoinGecko as the sole reference source.
+- [ ] Use multiple high-quality price sources.
+- [ ] Add source-disagreement detection.
+- [ ] Add freshness thresholds.
+- [ ] Add per-source health monitoring.
+- [ ] Define which wrapped representation of each asset is traded.
+- [ ] Do not represent native BTC, SOL, or other non-EVM assets as interchangeable with arbitrary internal symbols.
+- [ ] Define custody and withdrawal rails for every supported asset.
+- [ ] Start with ETH and USDC or another very small market set.
+- [ ] Expand only after deposit, trade, and withdrawal invariants are proven.
+- [ ] Define minimum liquidity requirements before listing a market.
+- [ ] Define maximum market concentration.
+- [ ] Define emergency delisting behavior.
+- [ ] Define how open orders are canceled during delisting.
+- [ ] Define how customers withdraw delisted assets.
+
+## Verifiability and public claims
+
+- [ ] Correct claims that every batch is presently proven on-chain.
+- [ ] Correct claims that current fraud proofs are enforceable.
+- [ ] Correct claims that users can always withdraw without operator permission.
+- [ ] Correct claims that all trades are presently settled on-chain.
+- [ ] Correct claims that the system is trustless.
+- [ ] Clearly distinguish testnet behavior from planned mainnet behavior.
+- [ ] Clearly distinguish placeholder proofs from real proofs.
+- [ ] Clearly distinguish simulated TEE records from hardware attestations.
+- [ ] Ensure the homepage, README, application, and documentation describe the same trust model.
+- [ ] Publish the actual operator powers.
+- [ ] Publish the actual guardian powers.
+- [ ] Publish the actual owner powers.
+- [ ] Publish current settlement limitations.
+- [ ] Publish current data-availability limitations.
+- [ ] Publish current forced-inclusion limitations.
+- [ ] Publish what happens if the operator disappears.
+- [ ] Publish what happens if the engine loses state.
+- [ ] Publish what happens if custody becomes undercollateralized.
+- [ ] Implement real SP1 proving before describing batches as ZK-proven.
+- [ ] Validate proofs against a fixed, audited guest program.
+- [ ] Bind proofs to the deployed matcher version.
+- [ ] Make proof verification independently reproducible.
+- [ ] Implement on-chain verification if that remains part of the product claim.
+- [ ] Implement real data availability.
+- [ ] Make full batch inputs available to independent verifiers.
+- [ ] Define retention and availability guarantees.
+- [ ] Implement real TEE attestation only on supported hardware.
+- [ ] Make production fail closed if required verification infrastructure is missing.
+- [ ] Avoid requiring TEE and ZK infrastructure purely for marketing if they are not part of the chosen security model.
+
+## Production infrastructure and operations
+
+- [ ] Confirm why the live engine health and status endpoints are timing out.
+- [ ] Inspect the Fly application through its control plane.
+- [ ] Add external uptime monitoring.
+- [ ] Add internal health monitoring.
+- [ ] Separate liveness and readiness endpoints.
+- [ ] Include storage, ledger, chain indexer, signer, and RPC health in readiness.
+- [ ] Prevent the service from accepting traffic while recovery is incomplete.
+- [ ] Add alerts for failed WAL writes.
+- [ ] Add alerts for failed snapshots.
+- [ ] Add alerts for reconciliation differences.
+- [ ] Add alerts for delayed deposits.
+- [ ] Add alerts for stuck withdrawals.
+- [ ] Add alerts for unusual withdrawal volume.
+- [ ] Add alerts for signer failures.
+- [ ] Add alerts for stale market data.
+- [ ] Add alerts for market-maker disappearance.
+- [ ] Add alerts for placeholder prover or TEE activation.
+- [ ] Add alerts for custody-ratio deterioration.
+- [ ] Establish 24/7 incident ownership before accepting meaningful funds.
+- [ ] Create an on-call rotation.
+- [ ] Define severity levels.
+- [ ] Define paging policies.
+- [ ] Define escalation paths.
+- [ ] Create incident runbooks.
+- [ ] Run compromise exercises.
+- [ ] Run insolvency exercises.
+- [ ] Run chain-reorganization exercises.
+- [ ] Run RPC-outage exercises.
+- [ ] Run signer-loss exercises.
+- [ ] Run database-corruption exercises.
+- [ ] Run market-data outage exercises.
+- [ ] Run denial-of-service exercises.
+- [ ] Define maintenance windows.
+- [ ] Define customer notification procedures.
+- [ ] Create an independently hosted status page.
+- [ ] Preserve incident history outside the engine's local snapshot.
+- [ ] Establish post-incident review procedures.
+- [ ] Define capacity requirements.
+- [ ] Run load tests using real HTTP and WebSocket traffic.
+- [ ] Run long-duration soak tests.
+- [ ] Test reconnect storms.
+- [ ] Test WebSocket sequence gaps.
+- [ ] Test backpressure and overloaded queues.
+- [ ] Test API and matching-engine saturation.
+- [ ] Test mass cancellation.
+- [ ] Test large market moves.
+- [ ] Test multi-market contention.
+- [ ] Test chain and RPC latency spikes.
+- [ ] Establish safe deployment and rollback gates.
+- [ ] Do not deploy every push to `main` directly to production.
+- [ ] Add staging, canary, and production environments.
+- [ ] Require production deployment approval.
+- [ ] Add database and protocol migration procedures.
+- [ ] Verify frontend, backend, and contract versions are compatible.
+- [ ] Publish or internally record every deployed commit hash.
+
+## Mainnet deployment preparation
+
+- [ ] Complete the external audit before mainnet deployment.
+- [ ] Address all Critical and High findings.
+- [ ] Freeze contracts and backend at known commits.
+- [ ] Generate contract deployment artifacts reproducibly.
+- [ ] Create the missing `DeployPerp.s.sol` script if perps are ever deployed.
+- [ ] Create the missing `DeployVault.s.sol` script if the vault is ever deployed.
+- [ ] Create the missing sequencer-registry deployment script.
+- [ ] Do not deploy unused contracts on day one.
+- [ ] Validate all constructor and role addresses.
+- [ ] Validate contract ownership transfer.
+- [ ] Validate multisig acceptance of ownership.
+- [ ] Validate guardian configuration.
+- [ ] Validate operator configuration.
+- [ ] Validate asset allowlists.
+- [ ] Validate chain-specific oracle and sequencer-feed configuration.
+- [ ] Verify source code on the relevant block explorer.
+- [ ] Record addresses, chain IDs, bytecode hashes, and commit hashes.
+- [ ] Perform small-value deposit, trade, and withdrawal tests.
+- [ ] Verify reconciliation before raising limits.
+- [ ] Start with strict total-value and per-user caps.
+- [ ] Establish an explicit launch rollback decision tree.
+- [ ] Prepare customer communications before deployment.
+- [ ] Publish the audit, addresses, risks, fees, and supported assets.
+- [ ] Verify every production URL and environment variable.
+- [ ] Remove all Sepolia references from mainnet UI.
+- [ ] Keep a permanent distinction between testnet and mainnet domains.
+
+## Consumer product work
+
+- [ ] Build complete deposit status UI.
+- [ ] Show confirmation progress.
+- [ ] Show real transaction hashes.
+- [ ] Show failed and reversed deposits.
+- [ ] Build complete withdrawal status UI.
+- [ ] Show withdrawal review and confirmation state.
+- [ ] Give customers actionable recovery instructions.
+- [ ] Support ERC-20 withdrawals on-chain.
+- [ ] Remove manual withdrawal promises.
+- [ ] Implement session keys to avoid a wallet popup for every order.
+- [ ] Add session-key permissions and revocation UI.
+- [ ] Support mobile layouts fully.
+- [ ] Support mobile wallets.
+- [ ] Support WalletConnect.
+- [ ] Test browser and wallet compatibility.
+- [ ] Add loading, empty, disconnected, degraded, and error states.
+- [ ] Add clear order rejection explanations.
+- [ ] Add fee previews before order submission.
+- [ ] Add balance, available, locked, and pending distinctions.
+- [ ] Add deposit and withdrawal limits to the UI.
+- [ ] Add account statements.
+- [ ] Add complete fill history.
+- [ ] Add PnL and cost-basis reporting.
+- [ ] Add CSV export.
+- [ ] Add tax-lot export.
+- [ ] Add transaction receipts.
+- [ ] Add downloadable customer records.
+- [ ] Add customer-support contact information.
+- [ ] Add complaint intake and tracking.
+- [ ] Add account-compromise reporting.
+- [ ] Add accessibility testing.
+- [ ] Add end-to-end browser testing.
+- [ ] Add wallet-interaction integration testing.
+- [ ] Increase frontend test coverage beyond the current single test.
+- [ ] Test deposits and withdrawals using a forked chain.
+- [ ] Test every supported wallet.
+- [ ] Test slow, rejected, replaced, and dropped transactions.
+
+## Legal documents and customer disclosures
+
+- [ ] Create a real Terms of Service page.
+- [ ] Create a real Privacy Policy page.
+- [ ] Fix footer links that currently point to absent routes.
+- [ ] Add risk disclosures.
+- [ ] Add custody disclosures.
+- [ ] Add settlement-finality disclosures.
+- [ ] Add fee disclosures.
+- [ ] Add withdrawal timing and failure disclosures.
+- [ ] Add token-specific risk disclosures.
+- [ ] Add smart-contract risk disclosures.
+- [ ] Add chain and bridge risk disclosures.
+- [ ] Add operator-conflict disclosures.
+- [ ] Add market-maker-conflict disclosures.
+- [ ] Add regulatory-status disclosures.
+- [ ] Add prohibited-jurisdiction disclosures.
+- [ ] Add eligibility requirements.
+- [ ] Add sanctions representations.
+- [ ] Add customer-consent records.
+- [ ] Add electronic-communications consent.
+- [ ] Add dispute-resolution terms.
+- [ ] Add complaint contact information.
+- [ ] Add transaction receipt requirements.
+- [ ] Add data-retention disclosures.
+- [ ] Have counsel review every public claim concerning safety, custody, decentralization, and guarantees.
+
+## Testing and launch gates
+
+- [ ] Preserve the currently passing Rust and Solidity suites.
+- [ ] Add end-to-end custody tests across Rust, Solidity, RPC, and frontend layers.
+- [ ] Test that every credited deposit has custody evidence.
+- [ ] Test that no deposit event can be credited twice.
+- [ ] Test deposit reorganization handling.
+- [ ] Test ledger and contract reconciliation.
+- [ ] Test trade settlement across two users and two assets.
+- [ ] Test withdrawal reservation and completion.
+- [ ] Test dropped and replaced withdrawal transactions.
+- [ ] Test emergency exit after trading.
+- [ ] Test concurrent ordinary and emergency withdrawals.
+- [ ] Test contract pause behavior.
+- [ ] Test operator compromise assumptions.
+- [ ] Test signer unavailability.
+- [ ] Test storage loss.
+- [ ] Test restart during every financial state transition.
+- [ ] Test duplicate requests.
+- [ ] Test delayed requests.
+- [ ] Test messages arriving out of order.
+- [ ] Test extreme-value and rounding behavior.
+- [ ] Test fee conservation.
+- [ ] Test token-decimal differences.
+- [ ] Test malicious ERC-20 behavior.
+- [ ] Test fee-on-transfer tokens.
+- [ ] Test reentrant and reverting tokens.
+- [ ] Add property tests asserting assets are always at least customer liabilities.
+- [ ] Add property tests asserting every journal transaction balances.
+- [ ] Add property tests asserting users cannot withdraw more than finalized ownership.
+- [ ] Run a capped adversarial testnet.
+- [ ] Invite external traders and security researchers.
+- [ ] Run a mainnet fork rehearsal.
+- [ ] Conduct a full deploy-day rehearsal.
+- [ ] Conduct a full incident-response rehearsal.
+- [ ] Require a written go or no-go review before accepting real funds.
+
+## Scope control and roadmap removals
+
+- [ ] Pause work on perps.
+- [ ] Pause work on borrow and lend.
+- [ ] Pause work on portfolio margin.
+- [ ] Pause work on the VLP and MM credit vault.
+- [ ] Pause work on reputation-collateralized credit.
+- [ ] Pause work on permissionless listings.
+- [ ] Pause work on cross-chain bridge deposits.
+- [ ] Pause work on AI-agent exchange features that do not improve custody safety.
+- [ ] Pause work on additional exotic order types.
+- [ ] Pause work on FIX expansion unless an institutional launch becomes the chosen strategy.
+- [ ] Do not prioritize matcher microseconds over ledger correctness.
+- [ ] Do not add more markets until two-asset settlement works reliably.
+- [ ] Do not market synthetic liquidity as real liquidity.
+- [ ] Do not accept significant funds during the transition.
+- [ ] Do not deploy unaudited redesigned contracts.
+- [ ] Do not use the existing settlement contract for a real-money launch.
+- [ ] Do not treat passing component tests as proof of end-to-end solvency.
+
+## Recommended phased launch
+
+- [ ] Phase 0: Correct public claims and disable unsafe crediting.
+- [ ] Phase 0: Define the legal entity, product model, and jurisdictions.
+- [ ] Phase 0: Keep the system testnet-only.
+- [ ] Phase 1: Implement the authoritative ledger and real deposit indexer.
+- [ ] Phase 1: Implement atomic withdrawal accounting.
+- [ ] Phase 1: Redesign settlement and emergency exits.
+- [ ] Phase 1: Implement continuous reconciliation.
+- [ ] Phase 2: Complete external security reviews.
+- [ ] Phase 2: Complete legal and licensing preparation.
+- [ ] Phase 2: Deploy a capped adversarial testnet.
+- [ ] Phase 3: Launch ETH and USDC only with strict limits.
+- [ ] Phase 3: Use invite-only access if permitted by the legal strategy.
+- [ ] Phase 3: Monitor and reconcile continuously.
+- [ ] Phase 3: Raise limits only after defined operational milestones.
+- [ ] Phase 4: Add a small number of reviewed ERC-20 markets.
+- [ ] Phase 4: Add compliant fiat or bridging partners if needed.
+- [ ] Phase 5: Reconsider margin, lending, perps, vaults, and permissionless markets.
+
+## Vercel and frontend deployment
+
+- [ ] Install the missing Vercel CLI with `npm i -g vercel`.
+- [ ] Use `vercel env pull` to manage and verify frontend environments.
+- [ ] Use separate Vercel preview, staging, and production environments.
+- [ ] Validate that no private secret uses a `NEXT_PUBLIC_*` name.
+- [ ] Remove the public admin token configuration.
+- [ ] Validate production chain IDs and contract addresses during builds.
+- [ ] Add deployment-time checks rejecting Sepolia configuration in production.
+- [ ] Use preview deployments for frontend review.
+- [ ] Add browser verification to the deployment workflow.
+- [ ] Use Vercel logs and observability for frontend failures.
+- [ ] Keep the stateful matching engine and financial ledger on infrastructure designed for durable, long-running services.
+- [ ] Do not move the engine into stateless frontend functions without redesigning its state model.
