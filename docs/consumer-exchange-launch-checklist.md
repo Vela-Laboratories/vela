@@ -19,14 +19,14 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Decide whether the initial launch is consumer, institutional, or invite-only.
 - [ ] Decide whether Vela will custody assets or use a qualified or licensed custody partner.
 - [ ] Decide whether Vela will ever support fiat.
-- [ ] Decide whether Vela will support only spot markets at launch.
-- [ ] Keep perps out of the initial consumer launch.
-- [ ] Keep retail leverage and margin out of the initial launch.
-- [ ] Keep lending and borrowing out of the initial launch.
-- [ ] Keep public LP and MM vaults out of the initial launch.
-- [ ] Keep reputation-based credit out of the initial launch.
-- [ ] Keep permissionless token listings out of the initial launch.
-- [ ] Keep bridge-attested deposits out until the direct deposit system is secure.
+- [x] Decide whether Vela will support only spot markets at launch.
+- [x] Keep perps out of the initial consumer launch.
+- [x] Keep retail leverage and margin out of the initial launch.
+- [x] Keep lending and borrowing out of the initial launch.
+- [x] Keep public LP and MM vaults out of the initial launch.
+- [x] Keep reputation-based credit out of the initial launch.
+- [x] Keep permissionless token listings out of the initial launch.
+- [x] Keep bridge-attested deposits out until the direct deposit system is secure.
 - [ ] Engage specialist U.S. crypto regulatory counsel.
 - [ ] Obtain a written legal analysis of Vela's custody and exchange model.
 - [ ] Obtain a written legal analysis for every initially listed asset.
@@ -69,7 +69,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Build a dedicated deposit indexer.
 - [ ] Use redundant RPC providers.
 - [ ] Add RPC disagreement and stale-head detection.
-- [ ] Decide which ledger is authoritative.
+- [x] Decide which ledger is authoritative.
 - [ ] Implement a proper double-entry financial ledger.
 - [ ] Journal every deposit.
 - [ ] Journal every trade.
@@ -98,8 +98,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Ensure trades change the balances users can ultimately withdraw.
 - [ ] Prevent a seller from emergency-exiting an asset after selling it.
 - [ ] Ensure a buyer can withdraw an asset acquired through trading.
-- [ ] Decide between:
-  - [ ] An omnibus custody vault backed by an authoritative off-chain ledger
+- [x] Decide between:
+  - [x] An omnibus custody vault backed by an authoritative off-chain ledger
   - [ ] An on-chain committed post-trade balance tree
   - [ ] A validity-proof settlement system
   - [ ] An optimistic settlement system with enforceable challenges
@@ -170,7 +170,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Prevent the `0x...01` seed account from existing in production state.
 - [x] Prevent the internal bot from trading with invented collateral.
 - [x] Add an explicit environment type rather than relying only on an environment string.
-- [ ] Make production startup reject all test fixtures.
+- [x] Make production startup reject all test fixtures.
 - [x] Make production startup reject testnet contract addresses.
 - [x] Make production startup reject Sepolia chain ID.
 - [x] Make production startup reject placeholder RPC URLs.
@@ -197,15 +197,15 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Verify snapshot compatibility before loading.
 - [ ] Replicate WAL and ledger data across failure domains.
 - [ ] Create encrypted offsite backups.
-- [ ] Define recovery point objectives.
-- [ ] Define recovery time objectives.
+- [x] Define recovery point objectives.
+- [x] Define recovery time objectives.
 - [ ] Test point-in-time recovery.
 - [ ] Test recovery from a lost engine machine.
 - [ ] Test recovery from corrupted snapshots.
 - [ ] Test recovery from incomplete journal writes.
 - [ ] Test recovery while chain deposits or withdrawals are in flight.
 - [ ] Add fencing so two engine leaders cannot process orders simultaneously.
-- [ ] Define an active-passive or consensus-backed availability design.
+- [x] Define an active-passive or consensus-backed availability design.
 - [ ] Preserve regulatory records for the legally required retention period.
 - [ ] Make audit records tamper-evident.
 - [ ] Give administrative corrections a dual-approval process.
@@ -253,8 +253,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Require protected branches and deployment approvals.
 - [ ] Implement least-privilege access for Fly, Vercel, RPC providers, and monitoring.
 - [ ] Establish a credential-rotation schedule.
-- [ ] Never expose admin credentials through `NEXT_PUBLIC_*` variables.
-- [ ] Remove stale `NEXT_PUBLIC_ADMIN_TOKEN` entries from ignored local and deployed environment configuration; source usage has been removed.
+- [x] Never expose admin credentials through `NEXT_PUBLIC_*` variables.
+- [ ] Remove stale `NEXT_PUBLIC_ADMIN_TOKEN` entries from ignored local and deployed environment configuration; source and ignored local usage have been removed, but deployed Vercel configuration requires a fresh login.
 - [x] Replace frontend admin API access with a public, sanitized reserves endpoint.
 - [ ] Use constant-time token verification for any remaining shared-secret controls.
 - [ ] Prefer short-lived, scoped administrative credentials over one global token.
@@ -374,10 +374,10 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add source-disagreement detection.
 - [ ] Add freshness thresholds.
 - [ ] Add per-source health monitoring.
-- [ ] Define which wrapped representation of each asset is traded.
+- [x] Define which wrapped representation of each asset is traded.
 - [ ] Do not represent native BTC, SOL, or other non-EVM assets as interchangeable with arbitrary internal symbols.
 - [ ] Define custody and withdrawal rails for every supported asset.
-- [ ] Start with ETH and USDC or another very small market set.
+- [x] Start with ETH and USDC or another very small market set.
 - [ ] Expand only after deposit, trade, and withdrawal invariants are proven.
 - [ ] Define minimum liquidity requirements before listing a market.
 - [ ] Define maximum market concentration.
@@ -387,21 +387,21 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Verifiability and public claims
 
-- [ ] Correct claims that every batch is presently proven on-chain.
-- [ ] Correct claims that current fraud proofs are enforceable.
-- [ ] Correct claims that users can always withdraw without operator permission.
-- [ ] Correct claims that all trades are presently settled on-chain.
-- [ ] Correct claims that the system is trustless.
-- [ ] Clearly distinguish testnet behavior from planned mainnet behavior.
-- [ ] Clearly distinguish placeholder proofs from real proofs.
-- [ ] Clearly distinguish simulated TEE records from hardware attestations.
-- [ ] Ensure the homepage, README, application, and documentation describe the same trust model.
+- [x] Correct claims that every batch is presently proven on-chain.
+- [x] Correct claims that current fraud proofs are enforceable.
+- [x] Correct claims that users can always withdraw without operator permission.
+- [x] Correct claims that all trades are presently settled on-chain.
+- [x] Correct claims that the system is trustless.
+- [x] Clearly distinguish testnet behavior from planned mainnet behavior.
+- [x] Clearly distinguish placeholder proofs from real proofs.
+- [x] Clearly distinguish simulated TEE records from hardware attestations.
+- [x] Ensure the homepage, README, application, and documentation describe the same trust model.
 - [ ] Publish the actual operator powers.
 - [ ] Publish the actual guardian powers.
 - [ ] Publish the actual owner powers.
-- [ ] Publish current settlement limitations.
-- [ ] Publish current data-availability limitations.
-- [ ] Publish current forced-inclusion limitations.
+- [x] Publish current settlement limitations.
+- [x] Publish current data-availability limitations.
+- [x] Publish current forced-inclusion limitations.
 - [ ] Publish what happens if the operator disappears.
 - [ ] Publish what happens if the engine loses state.
 - [ ] Publish what happens if custody becomes undercollateralized.

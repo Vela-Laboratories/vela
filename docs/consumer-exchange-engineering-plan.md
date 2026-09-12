@@ -90,18 +90,18 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Disable production withdrawal signing until ledger reservation exists.
 - [x] Remove any frontend use of `NEXT_PUBLIC_ADMIN_TOKEN`.
 - [x] Add a public sanitized reserves endpoint that does not require an exposed administrative credential.
-- [ ] Correct homepage, README, and in-app claims about custody, settlement, fraud proofs, forced inclusion, and withdrawals.
-- [ ] Keep the testnet and no-real-funds banner prominent.
-- [ ] Diagnose the deployed Fly engine health and status timeouts.
+- [x] Correct homepage, README, and in-app claims about custody, settlement, fraud proofs, forced inclusion, and withdrawals.
+- [x] Keep the testnet and no-real-funds banner prominent.
+- [ ] Diagnose the deployed Fly engine health and status timeouts. The stopped-machine fault domain and workflow gap are documented; authenticated control-plane logs are still required for the stop cause.
 
 ### M0 acceptance criteria
 
-- [ ] Unit tests prove every unsafe configuration causes production startup to fail.
+- [x] Unit tests prove every unsafe configuration causes production startup to fail.
 - [x] Production cannot create or credit a synthetic account.
 - [x] Production cannot call the current unverified deposit-credit path.
 - [x] Production cannot issue a withdrawal signature through the current unreserved flow.
 - [x] No private value is bundled into the frontend through a `NEXT_PUBLIC_*` variable.
-- [ ] Public documentation consistently describes the current testnet trust model.
+- [x] Public documentation consistently describes the current testnet trust model.
 - [x] Existing Rust, Solidity, and frontend checks continue to pass.
 
 ## Milestone 1: architecture decisions and financial model
@@ -112,14 +112,14 @@ The implementation and tests must preserve these invariants at all times:
 
 ### Required ADRs
 
-- [ ] ADR-001: Authoritative ledger and consistency model.
-- [ ] ADR-002: Custody contract model, including omnibus versus per-user accounting.
-- [ ] ADR-003: Deposit state machine, finality, reorganization, and idempotency rules.
-- [ ] ADR-004: Withdrawal state machine, reservation, signing, broadcast, and reversal rules.
-- [ ] ADR-005: Matching-engine integration and atomic journal boundary.
-- [ ] ADR-006: Reconciliation, halt policy, and administrative correction model.
-- [ ] ADR-007: Recovery, replication, fencing, RPO, and RTO.
-- [ ] ADR-008: Initial chain selection and ETH/USDC asset representations.
+- [x] ADR-001: Authoritative ledger and consistency model.
+- [x] ADR-002: Custody contract model, including omnibus versus per-user accounting.
+- [x] ADR-003: Deposit state machine, finality, reorganization, and idempotency rules.
+- [x] ADR-004: Withdrawal state machine, reservation, signing, broadcast, and reversal rules.
+- [x] ADR-005: Matching-engine integration and atomic journal boundary.
+- [x] ADR-006: Reconciliation, halt policy, and administrative correction model.
+- [x] ADR-007: Recovery, replication, fencing, RPO, and RTO.
+- [x] ADR-008: Initial chain selection and ETH/USDC asset representations.
 
 ### Required data model
 
@@ -135,10 +135,10 @@ The implementation and tests must preserve these invariants at all times:
 ### M1 acceptance criteria
 
 - [ ] Each core invariant maps to a documented owner and test strategy.
-- [ ] Deposit and withdrawal state transitions are explicit and exhaustive.
-- [ ] Failure behavior is documented for every external dependency.
-- [ ] The matching engine can be rebuilt from the planned financial journal.
-- [ ] No unresolved architecture choice is hidden inside an implementation ticket.
+- [x] Deposit and withdrawal state transitions are explicit and exhaustive.
+- [x] Failure behavior is documented for every external dependency in the accepted architecture.
+- [x] The matching engine can be rebuilt from the planned financial journal.
+- [x] No unresolved architecture choice is hidden inside an implementation ticket.
 
 ## Milestone 2: authoritative double-entry ledger
 
@@ -416,13 +416,14 @@ Work should begin in this order. Each item should land as a small, independently
    - Refuse production signing until a durable reservation adapter exists.
 6. [x] **EX-006: Frontend secret boundary**
    - Remove `NEXT_PUBLIC_ADMIN_TOKEN` and replace the reserves data flow.
-7. **EX-007: Trust-model copy correction**
+7. [x] **EX-007: Trust-model copy correction**
    - Align README, homepage, docs, and product banners with actual guarantees.
-8. **EX-008: Production-guard test matrix**
+8. [x] **EX-008: Production-guard test matrix**
    - Prove each prohibited production configuration fails closed.
-9. **EX-009: Fly health investigation**
+9. [ ] **EX-009: Fly health investigation**
    - Determine why health and status requests time out and document the resolution.
-10. **EX-010: ADR set**
+   - Current evidence and authenticated recovery steps: [Fly engine health runbook](operations/fly-health.md). Fly login is required to identify the process stop cause.
+10. [x] **EX-010: ADR set**
     - Complete ADR-001 through ADR-008 before starting the financial ledger implementation.
 
 ## Parallel nonengineering work
