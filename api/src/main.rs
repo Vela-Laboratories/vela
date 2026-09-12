@@ -215,6 +215,36 @@ async fn main() {
     runtime.log_nonsecret_report();
     runtime.validate().unwrap_or_else(|error| panic!("{error}"));
 
+    let ledger = match std::env::var("DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(database_url) => {
+            let ledger = ledger::Ledger::connect_with_options(
+                &database_url,
+                runtime.database_max_connections,
+                std::time::Duration::from_millis(runtime.database_acquire_timeout_ms),
+                std::time::Duration::from_millis(runtime.database_statement_timeout_ms),
+                runtime.database_serializable_retries,
+            )
+            .await
+            .unwrap_or_else(|_| panic!("ledger database connection failed"));
+            ledger
+                .ensure_schema_current()
+                .await
+                .unwrap_or_else(|error| panic!("ledger database is not ready: {error}"));
+            tracing::info!(
+                schema_version = ledger::Ledger::EXPECTED_SCHEMA_VERSION,
+                "ledger database connected"
+            );
+            Some(Arc::new(ledger))
+        }
+        None => {
+            tracing::warn!("ledger database not configured; financial ledger unavailable");
+            None
+        }
+    };
+
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -314,7 +344,8 @@ async fn main() {
 
     let previous_sequence = wal.current_sequence();
 
-    let state = api::AppState::new_with_runtime(engine, Arc::clone(&wal), runtime.mode);
+    let state =
+        api::AppState::new_with_runtime_and_ledger(engine, Arc::clone(&wal), runtime.mode, ledger);
 
     {
         *state.incidents.lock().await = loaded_incidents;

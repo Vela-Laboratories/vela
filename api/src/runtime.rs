@@ -18,6 +18,11 @@ pub struct RuntimeSettings {
     pub snapshot_dir: PathBuf,
     pub zkvm_provider: String,
     pub tee_platform: String,
+    pub database_url_configured: bool,
+    pub database_max_connections: u32,
+    pub database_acquire_timeout_ms: u64,
+    pub database_statement_timeout_ms: u64,
+    pub database_serializable_retries: u32,
 }
 
 impl RuntimeSettings {
@@ -43,6 +48,17 @@ impl RuntimeSettings {
                 .unwrap_or_else(|| "placeholder".to_string()),
             tee_platform: std::env::var("TEE_PLATFORM")
                 .unwrap_or_else(|_| "placeholder".to_string()),
+            database_url_configured: nonempty_env("DATABASE_URL").is_some(),
+            database_max_connections: parse_positive_env("VELA_DATABASE_MAX_CONNECTIONS", 10)?,
+            database_acquire_timeout_ms: parse_positive_env(
+                "VELA_DATABASE_ACQUIRE_TIMEOUT_MS",
+                2_000,
+            )?,
+            database_statement_timeout_ms: parse_positive_env(
+                "VELA_DATABASE_STATEMENT_TIMEOUT_MS",
+                2_000,
+            )?,
+            database_serializable_retries: parse_env("VELA_DATABASE_SERIALIZABLE_RETRIES", 3)?,
         })
     }
 
@@ -96,6 +112,10 @@ impl RuntimeSettings {
             problems.push("the internal market-making bot is enabled".to_string());
         }
 
+        if !self.database_url_configured {
+            problems.push("DATABASE_URL is not configured".to_string());
+        }
+
         if self.zkvm_provider.eq_ignore_ascii_case("placeholder")
             || self.zkvm_provider.trim().is_empty()
         {
@@ -124,6 +144,11 @@ impl RuntimeSettings {
             tee_platform = %self.tee_platform,
             synthetic_state_enabled = self.synthetic_state_enabled(),
             internal_mm_enabled = self.internal_mm_enabled(),
+            database_configured = self.database_url_configured,
+            database_max_connections = self.database_max_connections,
+            database_acquire_timeout_ms = self.database_acquire_timeout_ms,
+            database_statement_timeout_ms = self.database_statement_timeout_ms,
+            database_serializable_retries = self.database_serializable_retries,
             "resolved startup configuration"
         );
     }
@@ -180,6 +205,29 @@ fn nonempty_env(name: &str) -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
+fn parse_env<T>(name: &str, default: T) -> Result<T, String>
+where
+    T: std::str::FromStr,
+{
+    match nonempty_env(name) {
+        Some(value) => value
+            .parse::<T>()
+            .map_err(|_| format!("{name} has an invalid value")),
+        None => Ok(default),
+    }
+}
+
+fn parse_positive_env<T>(name: &str, default: T) -> Result<T, String>
+where
+    T: std::str::FromStr + PartialOrd + From<u8>,
+{
+    let value = parse_env(name, default)?;
+    if value <= T::from(0) {
+        return Err(format!("{name} must be greater than zero"));
+    }
+    Ok(value)
+}
+
 fn validate_production_address(name: &str, address: Option<&str>, problems: &mut Vec<String>) {
     match address {
         None => problems.push(format!("{name} is not configured")),
@@ -224,6 +272,11 @@ mod tests {
             snapshot_dir: PathBuf::from("/data"),
             zkvm_provider: "sp1".to_string(),
             tee_platform: "amd-sev-snp".to_string(),
+            database_url_configured: true,
+            database_max_connections: 10,
+            database_acquire_timeout_ms: 2_000,
+            database_statement_timeout_ms: 2_000,
+            database_serializable_retries: 3,
         }
     }
 
@@ -243,6 +296,11 @@ mod tests {
             snapshot_dir: std::env::temp_dir().join("vela"),
             zkvm_provider: "placeholder".to_string(),
             tee_platform: "placeholder".to_string(),
+            database_url_configured: false,
+            database_max_connections: 10,
+            database_acquire_timeout_ms: 2_000,
+            database_statement_timeout_ms: 2_000,
+            database_serializable_retries: 3,
         };
 
         let error = settings.validate().expect_err("configuration must fail");
@@ -310,6 +368,11 @@ mod tests {
                 "simulated tee",
                 |s| s.tee_platform = "placeholder".to_string(),
                 "simulated attestations",
+            ),
+            (
+                "missing database",
+                |s| s.database_url_configured = false,
+                "DATABASE_URL is not configured",
             ),
         ];
 

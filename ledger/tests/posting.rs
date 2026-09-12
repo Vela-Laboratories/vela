@@ -365,3 +365,19 @@ async fn database_rejects_fractional_base_units(pool: PgPool) {
 
     assert!(result.is_err());
 }
+
+#[sqlx::test]
+async fn readiness_rejects_database_without_current_schema(pool: PgPool) {
+    let ledger = Ledger::from_pool(pool);
+    sqlx::query("DELETE FROM _sqlx_migrations")
+        .execute(ledger.pool())
+        .await
+        .unwrap();
+    assert!(matches!(
+        ledger.health_check().await,
+        Err(LedgerError::SchemaVersion {
+            expected: 1,
+            found: 0
+        })
+    ));
+}

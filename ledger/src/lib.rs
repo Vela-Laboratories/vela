@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 use bigdecimal::{BigDecimal, Zero};
 use chrono::{DateTime, Utc};
@@ -71,6 +72,8 @@ pub enum LedgerError {
     },
     #[error("idempotency key was already used with a different request")]
     IdempotencyConflict,
+    #[error("ledger schema version mismatch: expected {expected}, found {found}")]
+    SchemaVersion { expected: i64, found: i64 },
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -96,19 +99,59 @@ struct ExistingTransaction {
 #[derive(Clone)]
 pub struct Ledger {
     pool: PgPool,
+    max_serializable_retries: u32,
 }
 
 impl Ledger {
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 1;
+
     pub fn from_pool(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            max_serializable_retries: 3,
+        }
     }
 
     pub async fn connect(database_url: &str, max_connections: u32) -> Result<Self, LedgerError> {
+        Self::connect_with_options(
+            database_url,
+            max_connections,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            3,
+        )
+        .await
+    }
+
+    pub async fn connect_with_options(
+        database_url: &str,
+        max_connections: u32,
+        acquire_timeout: Duration,
+        statement_timeout: Duration,
+        max_serializable_retries: u32,
+    ) -> Result<Self, LedgerError> {
+        let statement_timeout_ms = statement_timeout.as_millis().to_string();
         let pool = PgPoolOptions::new()
             .max_connections(max_connections)
+            .acquire_timeout(acquire_timeout)
+            .idle_timeout(Some(Duration::from_secs(300)))
+            .max_lifetime(Some(Duration::from_secs(1_800)))
+            .after_connect(move |connection, _metadata| {
+                let statement_timeout_ms = statement_timeout_ms.clone();
+                Box::pin(async move {
+                    sqlx::query("SELECT set_config('statement_timeout', $1, false)")
+                        .bind(statement_timeout_ms)
+                        .execute(connection)
+                        .await?;
+                    Ok(())
+                })
+            })
             .connect(database_url)
             .await?;
-        Ok(Self::from_pool(pool))
+        Ok(Self {
+            pool,
+            max_serializable_retries,
+        })
     }
 
     pub fn pool(&self) -> &PgPool {
@@ -117,6 +160,37 @@ impl Ledger {
 
     pub async fn migrate(&self) -> Result<(), LedgerError> {
         sqlx::migrate!("./migrations").run(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn health_check(&self) -> Result<(), LedgerError> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        self.ensure_schema_current().await
+    }
+
+    pub async fn ensure_schema_current(&self) -> Result<(), LedgerError> {
+        let migration_table_exists = sqlx::query_scalar::<_, bool>(
+            "SELECT to_regclass('public._sqlx_migrations') IS NOT NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let found = if migration_table_exists {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COALESCE(max(version), 0) FROM _sqlx_migrations WHERE success",
+            )
+            .fetch_one(&self.pool)
+            .await?
+        } else {
+            0
+        };
+
+        if found != Self::EXPECTED_SCHEMA_VERSION {
+            return Err(LedgerError::SchemaVersion {
+                expected: Self::EXPECTED_SCHEMA_VERSION,
+                found,
+            });
+        }
         Ok(())
     }
 
@@ -166,6 +240,23 @@ impl Ledger {
     pub async fn post(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
         validate_command(command)?;
 
+        let mut attempt = 0_u32;
+        loop {
+            match self.post_once(command).await {
+                Err(error)
+                    if is_retryable_transaction_error(&error)
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn post_once(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
@@ -311,6 +402,14 @@ impl Ledger {
         .await?;
         Ok(mismatch_count == 0)
     }
+}
+
+fn is_retryable_transaction_error(error: &LedgerError) -> bool {
+    matches!(
+        error,
+        LedgerError::Database(sqlx::Error::Database(database_error))
+            if matches!(database_error.code().as_deref(), Some("40001" | "40P01"))
+    )
 }
 
 fn validate_command(command: &PostTransaction) -> Result<(), LedgerError> {

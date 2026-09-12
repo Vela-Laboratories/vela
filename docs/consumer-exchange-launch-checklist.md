@@ -423,8 +423,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Inspect the Fly application through its control plane and document the incident evidence.
 - [ ] Add external uptime monitoring.
 - [ ] Add internal health monitoring.
-- [ ] Separate liveness and readiness endpoints.
-- [ ] Include storage, ledger, chain indexer, signer, and RPC health in readiness.
+- [x] Separate process liveness and service readiness endpoints.
+- [x] Include ledger connectivity and exact schema version in readiness.
+- [ ] Include matcher storage, chain indexer, signer, custody RPC, and reconciler health in readiness.
 - [ ] Prevent the service from accepting traffic while recovery is incomplete.
 - [ ] Add alerts for failed WAL writes.
 - [ ] Add alerts for failed snapshots.
@@ -471,7 +472,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Do not deploy every push to `main` directly to production.
 - [ ] Add staging, canary, and production environments.
 - [ ] Require production deployment approval.
-- [ ] Add database and protocol migration procedures.
+- [x] Add a controlled database migration procedure with a separate migrator credential.
+- [ ] Add protocol and contract migration procedures.
 - [ ] Verify frontend, backend, and contract versions are compatible.
 - [ ] Publish or internally record every deployed commit hash.
 

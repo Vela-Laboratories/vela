@@ -40,6 +40,15 @@ pub fn openapi_spec() -> serde_json::Value {
             "/health": {
                 "get": { "summary": "Liveness check", "responses": { "200": { "description": "ok" } } }
             },
+            "/ready": {
+                "get": {
+                    "summary": "Dependency readiness check",
+                    "responses": {
+                        "200": { "description": "Ready to serve this runtime mode" },
+                        "503": { "description": "A required dependency is unavailable" }
+                    }
+                }
+            },
             "/metrics": {
                 "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text 0.0.4" } } }
             },

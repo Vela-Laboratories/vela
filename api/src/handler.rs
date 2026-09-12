@@ -208,6 +208,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/ready", get(readiness))
         .route("/metrics", get(metrics_handler))
         .route("/openapi.json", get(crate::openapi::openapi_handler))
         .route("/docs", get(crate::openapi::docs_handler))
@@ -421,6 +422,63 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let Some(ledger) = state.ledger.as_ref() else {
+        let required = state.runtime_mode.is_production();
+        let status = if required {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::OK
+        };
+        return (
+            status,
+            Json(serde_json::json!({
+                "ok": !required,
+                "status": if required { "not_ready" } else { "ready" },
+                "runtime_mode": state.runtime_mode.as_str(),
+                "ledger": "not_configured",
+            })),
+        );
+    };
+
+    match tokio::time::timeout(std::time::Duration::from_secs(2), ledger.health_check()).await {
+        Ok(Ok(())) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "ok": true,
+                "status": "ready",
+                "runtime_mode": state.runtime_mode.as_str(),
+                "ledger": "ready",
+                "ledger_schema_version": ledger::Ledger::EXPECTED_SCHEMA_VERSION,
+            })),
+        ),
+        Ok(Err(error)) => {
+            tracing::error!(error = %error, "ledger readiness check failed");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "ok": false,
+                    "status": "not_ready",
+                    "runtime_mode": state.runtime_mode.as_str(),
+                    "ledger": "unavailable",
+                })),
+            )
+        }
+        Err(_) => {
+            tracing::error!("ledger readiness check timed out");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "ok": false,
+                    "status": "not_ready",
+                    "runtime_mode": state.runtime_mode.as_str(),
+                    "ledger": "timeout",
+                })),
+            )
+        }
+    }
 }
 
 /// Prometheus text-format exposition of engine + api counters.
@@ -3655,6 +3713,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "fills_today": fills_today,
         "volume_today_usdc": volume_str,
         "active_markets": active_markets,
+        "ledger_configured": state.ledger.is_some(),
         "connected_ws_clients": ws_clients,
         "last_restart_reason": restart_reason,
     })))

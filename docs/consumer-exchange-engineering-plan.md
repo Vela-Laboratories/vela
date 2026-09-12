@@ -288,7 +288,8 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Add leader fencing for engine failover.
 - [ ] Test recovery while deposits, orders, trades, and withdrawals are in flight.
 - [ ] Define and measure RPO and RTO.
-- [ ] Add readiness checks for ledger, indexer, signer, custody RPC, and reconciler.
+- [x] Add ledger connectivity and schema-version readiness checks.
+- [ ] Add readiness checks for indexer, signer, custody RPC, and reconciler.
 - [ ] Add paging for failed writes, divergence, stuck withdrawals, and unhealthy dependencies.
 
 ### M6 acceptance criteria
@@ -431,9 +432,13 @@ Work should begin in this order. Each item should land as a small, independently
 12. [x] **EX-012: Atomic ledger posting primitive**
     - Commit balanced journal legs, balance projections, versions, and outbox records in one serializable transaction.
     - Prove database balance enforcement, immutability, idempotent retry behavior, projection consistency, and concurrent overspend prevention against PostgreSQL.
-13. [ ] **EX-013: Managed PostgreSQL and runtime integration**
-    - Select and provision the managed production and staging PostgreSQL service.
-    - Add database roles, secret injection, readiness, pooling, backup policy, and deployment migrations before connecting the API or matcher.
+13. [x] **EX-013: PostgreSQL runtime safety and controlled migrations**
+    - Add bounded pooling, statement timeouts, serializable retries, exact schema-version readiness, and production startup guards.
+    - Separate writer and migrator credentials, add least-privilege database roles, and provide a manually approved migration workflow.
+    - Document the backup policy and verify a logical dump/restore locally against PostgreSQL 16.
+14. [ ] **EX-014: Managed PostgreSQL provisioning and disaster recovery**
+    - Select and provision isolated managed production and staging PostgreSQL 16 services when budget permits.
+    - Configure replication, encrypted offsite backups, point-in-time recovery, alerts, and provider-specific restore rehearsal before accepting real funds.
 
 ## Parallel nonengineering work
 

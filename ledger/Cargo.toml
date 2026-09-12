@@ -12,7 +12,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 uuid = { workspace = true }
 
-[dev-dependencies]
-tokio = { workspace = true }
+[[bin]]
+name = "ledger-migrate"
+path = "src/bin/migrate.rs"

@@ -26,6 +26,17 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 |---|---|
 | `ADMIN_TOKEN` | **REQUIRED** to unlock admin endpoints and boot the api crate in tests. |
 
+## Authoritative ledger
+
+| Variable | Default | Notes |
+|---|---|---|
+| `DATABASE_URL` | — | Restricted ledger-writer PostgreSQL URL. **REQUIRED** in production; optional in development and `testnet-demo`. Never expose this to the frontend. |
+| `DATABASE_MIGRATOR_URL` | — | Privileged migration URL used only by `ledger-migrate` and the manually approved migration workflow. The API does not read it. |
+| `VELA_DATABASE_MAX_CONNECTIONS` | `10` | Bounded SQLx writer pool size. Must be greater than zero. |
+| `VELA_DATABASE_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pooled connection. Must be greater than zero. |
+| `VELA_DATABASE_STATEMENT_TIMEOUT_MS` | `2000` | PostgreSQL statement timeout applied to each API connection. Must be greater than zero. |
+| `VELA_DATABASE_SERIALIZABLE_RETRIES` | `3` | Maximum retries after PostgreSQL serialization failures or deadlocks. |
+
 ## Chain & contract
 
 | Variable | Default | Notes |

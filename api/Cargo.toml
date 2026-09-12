@@ -14,6 +14,7 @@ types = { workspace = true }
 engine = { workspace = true }
 perp = { path = "../perp" }
 fix = { path = "../fix" }
+ledger = { path = "../ledger" }
 zkvm = { path = "../zkvm" }
 tee = { path = "../tee" }
 committee = { path = "../committee" }
@@ -47,4 +48,5 @@ once_cell = "1"
 
 [dev-dependencies]
 axum-test = { version = "15", features = ["ws"] }
+sqlx = { workspace = true }
 tokio = { workspace = true }

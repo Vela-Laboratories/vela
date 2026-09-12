@@ -1,0 +1,30 @@
+name: Ledger Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment containing DATABASE_MIGRATOR_URL
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Migrate ${{ inputs.environment }} ledger
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency: ledger-migrate-${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply forward-only ledger migrations
+        env:
+          DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
+        run: cargo run --locked --release -p ledger --bin ledger-migrate

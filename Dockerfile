@@ -17,17 +17,25 @@ COPY tee/Cargo.toml           tee/Cargo.toml
 COPY zkvm/Cargo.toml          zkvm/Cargo.toml
 COPY perp/Cargo.toml          perp/Cargo.toml
 COPY fix/Cargo.toml           fix/Cargo.toml
+COPY ledger/Cargo.toml        ledger/Cargo.toml
+COPY ledger/migrations        ledger/migrations
 COPY benches/Cargo.toml       benches/Cargo.toml
-RUN mkdir -p api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src benches/benches \
+RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin benches/benches \
     && echo 'fn main() {}' > api/src/main.rs \
-    && for d in engine state types committer committee tee zkvm perp fix; do echo '' > $d/src/lib.rs; done \
+    && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
+    && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
+    && echo 'fn main() {}' > engine/benches/matching_engine_bench.rs \
     && echo 'fn main() {}' > benches/benches/matching.rs \
-    && cargo build --release --bin api || true \
-    && rm -rf api engine state types committer committee tee zkvm perp fix benches
+    && echo 'fn main() {}' > benches/benches/e2e_http.rs \
+    && echo 'fn main() {}' > benches/benches/sustained_throughput.rs \
+    && cargo build --release --bin api \
+    && rm -rf api engine state types committer committee tee zkvm perp fix ledger benches
 
 # Now copy the real source and build for real.
 COPY . .
-RUN cargo build --release --bin api
+RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src \
+      -type f -exec touch {} + \
+    && cargo build --release --bin api --bin ledger-migrate
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -41,6 +49,7 @@ RUN apt-get update \
     && chown -R vela:vela /data
 
 COPY --from=builder /app/target/release/api /usr/local/bin/api
+COPY --from=builder /app/target/release/ledger-migrate /usr/local/bin/ledger-migrate
 
 USER vela
 WORKDIR /app

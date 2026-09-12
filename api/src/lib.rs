@@ -87,6 +87,7 @@ pub static ORDER_CHANNEL_SEND_FAILURES: std::sync::atomic::AtomicU64 =
 
 pub struct AppState {
     pub runtime_mode: RuntimeMode,
+    pub ledger: Option<Arc<ledger::Ledger>>,
     pub engine: Arc<Mutex<MatchingEngine>>,
     pub shards: Arc<MarketShards>,
     pub feeds: Arc<Mutex<FeedManager>>,
@@ -213,6 +214,15 @@ impl AppState {
         wal: Arc<wal::Wal>,
         runtime_mode: RuntimeMode,
     ) -> Arc<Self> {
+        Self::new_with_runtime_and_ledger(engine, wal, runtime_mode, None)
+    }
+
+    pub fn new_with_runtime_and_ledger(
+        engine: MatchingEngine,
+        wal: Arc<wal::Wal>,
+        runtime_mode: RuntimeMode,
+        ledger: Option<Arc<ledger::Ledger>>,
+    ) -> Arc<Self> {
         let window_us: u64 = std::env::var("VELA_BATCH_WINDOW_US")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -315,6 +325,7 @@ impl AppState {
 
         let state = Arc::new(AppState {
             runtime_mode,
+            ledger,
             engine: Arc::clone(&engine_arc),
             shards: Arc::clone(&shards_arc),
             feeds: Arc::new(Mutex::new(FeedManager::new())),

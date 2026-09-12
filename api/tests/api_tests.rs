@@ -90,6 +90,48 @@ async fn test_health() {
 }
 
 #[tokio::test]
+async fn test_development_readiness_allows_unconfigured_ledger() {
+    let server = test_server(engine_with_market());
+    let response = server.get("/ready").await;
+    response.assert_status_ok();
+    let body: Value = response.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["ledger"], "not_configured");
+}
+
+#[tokio::test]
+async fn test_production_readiness_fails_without_ledger() {
+    let server = test_server_with_mode(engine_with_market(), types::RuntimeMode::Production);
+    let response = server.get("/ready").await;
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json();
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["ledger"], "not_configured");
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool));
+    let state = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Production,
+        Some(ledger),
+    );
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    let response = server.get("/ready").await;
+    response.assert_status_ok();
+    let body: Value = response.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["ledger"], "ready");
+    assert_eq!(body["ledger_schema_version"], 1);
+}
+
+#[tokio::test]
 async fn test_list_markets() {
     let server = test_server(engine_with_market());
     let resp = server.get("/markets").await;
