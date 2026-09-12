@@ -2126,6 +2126,16 @@ async fn deposit_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<DepositBody>,
 ) -> impl IntoResponse {
+    if !state.runtime_mode.allows_demo_state() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "Demo credits are available only in testnet-demo mode. This endpoint does not verify an on-chain deposit.",
+            )),
+        )
+            .into_response();
+    }
+
     if !state.deposit_limiter.check(&body.user) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -2283,13 +2293,31 @@ async fn deposit_handler(
         })
         .collect();
 
-    (StatusCode::OK, Json(ApiResponse::ok(balances))).into_response()
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(serde_json::json!({
+            "credit_type": "demo_unverified",
+            "verified_onchain": false,
+            "balances": balances,
+        }))),
+    )
+        .into_response()
 }
 
 async fn withdrawal_signature_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<WithdrawalSignatureRequest>,
 ) -> impl IntoResponse {
+    if state.runtime_mode.is_production() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "Production withdrawal signing is disabled until funds are durably reserved before signature issuance.",
+            )),
+        )
+            .into_response();
+    }
+
     if !state.deposit_limiter.check(&body.user) {
         return (
             StatusCode::TOO_MANY_REQUESTS,

@@ -334,8 +334,8 @@ pub fn openapi_spec() -> serde_json::Value {
             },
             "/deposit": {
                 "post": {
-                    "summary": "Credit engine balance from L1 Ethereum event",
-                    "responses": { "200": { "description": "Credited" } }
+                    "summary": "Create an unverified demo credit (testnet-demo only)",
+                    "responses": { "200": { "description": "Demo credit created" }, "503": { "description": "Disabled outside testnet-demo" } }
                 }
             },
             "/deposit/bridge": {

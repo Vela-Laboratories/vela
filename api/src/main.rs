@@ -314,7 +314,7 @@ async fn main() {
 
     let previous_sequence = wal.current_sequence();
 
-    let state = api::AppState::new(engine, Arc::clone(&wal));
+    let state = api::AppState::new_with_runtime(engine, Arc::clone(&wal), runtime.mode);
 
     {
         *state.incidents.lock().await = loaded_incidents;

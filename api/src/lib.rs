@@ -63,6 +63,7 @@ use crate::committee_handler::PendingEncryptedOrders;
 use crate::types::{
     AnchorRecord, Decision, Incident, RegisteredMM, StoredFill, StoredOrder, WsEnvelope,
 };
+use ::types::RuntimeMode;
 use committee::ThresholdDecryptor;
 use engine::batch_dispatcher::BatchedRequest;
 use engine::{BatchMetrics, MarketShards, MatchingEngine, UserState};
@@ -85,6 +86,7 @@ pub static ORDER_CHANNEL_SEND_FAILURES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 pub struct AppState {
+    pub runtime_mode: RuntimeMode,
     pub engine: Arc<Mutex<MatchingEngine>>,
     pub shards: Arc<MarketShards>,
     pub feeds: Arc<Mutex<FeedManager>>,
@@ -201,6 +203,16 @@ impl AppState {
 
 impl AppState {
     pub fn new(engine: MatchingEngine, wal: Arc<wal::Wal>) -> Arc<Self> {
+        let runtime_mode = RuntimeMode::from_env()
+            .unwrap_or_else(|error| panic!("invalid Vela runtime configuration: {error}"));
+        Self::new_with_runtime(engine, wal, runtime_mode)
+    }
+
+    pub fn new_with_runtime(
+        engine: MatchingEngine,
+        wal: Arc<wal::Wal>,
+        runtime_mode: RuntimeMode,
+    ) -> Arc<Self> {
         let window_us: u64 = std::env::var("VELA_BATCH_WINDOW_US")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -302,6 +314,7 @@ impl AppState {
             .expect("ADMIN_TOKEN env var must be set; refusing to boot with a hardcoded default");
 
         let state = Arc::new(AppState {
+            runtime_mode,
             engine: Arc::clone(&engine_arc),
             shards: Arc::clone(&shards_arc),
             feeds: Arc::new(Mutex::new(FeedManager::new())),

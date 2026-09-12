@@ -75,11 +75,15 @@ struct EngineWithUser {
 type EngineWithUser2 = MatchingEngine;
 
 fn test_server(engine: MatchingEngine) -> TestServer {
+    test_server_with_mode(engine, types::RuntimeMode::Development)
+}
+
+fn test_server_with_mode(engine: MatchingEngine, runtime_mode: types::RuntimeMode) -> TestServer {
     // AppState::new() panics without ADMIN_TOKEN.
     if std::env::var("ADMIN_TOKEN").is_err() {
         std::env::set_var("ADMIN_TOKEN", "test-admin-token");
     }
-    let state = AppState::new(engine, make_wal());
+    let state = AppState::new_with_runtime(engine, make_wal(), runtime_mode);
     let router = api::build_router(state);
     TestServer::new(router).unwrap()
 }
@@ -161,6 +165,69 @@ async fn test_get_balances_after_deposit() {
     assert_eq!(balances.len(), 1);
     assert_eq!(balances[0]["asset"], "USDC");
     assert_eq!(balances[0]["available"], "50000");
+}
+
+#[tokio::test]
+async fn test_direct_credit_is_disabled_outside_testnet_demo() {
+    let server = test_server_with_mode(engine_with_market(), types::RuntimeMode::Production);
+    let response = server
+        .post("/deposit")
+        .json(&json!({
+            "user": user_addr(),
+            "asset": "USDC",
+            "amount": "100.00"
+        }))
+        .await;
+
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json();
+    assert_eq!(body["ok"], false);
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("only in testnet-demo"));
+}
+
+#[tokio::test]
+async fn test_direct_credit_is_explicitly_labeled_in_testnet_demo() {
+    let server = test_server_with_mode(engine_with_market(), types::RuntimeMode::TestnetDemo);
+    let response = server
+        .post("/deposit")
+        .json(&json!({
+            "user": user_addr(),
+            "asset": "USDC",
+            "amount": "100.00"
+        }))
+        .await;
+
+    response.assert_status_ok();
+    let body: Value = response.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["credit_type"], "demo_unverified");
+    assert_eq!(body["data"]["verified_onchain"], false);
+    assert!(body["data"]["balances"].is_array());
+}
+
+#[tokio::test]
+async fn test_withdrawal_signature_is_disabled_in_production() {
+    let server = test_server_with_mode(engine_with_market(), types::RuntimeMode::Production);
+    let response = server
+        .post("/withdrawal-signature")
+        .json(&json!({
+            "user": user_addr(),
+            "asset": "ETH",
+            "amount": "0.01",
+            "nonce": 1
+        }))
+        .await;
+
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json();
+    assert_eq!(body["ok"], false);
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("durably reserved"));
 }
 
 #[tokio::test]

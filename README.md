@@ -206,9 +206,9 @@ Base URL: `https://vela-engine.fly.dev`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/account/:address/balances` | User balances by asset |
-| `POST` | `/deposit` | Credit engine balance |
+| `POST` | `/deposit` | Create an unverified demo credit (`testnet-demo` only) |
 | `POST` | `/withdrawals` | Submit withdrawal request |
-| `POST` | `/withdrawal-signature` | Get operator signature for on-chain withdrawal |
+| `POST` | `/withdrawal-signature` | Get operator signature for testnet withdrawal; disabled in production pending durable reservation |
 
 ### Transparency
 

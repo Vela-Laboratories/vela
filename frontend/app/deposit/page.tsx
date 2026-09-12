@@ -183,10 +183,12 @@ export default function DepositPage() {
         const res = await deposit(address, selectedAsset, amount)
         setSubmitting(false)
 
-        const updated = res.ok && res.data ? res.data : balances
-        if (!res.ok) {
+        if (!res.ok || !res.data) {
           setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
+          return
         }
+        const updated = res.data.balances
+        setBalances(updated)
         const newBal = updated.find(
           (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
         )
@@ -214,10 +216,12 @@ export default function DepositPage() {
         setSubmitting(false)
         setStepLabel(null)
 
-        const updated = res.ok && res.data ? res.data : balances
-        if (!res.ok) {
+        if (!res.ok || !res.data) {
           setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
+          return
         }
+        const updated = res.data.balances
+        setBalances(updated)
         const newBal = updated.find((b) => b.asset.toUpperCase() === 'USDC')
         setSuccess({
           amount,
@@ -234,7 +238,7 @@ export default function DepositPage() {
           return
         }
 
-        const updated = res.data
+        const updated = res.data.balances
         setBalances(updated)
         const newBal = updated.find(
           (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
@@ -276,7 +280,7 @@ export default function DepositPage() {
           }}
         >
           <p className="text-[0.8rem] text-ink leading-relaxed">
-            Vela is in public beta. Only deposit amounts you are comfortable with.
+            Testnet demo only. Deposits use Sepolia and engine balances are unverified demo credits, not production custody.
           </p>
         </div>
 
@@ -305,9 +309,9 @@ export default function DepositPage() {
               Deposit successful
             </p>
             <p className="text-sm text-brown mb-5">
-              {success.txHash && success.asset === 'USDC'
-                ? `Your ${success.amount} USDC has been deposited on-chain.`
-                : `Your ${success.amount} ${success.asset} has been credited to your account.`}
+              {success.txHash
+                ? `Sepolia transaction submitted. Your ${success.amount} ${success.asset} testnet demo balance was credited.`
+                : `Your ${success.amount} ${success.asset} unverified demo balance was credited.`}
             </p>
             <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
               NEW BALANCE

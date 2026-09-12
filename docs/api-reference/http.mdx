@@ -99,7 +99,9 @@ Cancel an existing order. Requires wallet signature.
 vela:cancel:{order_id}:{client_order_id}:{nonce}
 
 ### POST /deposit
-Credit the engine balance. Trust-based for non-ETH assets.
+Create an unverified demo credit. This endpoint is available only when the
+engine runs in `testnet-demo`; it does not verify an on-chain deposit and is
+disabled in development and production.
 
 ```json
 {
@@ -109,7 +111,8 @@ Credit the engine balance. Trust-based for non-ETH assets.
 }
 ```
 
-For ETH on-chain deposits, use the VelaSettlement contract directly.
+The response labels the credit as `demo_unverified` and sets
+`verified_onchain` to `false`.
 
 ### POST /withdrawals
 Submit a withdrawal request.

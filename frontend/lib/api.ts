@@ -312,11 +312,17 @@ export function getLeaderboard(): Promise<ApiResponse<LeaderboardData>> {
 }
 
 /** POST /deposit */
+export interface DemoDepositData {
+  credit_type: 'demo_unverified'
+  verified_onchain: false
+  balances: BalanceResponse[]
+}
+
 export async function deposit(
   user: string,
   asset: string,
   amount: string,
-): Promise<ApiResponse<BalanceResponse[]>> {
+): Promise<ApiResponse<DemoDepositData>> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
   try {
     const res = await fetch(`${apiUrl}/deposit`, {

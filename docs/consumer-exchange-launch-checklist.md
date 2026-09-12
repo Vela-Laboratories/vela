@@ -48,6 +48,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Critical custody and settlement redesign
 
+- [x] Restrict the current unverified direct-credit endpoint to `testnet-demo`.
+- [x] Label every response from that endpoint as an unverified demo credit.
 - [ ] Disable the current unauthenticated `POST /deposit` crediting path.
 - [ ] Stop accepting a user-provided address, asset, and amount as sufficient evidence of a deposit.
 - [ ] Stop generating synthetic transaction hashes for deposits.
@@ -134,6 +136,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Withdrawal system
 
+- [x] Disable production withdrawal signing until durable ledger reservation exists.
 - [ ] Replace the current independent withdrawal-signature flow.
 - [ ] Require authenticated customer authorization before generating a withdrawal.
 - [ ] Atomically reserve the withdrawal amount in the ledger.

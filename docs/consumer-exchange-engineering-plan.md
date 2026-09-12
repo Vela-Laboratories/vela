@@ -85,9 +85,9 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Make production reject demo RPC URLs.
 - [x] Make production reject placeholder ZK proofs when ZK is advertised as active.
 - [x] Make production reject simulated TEE attestations when TEE is advertised as active.
-- [ ] Restrict the current direct-credit `POST /deposit` behavior to `testnet-demo`.
-- [ ] Rename or label demo credits so they cannot be confused with verified chain deposits.
-- [ ] Disable production withdrawal signing until ledger reservation exists.
+- [x] Restrict the current direct-credit `POST /deposit` behavior to `testnet-demo`.
+- [x] Rename or label demo credits so they cannot be confused with verified chain deposits.
+- [x] Disable production withdrawal signing until ledger reservation exists.
 - [ ] Remove any frontend use of `NEXT_PUBLIC_ADMIN_TOKEN`.
 - [ ] Add a public sanitized reserves endpoint that does not require an exposed administrative credential.
 - [ ] Correct homepage, README, and in-app claims about custody, settlement, fraud proofs, forced inclusion, and withdrawals.
@@ -97,12 +97,12 @@ The implementation and tests must preserve these invariants at all times:
 ### M0 acceptance criteria
 
 - [ ] Unit tests prove every unsafe configuration causes production startup to fail.
-- [ ] Production cannot create or credit a synthetic account.
-- [ ] Production cannot call the current unverified deposit-credit path.
-- [ ] Production cannot issue a withdrawal signature through the current unreserved flow.
+- [x] Production cannot create or credit a synthetic account.
+- [x] Production cannot call the current unverified deposit-credit path.
+- [x] Production cannot issue a withdrawal signature through the current unreserved flow.
 - [ ] No private value is bundled into the frontend through a `NEXT_PUBLIC_*` variable.
 - [ ] Public documentation consistently describes the current testnet trust model.
-- [ ] Existing Rust, Solidity, and frontend checks continue to pass.
+- [x] Existing Rust, Solidity, and frontend checks continue to pass.
 
 ## Milestone 1: architecture decisions and financial model
 
@@ -410,9 +410,9 @@ Work should begin in this order. Each item should land as a small, independently
    - Reject testnet, synthetic, fallback-storage, and placeholder configurations.
 3. [x] **EX-003: Synthetic state isolation**
    - Allow seed balances, books, and the internal MM only in `testnet-demo`.
-4. **EX-004: Direct deposit containment**
+4. [x] **EX-004: Direct deposit containment**
    - Restrict unverified credits to `testnet-demo` and label them as demo credits.
-5. **EX-005: Withdrawal-signing containment**
+5. [x] **EX-005: Withdrawal-signing containment**
    - Refuse production signing until a durable reservation adapter exists.
 6. **EX-006: Frontend secret boundary**
    - Remove `NEXT_PUBLIC_ADMIN_TOKEN` and replace the reserves data flow.
