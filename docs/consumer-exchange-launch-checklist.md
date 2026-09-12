@@ -254,7 +254,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Implement least-privilege access for Fly, Vercel, RPC providers, and monitoring.
 - [ ] Establish a credential-rotation schedule.
 - [x] Never expose admin credentials through `NEXT_PUBLIC_*` variables.
-- [ ] Remove stale `NEXT_PUBLIC_ADMIN_TOKEN` entries from ignored local and deployed environment configuration; source and ignored local usage have been removed, but deployed Vercel configuration requires a fresh login.
+- [x] Remove stale `NEXT_PUBLIC_ADMIN_TOKEN` entries from source, ignored local files, and deployed Vercel environment configuration.
 - [x] Replace frontend admin API access with a public, sanitized reserves endpoint.
 - [ ] Use constant-time token verification for any remaining shared-secret controls.
 - [ ] Prefer short-lived, scoped administrative credentials over one global token.
@@ -419,8 +419,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Production infrastructure and operations
 
-- [ ] Confirm why the live engine health and status endpoints are timing out.
-- [ ] Inspect the Fly application through its control plane.
+- [x] Confirm why the live engine health and status endpoints were timing out and recover the testnet-demo service.
+- [x] Inspect the Fly application through its control plane and document the incident evidence.
 - [ ] Add external uptime monitoring.
 - [ ] Add internal health monitoring.
 - [ ] Separate liveness and readiness endpoints.
@@ -653,8 +653,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Install the missing Vercel CLI with `npm i -g vercel`.
 - [ ] Use `vercel env pull` to manage and verify frontend environments.
 - [ ] Use separate Vercel preview, staging, and production environments.
-- [ ] Validate that no private secret uses a `NEXT_PUBLIC_*` name.
-- [ ] Remove the public admin token configuration.
+- [x] Validate that no private secret uses a `NEXT_PUBLIC_*` name in source, ignored local files, or deployed Vercel configuration.
+- [x] Remove the public admin token configuration.
 - [ ] Validate production chain IDs and contract addresses during builds.
 - [ ] Add deployment-time checks rejecting Sepolia configuration in production.
 - [ ] Use preview deployments for frontend review.

@@ -92,7 +92,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Add a public sanitized reserves endpoint that does not require an exposed administrative credential.
 - [x] Correct homepage, README, and in-app claims about custody, settlement, fraud proofs, forced inclusion, and withdrawals.
 - [x] Keep the testnet and no-real-funds banner prominent.
-- [ ] Diagnose the deployed Fly engine health and status timeouts. The stopped-machine fault domain and workflow gap are documented; authenticated control-plane logs are still required for the stop cause.
+- [x] Diagnose and recover the deployed Fly engine health and status timeouts. Root-owned persistence files, an incompatible snapshot, and a missing `ADMIN_TOKEN` caused the crash loop; the old snapshot was preserved and the repaired service reports operational.
 
 ### M0 acceptance criteria
 
@@ -420,9 +420,9 @@ Work should begin in this order. Each item should land as a small, independently
    - Align README, homepage, docs, and product banners with actual guarantees.
 8. [x] **EX-008: Production-guard test matrix**
    - Prove each prohibited production configuration fails closed.
-9. [ ] **EX-009: Fly health investigation**
+9. [x] **EX-009: Fly health investigation**
    - Determine why health and status requests time out and document the resolution.
-   - Current evidence and authenticated recovery steps: [Fly engine health runbook](operations/fly-health.md). Fly login is required to identify the process stop cause.
+   - Root cause, recovery actions, and verification evidence: [Fly engine health runbook](operations/fly-health.md).
 10. [x] **EX-010: ADR set**
     - Complete ADR-001 through ADR-008 before starting the financial ledger implementation.
 
