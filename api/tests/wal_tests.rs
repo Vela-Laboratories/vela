@@ -317,6 +317,10 @@ async fn test_wal_replay_recovery() {
         .unwrap();
     }
 
+    // append() writes through Tokio's file handle but intentionally does not
+    // fsync each entry. Exercise the documented dispatch-batch durability
+    // boundary before reopening the segment with a synchronous reader.
+    wal.flush().await.unwrap();
     drop(wal);
 
     let seg_path = dir.join("engine_wal_0000.log");
