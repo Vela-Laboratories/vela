@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod runtime;
+
+pub use runtime::{RuntimeMode, RuntimeModeError};
+
 // --------------------------------------------------------------------------
 // BLS12-381 / TEOB types
 // --------------------------------------------------------------------------

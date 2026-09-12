@@ -4,7 +4,7 @@ use engine::MatchingEngine;
 use std::sync::Arc;
 use types::{
     AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
-    Request, UserId,
+    Request, RuntimeMode, UserId,
 };
 
 // mimalloc allocator: measurably faster than the platform default on the
@@ -30,30 +30,20 @@ fn seed_markets(engine: &mut MatchingEngine) {
             taker_fee_bps: 5,
         });
     }
+}
 
-    let test_user = UserId([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+fn initialize_fresh_engine(engine: &mut MatchingEngine, mode: RuntimeMode) {
+    if mode.is_production() {
+        tracing::warn!("production started with empty engine state; no demo markets were seeded");
+        return;
+    }
 
-    for (i, asset) in [
-        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE", "PEPE",
-        "WIF", "JUP", "PENDLE", "EIGEN", "USDC",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let mut hash = [0u8; 32];
-        hash[31] = i as u8;
-
-        engine.process(
-            Request::Deposit(DepositRequest {
-                user: test_user.clone(),
-                asset: AssetId::from_str(asset),
-                amount: 1_000_000_000_000,
-                l1_tx_hash: hash,
-                source_chain: Default::default(),
-                bridge_id: None,
-            }),
-            0,
-        );
+    seed_markets(engine);
+    if mode.allows_demo_state() {
+        seed_order_books(engine);
+        tracing::info!("fresh testnet demo state seeded");
+    } else {
+        tracing::info!("fresh development market catalog initialized without synthetic balances");
     }
 }
 
@@ -176,18 +166,14 @@ fn seed_order_books(engine: &mut MatchingEngine) {
     }
 }
 
-fn init_observability() {
+fn init_observability(mode: RuntimeMode) {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let is_prod = std::env::var("ENVIRONMENT")
-        .map(|v| v.eq_ignore_ascii_case("production"))
-        .unwrap_or(false);
-
     // Split init so we don't panic if a global subscriber was already
     // installed (e.g. by a test harness inside the same process).
-    let init_result = if is_prod {
+    let init_result = if mode.is_production() {
         tracing_subscriber::registry()
             .with(filter)
             .with(fmt::layer().json().with_target(true))
@@ -223,7 +209,11 @@ fn init_observability() {
 
 #[tokio::main]
 async fn main() {
-    init_observability();
+    let runtime = api::runtime::RuntimeSettings::from_env()
+        .unwrap_or_else(|error| panic!("invalid Vela runtime configuration: {error}"));
+    init_observability(runtime.mode);
+    runtime.log_nonsecret_report();
+    runtime.validate().unwrap_or_else(|error| panic!("{error}"));
 
     let port: u16 = std::env::var("PORT")
         .ok()
@@ -236,8 +226,11 @@ async fn main() {
 
     let wal = Arc::new(match Wal::new(&wal_dir) {
         Ok(w) => w,
+        Err(error) if runtime.mode.is_production() => {
+            panic!("production WAL initialization failed: {error}")
+        }
         Err(e) => {
-            eprintln!("WAL init failed: {e} — continuing without WAL");
+            eprintln!("WAL init failed: {e}; using temporary fallback storage");
             Wal::new(&std::env::temp_dir().join("vela_wal_fallback"))
                 .unwrap_or_else(|_| panic!("Cannot initialize WAL even in temp dir"))
         }
@@ -274,10 +267,12 @@ async fn main() {
             match api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot) {
                 Ok(()) => println!("Restored from snapshot"),
                 Err(e) => {
-                    eprintln!("Snapshot restore failed: {e} — starting fresh");
+                    if runtime.mode.is_production() {
+                        panic!("production snapshot restore failed: {e}");
+                    }
+                    eprintln!("Snapshot restore failed: {e}; starting fresh");
                     engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-                    seed_markets(&mut engine);
-                    seed_order_books(&mut engine);
+                    initialize_fresh_engine(&mut engine, runtime.mode);
                     loaded_incidents.clear();
                     loaded_decisions.clear();
                     loaded_mms.clear();
@@ -288,14 +283,14 @@ async fn main() {
             }
         }
         Ok(None) => {
-            seed_markets(&mut engine);
-            seed_order_books(&mut engine);
-            println!("Fresh start — seeded markets");
+            initialize_fresh_engine(&mut engine, runtime.mode);
         }
         Err(e) => {
-            eprintln!("Snapshot load failed: {e} — starting fresh");
-            seed_markets(&mut engine);
-            seed_order_books(&mut engine);
+            if runtime.mode.is_production() {
+                panic!("production snapshot load failed: {e}");
+            }
+            eprintln!("Snapshot load failed: {e}; starting fresh");
+            initialize_fresh_engine(&mut engine, runtime.mode);
         }
     }
 
@@ -312,6 +307,10 @@ async fn main() {
         } else {
             ("clean", vec![], std::collections::HashMap::new())
         };
+
+    runtime
+        .validate_engine_state(&engine)
+        .unwrap_or_else(|error| panic!("{error}"));
 
     let previous_sequence = wal.current_sequence();
 
@@ -378,20 +377,37 @@ async fn main() {
     let alchemy_url = std::env::var("ALCHEMY_API_URL")
         .unwrap_or_else(|_| "https://eth-sepolia.g.alchemy.com/v2/demo".to_string());
     let operator_key = std::env::var("OPERATOR_PRIVATE_KEY").unwrap_or_default();
+    let anchor_contract_address = runtime
+        .settlement_address
+        .clone()
+        .or_else(|| runtime.legacy_contract_address.clone())
+        .unwrap_or_else(|| "0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686".to_string());
 
     if !operator_key.is_empty() {
         let anchor_state = Arc::clone(&state);
+        let anchor_chain_id = runtime.chain_id;
         tokio::spawn(async move {
-            api::anchor::anchor_task(anchor_state, alchemy_url, operator_key).await;
+            api::anchor::anchor_task(
+                anchor_state,
+                alchemy_url,
+                operator_key,
+                anchor_chain_id,
+                anchor_contract_address,
+            )
+            .await;
         });
     } else {
         tracing::warn!("OPERATOR_PRIVATE_KEY not set — anchor task disabled");
     }
 
-    let mm_order_tx = state.order_tx.clone();
-    tokio::spawn(async move {
-        api::mm::run_mm_bot(mm_order_tx).await;
-    });
+    if runtime.internal_mm_enabled() {
+        let mm_order_tx = state.order_tx.clone();
+        tokio::spawn(async move {
+            api::mm::run_mm_bot(mm_order_tx).await;
+        });
+    } else {
+        tracing::info!("internal market-making bot disabled for this runtime mode");
+    }
 
     let snapshot_state = Arc::clone(&state);
     tokio::spawn(async move {
@@ -459,4 +475,32 @@ async fn main() {
         tracing::error!("WAL ENGINE_STOP write failed: {e}");
         0
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_fresh_start_has_no_seeded_state() {
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Production);
+
+        assert!(engine.balances.is_empty());
+        assert!(engine.order_books.is_empty());
+        assert!(engine.markets.is_empty());
+    }
+
+    #[test]
+    fn development_has_markets_but_no_synthetic_financial_state() {
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Development);
+
+        assert!(!engine.markets.is_empty());
+        assert!(engine.balances.is_empty());
+        assert!(engine
+            .order_books
+            .values()
+            .all(|order_book| order_book.total_orders == 0));
+    }
 }

@@ -162,21 +162,21 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Remove test and synthetic behavior from production
 
-- [ ] Remove unconditional synthetic user funding from production startup.
-- [ ] Remove unconditional synthetic market seeding from production startup.
-- [ ] Prevent the `0x...01` seed account from existing in production state.
-- [ ] Prevent the internal bot from trading with invented collateral.
-- [ ] Add an explicit environment type rather than relying only on an environment string.
+- [x] Remove unconditional synthetic user funding from production startup.
+- [x] Remove unconditional synthetic market seeding from production startup.
+- [x] Prevent the `0x...01` seed account from existing in production state.
+- [x] Prevent the internal bot from trading with invented collateral.
+- [x] Add an explicit environment type rather than relying only on an environment string.
 - [ ] Make production startup reject all test fixtures.
-- [ ] Make production startup reject testnet contract addresses.
-- [ ] Make production startup reject Sepolia chain ID.
-- [ ] Make production startup reject placeholder RPC URLs.
-- [ ] Make production startup reject demo Alchemy URLs.
-- [ ] Make production startup reject mock provers.
-- [ ] Make production startup reject simulated TEE attestations.
-- [ ] Make production startup reject writable temporary storage.
-- [ ] Add tests proving production mode cannot seed balances.
-- [ ] Add tests proving production mode cannot start with testnet configuration.
+- [x] Make production startup reject testnet contract addresses.
+- [x] Make production startup reject Sepolia chain ID.
+- [x] Make production startup reject placeholder RPC URLs.
+- [x] Make production startup reject demo Alchemy URLs.
+- [x] Make production startup reject mock provers.
+- [x] Make production startup reject simulated TEE attestations.
+- [x] Make production startup reject writable temporary storage.
+- [x] Add tests proving production mode cannot seed balances.
+- [x] Add tests proving production mode cannot start with testnet configuration.
 
 ## Persistence and financial data integrity
 

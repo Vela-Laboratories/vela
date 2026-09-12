@@ -2348,6 +2348,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tracing",
+ "types",
 ]
 
 [[package]]

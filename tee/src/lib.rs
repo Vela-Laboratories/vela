@@ -166,9 +166,9 @@ pub enum TeePlatformKind {
 }
 
 fn is_prod() -> bool {
-    std::env::var("ENVIRONMENT")
-        .map(|v| v.eq_ignore_ascii_case("production"))
-        .unwrap_or(false)
+    types::RuntimeMode::from_env()
+        .unwrap_or_else(|error| panic!("invalid Vela runtime configuration: {error}"))
+        .is_production()
 }
 
 /// Read the requested backend from env. Prefers `TEE_PLATFORM`; falls
@@ -185,7 +185,7 @@ pub fn platform_from_env() -> TeePlatformKind {
 }
 
 /// Factory: build the attester the operator asked for. Fails closed on
-/// `ENVIRONMENT=production` when the placeholder is selected — the
+/// production mode when the placeholder is selected. The
 /// placeholder produces `Simulated` records, not attestations, and
 /// silently shipping those to a mainnet operator disclosure page is a
 /// misrepresentation.
@@ -196,10 +196,10 @@ pub fn attester_from_env() -> std::sync::Arc<dyn TeeAttester> {
         TeePlatformKind::Placeholder => {
             if prod {
                 panic!(
-                    "ENVIRONMENT=production forbids TEE_PLATFORM=placeholder — the placeholder \
+                    "production mode forbids TEE_PLATFORM=placeholder; the placeholder \
                      attester emits Simulated records, not attestations. Set \
-                     TEE_PLATFORM=amd-sev-snp on attested hardware, or unset ENVIRONMENT for \
-                     staging."
+                     TEE_PLATFORM=amd-sev-snp on attested hardware, or use a non-production \
+                     runtime mode."
                 );
             }
             std::sync::Arc::new(PlaceholderAttester::new())

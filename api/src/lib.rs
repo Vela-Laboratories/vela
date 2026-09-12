@@ -48,6 +48,7 @@ pub mod rate_limit;
 pub mod reasoning_attest;
 pub mod reputation;
 pub mod rfq;
+pub mod runtime;
 pub mod snapshot;
 pub mod strategies;
 pub mod subaccounts;
@@ -250,7 +251,7 @@ impl AppState {
 
         // Prover / attester selection is env-driven so operators can
         // flip placeholder → sp1 (or → amd-sev-snp) without rebuilding.
-        // Both factories fail closed on ENVIRONMENT=production so a
+        // Both factories fail closed in production mode so a
         // misconfigured mainnet boot refuses to start rather than
         // silently emitting placeholder proofs / simulated attestations.
         let prover: Arc<dyn ZkProver> = zkvm::prover_from_env();

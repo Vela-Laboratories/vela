@@ -5,7 +5,6 @@ use sha3::{Digest, Keccak256};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-const CHAIN_ID: u64 = 11155111;
 const GAS_LIMIT: u64 = 100_000;
 
 fn rlp_uint(value: u128) -> Vec<u8> {
@@ -117,6 +116,8 @@ async fn eth_rpc(
 async fn send_anchor_tx(
     alchemy_url: &str,
     operator_key_hex: &str,
+    chain_id: u64,
+    contract_addr_str: &str,
     state_root: [u8; 32],
     orders_processed: u64,
 ) -> Result<String, String> {
@@ -149,11 +150,9 @@ async fn send_anchor_tx(
     let max_fee_per_gas = base_gas.saturating_mul(3).max(3_000_000_000);
     let max_priority_fee_per_gas = 2_000_000_000u128.min(max_fee_per_gas);
 
-    let contract_addr_str = std::env::var("VELA_CONTRACT_ADDRESS")
-        .unwrap_or_else(|_| "0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686".to_string());
     let contract_hex = contract_addr_str
         .strip_prefix("0x")
-        .unwrap_or(&contract_addr_str);
+        .unwrap_or(contract_addr_str);
     let contract_bytes = hex::decode(contract_hex).map_err(|_| "bad contract address")?;
     if contract_bytes.len() != 20 {
         return Err("contract address must be 20 bytes".to_string());
@@ -164,7 +163,7 @@ async fn send_anchor_tx(
     let pre_sign = {
         let mut out = vec![0x02u8];
         let items = vec![
-            rlp_u64(CHAIN_ID),
+            rlp_u64(chain_id),
             rlp_u64(nonce),
             rlp_uint(max_priority_fee_per_gas),
             rlp_uint(max_fee_per_gas),
@@ -199,7 +198,7 @@ async fn send_anchor_tx(
     let signed_tx = {
         let mut out = vec![0x02u8];
         let items = vec![
-            rlp_u64(CHAIN_ID),
+            rlp_u64(chain_id),
             rlp_u64(nonce),
             rlp_uint(max_priority_fee_per_gas),
             rlp_uint(max_fee_per_gas),
@@ -280,7 +279,13 @@ async fn save_anchors(anchors: &[AnchorRecord], count: u64) -> anyhow::Result<()
     Ok(())
 }
 
-pub async fn anchor_task(state: Arc<AppState>, alchemy_url: String, operator_key: String) {
+pub async fn anchor_task(
+    state: Arc<AppState>,
+    alchemy_url: String,
+    operator_key: String,
+    chain_id: u64,
+    contract_address: String,
+) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(600)).await;
 
@@ -295,6 +300,8 @@ pub async fn anchor_task(state: Arc<AppState>, alchemy_url: String, operator_key
         match send_anchor_tx(
             &alchemy_url,
             &operator_key,
+            chain_id,
+            &contract_address,
             state_root_bytes,
             orders_processed,
         )

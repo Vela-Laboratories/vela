@@ -72,19 +72,19 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M0 tasks
 
-- [ ] Introduce one typed runtime-mode abstraction with `development`, `testnet-demo`, and `production` values.
-- [ ] Route all environment checks through the typed runtime mode.
-- [ ] Preserve compatibility with the existing `ENVIRONMENT=production` guard during migration.
-- [ ] Add a startup validation report that lists only nonsecret configuration and enabled capabilities.
-- [ ] Make production reject Sepolia chain ID.
-- [ ] Make production reject known testnet settlement addresses.
-- [ ] Make production reject synthetic balance seeding.
-- [ ] Make production reject synthetic order-book seeding.
-- [ ] Make production reject the internal unfunded MM bot.
-- [ ] Make production reject temporary or fallback WAL storage.
-- [ ] Make production reject demo RPC URLs.
-- [ ] Make production reject placeholder ZK proofs when ZK is advertised as active.
-- [ ] Make production reject simulated TEE attestations when TEE is advertised as active.
+- [x] Introduce one typed runtime-mode abstraction with `development`, `testnet-demo`, and `production` values.
+- [x] Route all environment checks through the typed runtime mode.
+- [x] Preserve compatibility with the existing `ENVIRONMENT=production` guard during migration.
+- [x] Add a startup validation report that lists only nonsecret configuration and enabled capabilities.
+- [x] Make production reject Sepolia chain ID.
+- [x] Make production reject known testnet settlement addresses.
+- [x] Make production reject synthetic balance seeding.
+- [x] Make production reject synthetic order-book seeding.
+- [x] Make production reject the internal unfunded MM bot.
+- [x] Make production reject temporary or fallback WAL storage.
+- [x] Make production reject demo RPC URLs.
+- [x] Make production reject placeholder ZK proofs when ZK is advertised as active.
+- [x] Make production reject simulated TEE attestations when TEE is advertised as active.
 - [ ] Restrict the current direct-credit `POST /deposit` behavior to `testnet-demo`.
 - [ ] Rename or label demo credits so they cannot be confused with verified chain deposits.
 - [ ] Disable production withdrawal signing until ledger reservation exists.
@@ -403,12 +403,12 @@ The implementation and tests must preserve these invariants at all times:
 
 Work should begin in this order. Each item should land as a small, independently reviewable change.
 
-1. **EX-001: Typed runtime mode**
+1. [x] **EX-001: Typed runtime mode**
    - Centralize runtime-mode parsing and capability checks.
    - Add a nonsecret startup configuration report.
-2. **EX-002: Production startup validator**
+2. [x] **EX-002: Production startup validator**
    - Reject testnet, synthetic, fallback-storage, and placeholder configurations.
-3. **EX-003: Synthetic state isolation**
+3. [x] **EX-003: Synthetic state isolation**
    - Allow seed balances, books, and the internal MM only in `testnet-demo`.
 4. **EX-004: Direct deposit containment**
    - Restrict unverified credits to `testnet-demo` and label them as demo credits.
@@ -448,4 +448,3 @@ Provider contracts should not be signed until the custody model and legal launch
 - Documentation changes ship with behavior changes.
 - Deployment configuration is reviewed as code.
 - No mainnet deployment, contract broadcast, secret rotation, commit, push, or public release occurs without explicit approval.
-

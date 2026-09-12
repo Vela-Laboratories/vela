@@ -16,7 +16,8 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 | `SNAPSHOT_DIR` | `/data` | Directory for engine snapshot JSON and WAL. |
 | `DA_DIR` | `/data/da` | Directory for content-addressed DA blobs. |
 | `VELA_EXPORT_DIR` | `/data/exports` | Historical export target (Parquet, daily trades, L2 snapshots). |
-| `ENVIRONMENT` | `development` | `production` switches tracing to JSON output. |
+| `VELA_RUNTIME_MODE` | `development` | Typed process mode: `development`, `testnet-demo`, or `production`. Only `testnet-demo` enables synthetic balances, seeded books, and the internal MM. Production enables strict startup validation and JSON tracing. |
+| `ENVIRONMENT` | — | Legacy runtime alias. `ENVIRONMENT=production` remains fail-closed and cannot be downgraded by `VELA_RUNTIME_MODE`. |
 | `RUST_LOG` | `info` | Standard `tracing` env filter. |
 
 ## Auth / admin
@@ -80,7 +81,7 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 
 ## Verifiability providers
 
-Both default to fail-closed on `ENVIRONMENT=production` when the
+Both default to fail-closed in production mode when the
 required infrastructure vars are unset.
 
 | Variable | Values | Notes |
