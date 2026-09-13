@@ -40,6 +40,19 @@ use types::{
     UserId, UserMetadata, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 
+fn reject_unjournaled_financial_route(state: &AppState, operation: &str) -> Option<Response> {
+    state.ledger.as_ref().map(|_| {
+        tracing::warn!(operation, "rejected unjournaled financial route");
+        (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(ApiResponse::<()>::err(format!(
+                "{operation} is unavailable while the PostgreSQL ledger is authoritative"
+            ))),
+        )
+            .into_response()
+    })
+}
+
 #[derive(serde::Deserialize)]
 struct WithdrawalSignatureRequest {
     user: String,
@@ -848,13 +861,30 @@ async fn get_balances(
                 .into_response()
         }
     };
-    let us = state.shards.user_state.read().await;
-    let balances: Vec<BalanceResponse> = us
-        .balances
-        .iter()
-        .filter(|((u, _), _)| u == &user)
-        .map(|((_, asset), bal)| BalanceResponse {
-            asset: asset.as_str().to_string(),
+    let raw_balances = if let Some(ledger) = state.ledger.as_ref() {
+        match crate::ledger_coordinator::load_customer_balances(ledger, &user).await {
+            Ok(balances) => balances,
+            Err(error) => {
+                tracing::error!(%error, user = %user.to_hex(), "authoritative balance read failed");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err("authoritative balances unavailable")),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        let us = state.shards.user_state.read().await;
+        us.balances
+            .iter()
+            .filter(|((owner, _), _)| owner == &user)
+            .map(|(_, balance)| balance.clone())
+            .collect()
+    };
+    let balances: Vec<BalanceResponse> = raw_balances
+        .into_iter()
+        .map(|bal| BalanceResponse {
+            asset: bal.asset.as_str().to_string(),
             available: format_amount(bal.available, 8),
             locked: format_amount(bal.locked, 8),
             total: format_amount(bal.total(), 8),
@@ -1850,6 +1880,9 @@ async fn initiate_withdrawal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<WithdrawBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "withdrawal") {
+        return response;
+    }
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => {
@@ -2050,6 +2083,9 @@ async fn bridge_deposit_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BridgeDepositBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "bridge deposit") {
+        return response;
+    }
     if !state.deposit_limiter.check(&body.user) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -2222,6 +2258,9 @@ async fn deposit_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<DepositBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "demo deposit") {
+        return response;
+    }
     if !state.runtime_mode.allows_demo_state() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2578,6 +2617,9 @@ async fn force_include_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ForceIncludeBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "forced inclusion") {
+        return response;
+    }
     // Gate behind admin token in beta — production will verify an L1 Merkle proof.
     let provided = headers
         .get("x-admin-token")
@@ -4297,6 +4339,9 @@ async fn rfq_accept(
     State(state): State<Arc<AppState>>,
     Json(body): Json<RfqAcceptBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "RFQ settlement") {
+        return response;
+    }
     let request = match state.rfq.requests.get(&body.rfq_id) {
         Some(r) => r.value().clone(),
         None => {
@@ -4664,6 +4709,9 @@ async fn transfer_subaccount(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TransferSubaccountBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "subaccount transfer") {
+        return response;
+    }
     let master = match UserId::from_hex(&body.master) {
         Ok(u) => u,
         Err(_) => {
@@ -5015,6 +5063,9 @@ async fn vault_deposit(
     State(state): State<Arc<AppState>>,
     Json(body): Json<VaultDepositBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "vault deposit") {
+        return response;
+    }
     let lp = match UserId::from_hex(&body.lp) {
         Ok(u) => u,
         Err(_) => {
@@ -5139,6 +5190,9 @@ async fn vault_withdraw(
     State(state): State<Arc<AppState>>,
     Json(body): Json<VaultWithdrawBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "vault withdrawal") {
+        return response;
+    }
     let lp = match UserId::from_hex(&body.lp) {
         Ok(u) => u,
         Err(_) => {
@@ -5333,6 +5387,9 @@ async fn propose_listing(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ProposeListingBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "listing bond") {
+        return response;
+    }
     let proposer = match UserId::from_hex(&body.proposer) {
         Ok(u) => u,
         Err(_) => {
@@ -5520,6 +5577,9 @@ async fn admin_reject_listing(
     State(state): State<Arc<AppState>>,
     Json(body): Json<RejectListingBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "listing bond slash") {
+        return response;
+    }
     let provided = headers
         .get("x-admin-token")
         .and_then(|v| v.to_str().ok())
@@ -5592,6 +5652,12 @@ async fn admin_reject_listing(
 /// challenge window has expired, add the market to the engine, refund
 /// the bond, and flip status to Accepted.
 pub async fn run_listing_task(state: Arc<AppState>) {
+    if state.ledger.is_some() {
+        tracing::warn!(
+            "permissionless listing settlement disabled while PostgreSQL ledger is authoritative"
+        );
+        return;
+    }
     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
     ticker.tick().await; // Skip immediate first tick.
 

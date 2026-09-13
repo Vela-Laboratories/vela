@@ -134,6 +134,59 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     assert_eq!(body["ledger_schema_version"], 1);
 }
 
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn test_ledger_backed_api_ignores_cache_and_rejects_demo_credit(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool));
+    let state = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::TestnetDemo,
+        Some(ledger),
+    )
+    .await
+    .unwrap();
+    let user = types::UserId::from_hex(&user_addr()).unwrap();
+    state
+        .shards
+        .user_state
+        .write()
+        .await
+        .phase1_deposit(&DepositRequest {
+            user,
+            asset: AssetId::from_str("USDC"),
+            amount: 50_000 * PRICE_SCALE,
+            l1_tx_hash: [8_u8; 32],
+            source_chain: Default::default(),
+            bridge_id: None,
+        });
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    let balances = server
+        .get(&format!("/account/{}/balances", user_addr()))
+        .await;
+    balances.assert_status_ok();
+    let body: Value = balances.json();
+    assert!(body["data"].as_array().unwrap().is_empty());
+
+    let deposit = server
+        .post("/deposit")
+        .json(&json!({
+            "user": user_addr(),
+            "asset": "USDC",
+            "amount": "100.00"
+        }))
+        .await;
+    deposit.assert_status(axum::http::StatusCode::NOT_IMPLEMENTED);
+    let body: Value = deposit.json();
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("PostgreSQL ledger is authoritative"));
+}
+
 #[tokio::test]
 async fn test_list_markets() {
     let server = test_server(engine_with_market());

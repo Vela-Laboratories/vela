@@ -70,6 +70,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Use redundant RPC providers.
 - [ ] Add RPC disagreement and stale-head detection.
 - [x] Decide which ledger is authoritative.
+- [x] Make PostgreSQL balance projections authoritative for customer REST and WebSocket reads; matching-engine balances are only a replayed execution cache when the ledger is configured.
+- [x] Fail closed on every known legacy API route that directly mutates matching-engine balances while the authoritative ledger is configured.
 - [ ] Complete integration of the double-entry financial ledger; matcher reservations, releases, trades, fees, rebates, and referral payouts use it when configured, while deposits, withdrawals, recovery, and reconciliation remain open.
 - [ ] Journal every deposit.
 - [x] Journal every matcher-produced trade when the authoritative ledger is configured.

@@ -161,7 +161,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Build deterministic financial-balance replay from the journal.
 - [x] Integrate the matcher so accepted trades produce atomic ownership transfers.
 - [x] Prevent the matcher from acknowledging a financially effective result before the ledger commits.
-- [ ] Remove the engine's role as authoritative owner of customer funds.
+- [x] Remove the engine's role as authoritative owner of customer funds; customer balance reads use the ledger projection, the engine is a replayed execution cache, and unjournaled mutation routes fail closed in ledger-backed mode.
 
 ### M2 acceptance criteria
 
@@ -455,6 +455,11 @@ Work should begin in this order. Each item should land as a small, independently
     - Bind the complete correction request into a deterministic hash and commit its journal, projection, outbox, and immutable audit record atomically.
     - Reject self-approval, unaudited generic administrative postings, conflicting retries, and incomplete audit writes before any financial effect can persist.
     - Generate and post randomized balanced multi-leg transactions, then verify every persisted transaction remains balanced per asset and every projection matches journal history.
+18. [x] **EX-018: Ledger-authoritative customer balance boundary**
+    - Serve customer REST balances and authenticated WebSocket balance snapshots from PostgreSQL's transactionally maintained ledger projection whenever the ledger is configured.
+    - Fail closed on projection read or exact-decimal conversion errors instead of falling back to local matching-engine state.
+    - Reject every legacy API path that directly changes the engine balance map while the ledger is authoritative, including demo/bridge credits, withdrawals, forced inclusion, RFQ settlement, subaccount transfers, vault flows, and listing bonds.
+    - Preserve those synthetic flows only for explicitly non-authoritative development and `testnet-demo`, and prove an external credit cannot mutate a ledger-backed engine projection.
 
 ## Parallel nonengineering work
 

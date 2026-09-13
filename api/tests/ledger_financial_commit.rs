@@ -437,3 +437,70 @@ async fn missing_financial_account_rejects_order_without_state_change(pool: sqlx
         .all_orders()
         .is_empty());
 }
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn customer_reads_use_ledger_projection_instead_of_engine_cache(pool: sqlx::PgPool) {
+    let customer = user(4);
+    let fixture = LedgerFixture::new(pool).await;
+    fixture
+        .seed("ETH", &customer, 1_000_000_000_000_000_000)
+        .await;
+    fixture.seed("USDC", &customer, 2_500_000).await;
+
+    let balances = api::ledger_coordinator::load_customer_balances(&fixture.ledger, &customer)
+        .await
+        .unwrap();
+
+    assert_eq!(balances.len(), 2);
+    assert_eq!(balances[0].asset, AssetId::from_str("ETH"));
+    assert_eq!(balances[0].available, QUANTITY_SCALE);
+    assert_eq!(balances[0].locked, 0);
+    assert_eq!(balances[1].asset, AssetId::from_str("USDC"));
+    assert_eq!(balances[1].available, 250_000_000);
+    assert_eq!(balances[1].locked, 0);
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn external_credit_cannot_mutate_a_ledger_backed_engine_projection(pool: sqlx::PgPool) {
+    let customer = user(5);
+    let fixture = LedgerFixture::new(pool.clone()).await;
+    let user_state = Arc::new(RwLock::new(UserState::new(5.0)));
+    let before = user_state.read().await.balances.clone();
+    let shards = Arc::new(MarketShards::new(Arc::clone(&user_state)));
+    let committer: Arc<dyn FinancialCommitter> =
+        Arc::new(LedgerFinancialCommitter::new(Arc::clone(&fixture.ledger)));
+    let (responder, receiver) = tokio::sync::oneshot::channel();
+
+    MarketShards::dispatch_sharded_batch_with_committer(
+        shards,
+        vec![BatchedRequest {
+            request: Request::Deposit(DepositRequest {
+                user: customer,
+                asset: AssetId::from_str("ETH"),
+                amount: QUANTITY_SCALE,
+                l1_tx_hash: [7_u8; 32],
+                source_chain: Default::default(),
+                bridge_id: None,
+            }),
+            ts: 1,
+            responder,
+            decryption_proof: None,
+        }],
+        std::time::Instant::now(),
+        BatchMetrics::new(),
+        Some(committer),
+    )
+    .await;
+
+    let responses = receiver.await.unwrap();
+    assert!(responses.iter().any(|response| matches!(
+        response,
+        Response::Error(error) if error.code == types::ErrorCode::InternalError
+    )));
+    assert_eq!(user_state.read().await.balances, before);
+    let journal_count: i64 = sqlx::query_scalar("SELECT count(*) FROM ledger_journal_transactions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(journal_count, 0);
+}

@@ -205,6 +205,52 @@ pub async fn restore_engine_financial_state(
     })
 }
 
+/// Load one customer's authoritative available/locked balances and convert
+/// them into the matching engine's fixed-point units for API compatibility.
+pub async fn load_customer_balances(
+    ledger: &ledger::Ledger,
+    user: &types::UserId,
+) -> Result<Vec<types::Balance>, String> {
+    let owner_reference = user.to_hex().to_ascii_lowercase();
+    let accounts = ledger
+        .account_balances_for_owner("customer", &owner_reference)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut balances: HashMap<types::AssetId, types::Balance> = HashMap::new();
+
+    for account in accounts {
+        if !matches!(
+            account.account_type.as_str(),
+            "customer_available" | "customer_locked"
+        ) {
+            continue;
+        }
+        let engine_amount = scale_ledger_amount(&account.balance, account.asset_decimals)?;
+        let amount = u64::try_from(engine_amount).map_err(|_| {
+            format!(
+                "customer account {} is negative or exceeds matching-engine capacity",
+                account.account_id
+            )
+        })?;
+        let asset = types::AssetId::from_str(&account.asset_code);
+        let balance = balances.entry(asset).or_insert(types::Balance {
+            user: user.clone(),
+            asset,
+            available: 0,
+            locked: 0,
+        });
+        if account.account_type == "customer_available" {
+            balance.available = amount;
+        } else {
+            balance.locked = amount;
+        }
+    }
+
+    let mut balances: Vec<_> = balances.into_values().collect();
+    balances.sort_by_key(|balance| balance.asset.0);
+    Ok(balances)
+}
+
 impl FinancialCommitter for LedgerFinancialCommitter {
     fn commit<'a>(
         &'a self,

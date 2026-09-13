@@ -639,9 +639,31 @@ async fn handle_timestamp_auth(
 
             let ts = now_ms();
 
-            let (balances, orders) = {
+            let balances: Vec<serde_json::Value> = if let Some(ledger) = state.ledger.as_ref() {
+                match crate::ledger_coordinator::load_customer_balances(ledger, &user).await {
+                    Ok(balances) => balances
+                        .into_iter()
+                        .map(|bal| {
+                            serde_json::json!({
+                                "asset": bal.asset.as_str(),
+                                "available": crate::types::format_amount(bal.available, 8),
+                                "locked": crate::types::format_amount(bal.locked, 8),
+                                "total": crate::types::format_amount(bal.total(), 8),
+                            })
+                        })
+                        .collect(),
+                    Err(error) => {
+                        tracing::error!(%error, user = %user.to_hex(), "authoritative websocket balance read failed");
+                        let err = WsServerMessage::Error {
+                            code: "BALANCES_UNAVAILABLE".to_string(),
+                            message: "authoritative balances unavailable".to_string(),
+                        };
+                        return vec![serde_json::to_string(&err).unwrap_or_default()];
+                    }
+                }
+            } else {
                 let engine = state.engine.lock().await;
-                let bals: Vec<serde_json::Value> = engine
+                engine
                     .balances
                     .iter()
                     .filter(|((u, _), _)| u == &user)
@@ -653,8 +675,10 @@ async fn handle_timestamp_auth(
                             "total": crate::types::format_amount(bal.total(), 8),
                         })
                     })
-                    .collect();
-
+                    .collect()
+            };
+            let orders = {
+                let engine = state.engine.lock().await;
                 let meta = engine.metadata.get(&user);
                 let open_ids = meta
                     .map(|m| m.iter_order_ids().collect::<Vec<_>>())
@@ -675,7 +699,7 @@ async fn handle_timestamp_auth(
                         })
                     })
                     .collect();
-                (bals, ords)
+                ords
             };
 
             let seq = next_ws_seq(state, &channel);

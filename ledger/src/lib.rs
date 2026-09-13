@@ -595,6 +595,50 @@ impl Ledger {
         Ok(result)
     }
 
+    /// Read the current materialized balances for one owner. The journal remains
+    /// authoritative; this projection is updated in the same transaction as every
+    /// accepted journal entry and is the bounded read path used by customer APIs.
+    pub async fn account_balances_for_owner(
+        &self,
+        owner_type: &str,
+        owner_reference: &str,
+    ) -> Result<Vec<ReplayedAccountBalance>, LedgerError> {
+        let accounts = sqlx::query_as::<_, ReplayAccountProjection>(
+            r#"
+            SELECT
+                account.id AS account_id,
+                asset.code AS asset_code,
+                asset.decimals AS asset_decimals,
+                account.owner_type,
+                account.owner_reference,
+                account.account_type,
+                balance.balance AS projected_balance
+            FROM ledger_accounts account
+            JOIN ledger_assets asset ON asset.id = account.asset_id
+            JOIN ledger_account_balances balance ON balance.account_id = account.id
+            WHERE account.owner_type = $1 AND account.owner_reference = $2
+            ORDER BY asset.code, account.account_type
+            "#,
+        )
+        .bind(owner_type)
+        .bind(owner_reference)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(accounts
+            .into_iter()
+            .map(|account| ReplayedAccountBalance {
+                account_id: account.account_id,
+                asset_code: account.asset_code,
+                asset_decimals: account.asset_decimals,
+                owner_type: account.owner_type,
+                owner_reference: account.owner_reference,
+                account_type: account.account_type,
+                balance: account.projected_balance,
+            })
+            .collect())
+    }
+
     pub async fn post(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
         if command.operation_type == "administrative_adjustment" {
             return Err(LedgerError::AdministrativeCorrectionRequired);

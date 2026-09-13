@@ -51,6 +51,10 @@ When a ledger is configured, API construction replays every journal leg in ident
 
 Customer available and locked balances, plus the net platform fee/rebate balance, are converted exactly into engine units and replace financial values recovered from snapshots or WAL. This makes the matching engine a derived financial cache and prevents stale local state from changing customer ownership after restart. Pending deposits, withdrawal reservations, and custody accounts remain authoritative in PostgreSQL but are intentionally not made tradable engine balances.
 
+Customer REST balance reads and authenticated WebSocket account snapshots read the ledger's transactionally maintained balance projection whenever the ledger is configured. They do not treat the matching-engine cache as the customer-facing source of truth. A failed ledger read fails closed instead of falling back to local state.
+
+Legacy feature routes that directly mutate the engine balance map are unavailable in ledger-backed mode until they have their own balanced, idempotent journal transaction. This includes demo and bridge credits, withdrawals and forced inclusion, RFQ settlement, subaccount transfers, vault deposits and withdrawals, and listing bonds. The routes remain available only in explicitly non-authoritative development or `testnet-demo` runtimes without a configured ledger.
+
 ## Amount conversion
 
 The engine represents price and quantity with eight decimal places. Ledger assets use their actual configured decimal count. Conversion multiplies for assets with more than eight decimals and divides exactly for assets with fewer decimals. A value that cannot be represented exactly is rejected instead of rounded. For six-decimal USDC, an engine amount must therefore be divisible by 100.
@@ -59,4 +63,4 @@ The engine represents price and quantity with eight decimal places. Ledger asset
 
 Automated tests prove that responses and committed shard state remain unavailable while a financial commit is blocked, failed commits roll back the proposal, missing accounts fail closed, and an ETH/USDC fill moves base, quote, taker fee, and maker rebate atomically in PostgreSQL.
 
-This chapter does not complete deposit indexing, withdrawal orchestration, complete order-book replay without snapshots/WAL, custody reconciliation, or managed database disaster recovery. Those remain explicit launch blockers in the engineering plan and launch checklist.
+This chapter does not complete deposit indexing, withdrawal orchestration, complete order-book replay without snapshots/WAL, custody reconciliation, or managed database disaster recovery. Those remain explicit launch blockers in the engineering plan and launch checklist. Disabled legacy routes must be journal-integrated or remain outside the narrow consumer spot launch.
