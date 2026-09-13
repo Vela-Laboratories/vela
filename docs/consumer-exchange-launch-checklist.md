@@ -237,11 +237,11 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add anomalous signing alerts.
 - [ ] Store a tamper-evident log of every signature request and result.
 - [ ] Require code review for changes to authentication, ledger, withdrawal, and custody code.
-- [ ] Make dependency security scanning blocking.
-- [ ] Remove `continue-on-error` from `cargo-audit`.
-- [ ] Make secret scanning blocking.
-- [ ] Remove `continue-on-error` from gitleaks.
-- [ ] Add frontend dependency auditing.
+- [x] Make dependency security scanning blocking.
+- [x] Remove `continue-on-error` from `cargo-audit`.
+- [x] Make secret scanning blocking.
+- [x] Remove `continue-on-error` from gitleaks.
+- [x] Add frontend dependency auditing.
 - [ ] Add Solidity static analysis.
 - [ ] Add fuzzing for the Rust API boundary.
 - [ ] Add fuzzing for deposit and withdrawal parsers.
@@ -269,6 +269,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Verify that a wallet can only access its own records.
 - [ ] Add authorization tests for every customer-data endpoint.
 - [ ] Reconcile HTTP authentication with WebSocket authentication.
+- [ ] Align frontend WebSocket event envelopes with the backend schema.
+- [ ] Make WebSocket reconnect and replacement-socket transitions race-safe.
 - [ ] Use server-issued, single-use challenges.
 - [ ] Expire authentication challenges.
 - [ ] Rate-limit challenge issuance.

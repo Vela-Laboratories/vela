@@ -1,0 +1,5 @@
+# This credential-like value appeared once in old API documentation and was
+# replaced by a newly generated Fly ADMIN_TOKEN during the September 2026
+# deployment recovery. Keep the exact finding suppressed without weakening
+# any current-tree or future-history scans.
+e8ce726c541fd8dbf1f348a06b7ddf0f78abd4b5:docs/api-reference/http.mdx:curl-auth-header:170

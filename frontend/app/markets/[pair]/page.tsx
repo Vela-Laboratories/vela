@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Skeleton from '@/components/ui/Skeleton'
@@ -1114,7 +1114,8 @@ function MobileGate({
   )
 }
 
-export default function TradingPage({ params }: { params: { pair: string } }) {
+export default function TradingPage(props: { params: Promise<{ pair: string }> }) {
+  const params = use(props.params);
   const pair = decodeURIComponent(params.pair)
   const { toasts, addToast } = useToasts()
   const [isMobile, setIsMobile] = useState(true)

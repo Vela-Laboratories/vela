@@ -2779,7 +2779,8 @@ function renderContent(key: string): React.ReactNode {
   }
 }
 
-export default function DocsPage({ params }: { params: { slug: string[] } }) {
+export default async function DocsPage(props: { params: Promise<{ slug: string[] }> }) {
+  const params = await props.params;
   const key = params.slug.join('/')
   const content = renderContent(key)
   if (content === null) notFound()

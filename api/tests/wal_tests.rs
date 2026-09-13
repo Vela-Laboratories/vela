@@ -104,6 +104,7 @@ async fn test_wal_write_read_roundtrip() {
         expected_seqs.push(seq);
     }
 
+    wal.flush().await.unwrap();
     let seg_path = dir.join("engine_wal_0000.log");
     let entries = Wal::read_from(&seg_path, 0).unwrap();
 
@@ -198,7 +199,6 @@ async fn test_wal_crc_corruption_skip() {
 #[tokio::test]
 async fn test_wal_segment_rotation() {
     let dir = temp_wal_dir("rotation");
-    let small_max = 512u64;
 
     let wal = Wal::new(&dir).unwrap();
 
@@ -246,6 +246,7 @@ async fn test_wal_segment_rotation() {
         wal.append(ORDER_POST, &entry).await.unwrap();
     }
 
+    wal.flush().await.unwrap();
     let seg0_entries = Wal::read_from(&dir.join("engine_wal_0000.log"), 0).unwrap();
     assert!(
         !seg0_entries.is_empty(),

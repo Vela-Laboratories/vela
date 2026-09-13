@@ -68,7 +68,6 @@ jobs:
   rust-security:
     name: Rust — cargo-audit
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       # rustsec/audit-check posts a check-run via the API; without this
       # it fails with "Resource not accessible by integration".
@@ -79,11 +78,14 @@ jobs:
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # SQLx's facade crate records its optional MySQL driver in
+          # Cargo.lock even though Vela enables PostgreSQL only. The inactive
+          # driver is the sole path to rsa 0.9 and cannot execute in Vela.
+          ignore: RUSTSEC-2023-0071
 
   secret-scan:
     name: Secrets — gitleaks
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -181,6 +183,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit
       - run: npm run lint
       - run: npm run type-check
       - run: npm run build
