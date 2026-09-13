@@ -84,7 +84,7 @@ The batch dispatcher coalesces multiple orders into a single engine lock acquisi
 └─────────────────────────────────────────────┘
 ```
 
-**Stack:** Rust · Solidity/Foundry · Next.js 14 · TypeScript · Tailwind · fly.io · Vercel
+**Stack:** Rust · Solidity/Foundry · Next.js 16 · TypeScript · Tailwind · fly.io · Vercel
 
 ---
 
@@ -333,7 +333,7 @@ vela/
 ├── perp/        # Perpetual futures margin math + funding accrual
 ├── fix/         # FIX 4.4 acceptor (session layer)
 ├── contracts/   # Solidity (VelaSettlement.sol, Foundry)
-├── frontend/    # Next.js 14 frontend
+├── frontend/    # Next.js 16 frontend
 ├── docs/        # Mintlify documentation
 ├── scripts/     # Benchmark runner
 └── BENCHMARKS.md

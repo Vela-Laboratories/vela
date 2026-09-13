@@ -54,6 +54,14 @@ then replaces cached customer available/locked balances and platform fees. A
 projection mismatch, malformed customer owner, overflow, or inexact decimal
 conversion aborts startup.
 
+Administrative balance corrections use `Ledger::post_administrative_correction`.
+The typed command requires an incident, evidence reference, initiator, separate
+approver, approval timestamp, and balanced legs. The complete request is hashed
+for idempotency, and its journal, balance projection, outbox event, and immutable
+audit record commit atomically. `Ledger::post` rejects the administrative
+operation type so ordinary posting cannot bypass this audit boundary. Any future
+operator API must authenticate both actor references before calling the command.
+
 See [the matcher-ledger commit boundary](../docs/architecture/matcher-ledger-commit.md)
 for account requirements, decimal conversion, acknowledgement ordering, and
 current limitations.

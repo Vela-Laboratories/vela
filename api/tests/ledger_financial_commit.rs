@@ -170,7 +170,7 @@ impl LedgerFixture {
         self.ledger
             .post(&PostTransaction {
                 id: Uuid::new_v4(),
-                operation_type: "administrative_adjustment".to_owned(),
+                operation_type: "deposit_credit".to_owned(),
                 idempotency_key: format!("seed:{asset}:{reference}"),
                 request_hash: [asset.as_bytes()[0]; 32],
                 external_reference: None,

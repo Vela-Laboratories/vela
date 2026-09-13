@@ -78,7 +78,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Journal every withdrawal reservation.
 - [ ] Journal every completed withdrawal.
 - [ ] Journal every failed or reversed withdrawal.
-- [ ] Journal every administrative adjustment.
+- [x] Journal every administrative adjustment through the typed dual-control correction path.
 - [x] Require balanced debits and credits for every journal transaction at the PostgreSQL commit boundary.
 - [ ] Make ledger writes durable before acknowledging every financial operation; matcher operations now satisfy this, but deposits and withdrawals remain open.
 - [ ] Give every financial operation a globally unique idempotency key.
@@ -208,7 +208,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Define an active-passive or consensus-backed availability design.
 - [ ] Preserve regulatory records for the legally required retention period.
 - [ ] Make audit records tamper-evident.
-- [ ] Give administrative corrections a dual-approval process.
+- [x] Give administrative corrections a dual-approval process.
+- [ ] Authenticate correction initiators and approvers with separate scoped operator identities before exposing an operator API.
 
 ## Security and key management
 
@@ -603,7 +604,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Test fee-on-transfer tokens.
 - [ ] Test reentrant and reverting tokens.
 - [ ] Add property tests asserting assets are always at least customer liabilities.
-- [ ] Add property tests asserting every journal transaction balances.
+- [x] Add property tests asserting every journal transaction balances.
 - [ ] Add property tests asserting users cannot withdraw more than finalized ownership.
 - [ ] Run a capped adversarial testnet.
 - [ ] Invite external traders and security researchers.

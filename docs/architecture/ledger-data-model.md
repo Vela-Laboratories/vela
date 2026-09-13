@@ -42,13 +42,13 @@ The request hash binds an idempotency key to its original command. An identical 
 
 `ledger_custody_snapshots` and `ledger_custody_snapshot_balances` capture finalized vault evidence by chain, block, deployment, asset, and input hash. `ledger_reconciliation_results` records custody, liabilities, their exact difference, status, and evidence per asset. These records are immutable.
 
-`ledger_administrative_corrections` binds a balanced journal transaction to its typed reason, evidence, incident, initiator, independent approver, and approval time. The database rejects self-approval. The future administrative service must verify authorization and dual approval before inserting either record.
+`ledger_administrative_corrections` binds a balanced journal transaction to its typed reason, evidence, incident, initiator, independent approver, and approval time. The ledger exposes a dedicated typed correction command, rejects case-insensitive self-approval, and prevents the generic posting path from creating an unaudited administrative adjustment. The command hashes all approval evidence and financial legs, then commits the journal, balance projection, outbox event, and immutable correction record in one serializable transaction. The operator-facing service must authenticate both actor references before it constructs this command.
 
 ## Ownership and verification
 
 | Invariant | Runtime owner | Database owner | Current verification |
 | --- | --- | --- | --- |
-| Every journal transaction balances per asset | `ledger::Ledger` | Deferred constraint trigger | Direct unbalanced SQL commit test |
+| Every journal transaction balances per asset | `ledger::Ledger` | Deferred constraint trigger | Direct unbalanced SQL commit test and generated multi-leg property test |
 | Amounts are integer base units | `ledger::Ledger` | Numeric checks | Fractional command rejection test |
 | Customer balances cannot be overspent | `ledger::Ledger` | Row locks and serializable transaction | Concurrent debit test |
 | Retries cannot apply twice | `ledger::Ledger` | Unique idempotency key | Same-request and conflicting-request tests |
@@ -57,7 +57,7 @@ The request hash binds an idempotency key to its original command. An identical 
 | Engine financial cache equals journal ownership after restart | API startup replay | Immutable journal sequence | PostgreSQL restart and stale-cache replacement test |
 | Financial events follow commit | Outbox publisher | Transactional outbox foreign key | Outbox assertion in posting test |
 | Deposits have one canonical event identity | Future Base indexer | Unique chain-event constraints | Migration constraint; indexer integration test pending |
-| Administrative corrections require two people | Future admin service | Initiator/approver inequality | Service authorization test pending |
+| Administrative corrections require two people | Typed ledger correction command | Initiator/approver inequality | Self-approval, idempotency, bypass, and atomic-rollback tests |
 
 ## Schema evolution
 

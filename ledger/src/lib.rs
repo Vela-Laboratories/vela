@@ -5,6 +5,7 @@ use bigdecimal::{BigDecimal, Zero};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool, Postgres, Transaction};
 use thiserror::Error;
 use uuid::Uuid;
@@ -24,6 +25,51 @@ pub struct PostTransaction {
     pub external_reference: Option<Value>,
     pub metadata: Value,
     pub legs: Vec<JournalLegInput>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdministrativeCorrectionReason {
+    CustomerBalanceCorrection,
+    DepositRecovery,
+    WithdrawalRecovery,
+    FeeCorrection,
+    ReconciliationCorrection,
+    IncidentRemediation,
+}
+
+impl AdministrativeCorrectionReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CustomerBalanceCorrection => "customer_balance_correction",
+            Self::DepositRecovery => "deposit_recovery",
+            Self::WithdrawalRecovery => "withdrawal_recovery",
+            Self::FeeCorrection => "fee_correction",
+            Self::ReconciliationCorrection => "reconciliation_correction",
+            Self::IncidentRemediation => "incident_remediation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdministrativeCorrection {
+    pub correction_id: Uuid,
+    pub transaction_id: Uuid,
+    pub idempotency_key: String,
+    pub reason_type: AdministrativeCorrectionReason,
+    pub reason: String,
+    pub evidence_reference: String,
+    pub incident_id: String,
+    pub initiated_by: String,
+    pub approved_by: String,
+    pub approved_at: DateTime<Utc>,
+    pub legs: Vec<JournalLegInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostedAdministrativeCorrection {
+    pub correction_id: Uuid,
+    pub transaction: PostedTransaction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
@@ -106,6 +152,12 @@ pub enum LedgerError {
     },
     #[error("idempotency key was already used with a different request")]
     IdempotencyConflict,
+    #[error("administrative adjustments must use the dual-approval correction workflow")]
+    AdministrativeCorrectionRequired,
+    #[error("invalid administrative correction: {0}")]
+    InvalidAdministrativeCorrection(String),
+    #[error("administrative correction audit record is missing for transaction {0}")]
+    AdministrativeCorrectionAuditMissing(Uuid),
     #[error("ledger schema version mismatch: expected {expected}, found {found}")]
     SchemaVersion { expected: i64, found: i64 },
     #[error(
@@ -544,11 +596,35 @@ impl Ledger {
     }
 
     pub async fn post(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
+        if command.operation_type == "administrative_adjustment" {
+            return Err(LedgerError::AdministrativeCorrectionRequired);
+        }
+        self.post_authorized(command, None).await
+    }
+
+    pub async fn post_administrative_correction(
+        &self,
+        correction: &AdministrativeCorrection,
+    ) -> Result<PostedAdministrativeCorrection, LedgerError> {
+        validate_administrative_correction(correction)?;
+        let command = administrative_correction_transaction(correction);
+        let transaction = self.post_authorized(&command, Some(correction)).await?;
+        Ok(PostedAdministrativeCorrection {
+            correction_id: correction.correction_id,
+            transaction,
+        })
+    }
+
+    async fn post_authorized(
+        &self,
+        command: &PostTransaction,
+        correction: Option<&AdministrativeCorrection>,
+    ) -> Result<PostedTransaction, LedgerError> {
         validate_command(command)?;
 
         let mut attempt = 0_u32;
         loop {
-            match self.post_once(command).await {
+            match self.post_once(command, correction).await {
                 Err(error)
                     if is_retryable_transaction_error(&error)
                         && attempt < self.max_serializable_retries =>
@@ -562,7 +638,11 @@ impl Ledger {
         }
     }
 
-    async fn post_once(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
+    async fn post_once(
+        &self,
+        command: &PostTransaction,
+        correction: Option<&AdministrativeCorrection>,
+    ) -> Result<PostedTransaction, LedgerError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
@@ -587,7 +667,27 @@ impl Ledger {
         .await?;
 
         let Some(posted) = inserted else {
-            return resolve_idempotent_replay(tx, command).await;
+            let posted = resolve_idempotent_replay(&mut tx, command).await?;
+            if let Some(correction) = correction {
+                let audit_exists = sqlx::query_scalar::<_, bool>(
+                    r#"
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM ledger_administrative_corrections
+                        WHERE id = $1 AND journal_transaction_id = $2
+                    )
+                    "#,
+                )
+                .bind(correction.correction_id)
+                .bind(posted.id)
+                .fetch_one(&mut *tx)
+                .await?;
+                if !audit_exists {
+                    return Err(LedgerError::AdministrativeCorrectionAuditMissing(posted.id));
+                }
+            }
+            tx.commit().await?;
+            return Ok(posted);
         };
 
         let mut account_ids: Vec<Uuid> = command.legs.iter().map(|leg| leg.account_id).collect();
@@ -677,6 +777,36 @@ impl Ledger {
         .bind(json!({ "transaction_id": command.id }))
         .execute(&mut *tx)
         .await?;
+
+        if let Some(correction) = correction {
+            sqlx::query(
+                r#"
+                INSERT INTO ledger_administrative_corrections (
+                    id,
+                    journal_transaction_id,
+                    reason_type,
+                    reason,
+                    evidence_reference,
+                    incident_id,
+                    initiated_by,
+                    approved_by,
+                    approved_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                "#,
+            )
+            .bind(correction.correction_id)
+            .bind(command.id)
+            .bind(correction.reason_type.as_str())
+            .bind(&correction.reason)
+            .bind(&correction.evidence_reference)
+            .bind(&correction.incident_id)
+            .bind(&correction.initiated_by)
+            .bind(&correction.approved_by)
+            .bind(correction.approved_at)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         tx.commit().await?;
         Ok(posted)
@@ -771,8 +901,93 @@ fn validate_command(command: &PostTransaction) -> Result<(), LedgerError> {
     Ok(())
 }
 
+fn validate_administrative_correction(
+    correction: &AdministrativeCorrection,
+) -> Result<(), LedgerError> {
+    validate_correction_field("idempotency key", &correction.idempotency_key, 255)?;
+    validate_correction_field("reason", &correction.reason, 4_000)?;
+    validate_correction_field("evidence reference", &correction.evidence_reference, 2_000)?;
+    validate_correction_field("incident ID", &correction.incident_id, 255)?;
+    validate_correction_field("initiator", &correction.initiated_by, 255)?;
+    validate_correction_field("approver", &correction.approved_by, 255)?;
+
+    if correction
+        .initiated_by
+        .trim()
+        .eq_ignore_ascii_case(correction.approved_by.trim())
+    {
+        return Err(LedgerError::InvalidAdministrativeCorrection(
+            "initiator and approver must be different people".to_owned(),
+        ));
+    }
+    validate_command(&administrative_correction_transaction(correction))
+}
+
+fn validate_correction_field(
+    field_name: &str,
+    value: &str,
+    maximum_length: usize,
+) -> Result<(), LedgerError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > maximum_length {
+        return Err(LedgerError::InvalidAdministrativeCorrection(format!(
+            "{field_name} must contain between 1 and {maximum_length} characters"
+        )));
+    }
+    Ok(())
+}
+
+fn administrative_correction_transaction(correction: &AdministrativeCorrection) -> PostTransaction {
+    PostTransaction {
+        id: correction.transaction_id,
+        operation_type: "administrative_adjustment".to_owned(),
+        idempotency_key: correction.idempotency_key.clone(),
+        request_hash: administrative_correction_request_hash(correction),
+        external_reference: Some(json!({
+            "correction_id": correction.correction_id,
+            "incident_id": correction.incident_id,
+        })),
+        metadata: json!({
+            "reason_type": correction.reason_type,
+            "reason": correction.reason,
+            "evidence_reference": correction.evidence_reference,
+            "initiated_by": correction.initiated_by,
+            "approved_by": correction.approved_by,
+            "approved_at": correction.approved_at,
+        }),
+        legs: correction.legs.clone(),
+    }
+}
+
+fn administrative_correction_request_hash(correction: &AdministrativeCorrection) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hash_correction_field(&mut hasher, correction.correction_id.as_bytes());
+    hash_correction_field(&mut hasher, correction.transaction_id.as_bytes());
+    hash_correction_field(&mut hasher, correction.idempotency_key.as_bytes());
+    hash_correction_field(&mut hasher, correction.reason_type.as_str().as_bytes());
+    hash_correction_field(&mut hasher, correction.reason.as_bytes());
+    hash_correction_field(&mut hasher, correction.evidence_reference.as_bytes());
+    hash_correction_field(&mut hasher, correction.incident_id.as_bytes());
+    hash_correction_field(&mut hasher, correction.initiated_by.as_bytes());
+    hash_correction_field(&mut hasher, correction.approved_by.as_bytes());
+    hash_correction_field(&mut hasher, correction.approved_at.to_rfc3339().as_bytes());
+
+    let mut legs = correction.legs.clone();
+    legs.sort_unstable_by_key(|leg| leg.account_id);
+    for leg in legs {
+        hash_correction_field(&mut hasher, leg.account_id.as_bytes());
+        hash_correction_field(&mut hasher, leg.amount.normalized().to_string().as_bytes());
+    }
+    hasher.finalize().into()
+}
+
+fn hash_correction_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
+}
+
 async fn resolve_idempotent_replay(
-    mut tx: Transaction<'_, Postgres>,
+    tx: &mut Transaction<'_, Postgres>,
     command: &PostTransaction,
 ) -> Result<PostedTransaction, LedgerError> {
     let existing = sqlx::query_as::<_, ExistingTransaction>(
@@ -783,14 +998,13 @@ async fn resolve_idempotent_replay(
         "#,
     )
     .bind(&command.idempotency_key)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
 
     if existing.request_hash != command.request_hash {
         return Err(LedgerError::IdempotencyConflict);
     }
 
-    tx.commit().await?;
     Ok(PostedTransaction {
         id: existing.id,
         idempotency_key: existing.idempotency_key,
