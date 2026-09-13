@@ -37,6 +37,8 @@ pub struct BatchMetrics {
     /// Ring buffer for the rolling 1-second orders-per-second window:
     /// each entry is `(arrival_instant, order_count)`.
     orders_window: Mutex<VecDeque<(Instant, usize)>>,
+    /// Financial proposals rejected because validation or durable commit failed.
+    financial_commit_failures: AtomicU64,
 }
 
 impl BatchMetrics {
@@ -45,6 +47,7 @@ impl BatchMetrics {
             batch_size_histogram: Mutex::new(Vec::new()),
             last_dispatch_latency_ns: AtomicU64::new(0),
             orders_window: Mutex::new(VecDeque::new()),
+            financial_commit_failures: AtomicU64::new(0),
         })
     }
 
@@ -82,6 +85,15 @@ impl BatchMetrics {
             .sum()
     }
 
+    pub fn record_financial_commit_failure(&self) {
+        self.financial_commit_failures
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn financial_commit_failures(&self) -> u64 {
+        self.financial_commit_failures.load(Ordering::Relaxed)
+    }
+
     /// Snapshot of all recorded batch sizes (not sorted).
     /// Does NOT clear the histogram; use `snapshot_and_clear` for that.
     pub fn batch_size_histogram_snapshot(&self) -> Vec<u64> {
@@ -102,6 +114,7 @@ impl Default for BatchMetrics {
             batch_size_histogram: Mutex::new(Vec::new()),
             last_dispatch_latency_ns: AtomicU64::new(0),
             orders_window: Mutex::new(VecDeque::new()),
+            financial_commit_failures: AtomicU64::new(0),
         }
     }
 }

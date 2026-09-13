@@ -11,6 +11,7 @@ pub mod batch_dispatcher;
 pub mod cow_cache;
 pub mod credit;
 pub mod delta_buffer;
+pub mod financial;
 pub mod market_shards;
 pub mod matching_engine;
 pub mod ofi;
@@ -20,6 +21,9 @@ pub mod user_state;
 pub use batch_dispatcher::{BatchDispatcher, BatchMetrics, BatchedRequest};
 pub use credit::CreditSystem;
 pub use delta_buffer::DeltaBuffer;
+pub use financial::{
+    CustomerBalanceDelta, FinancialCommitter, FinancialEffectSet, PlatformBalanceDelta,
+};
 pub use market_shards::{MarketShard, MarketShards};
 pub use matching_engine::MatchingEngine;
 pub use ofi::ToxicityScorer;

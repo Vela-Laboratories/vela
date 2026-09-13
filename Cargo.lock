@@ -71,6 +71,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-test",
+ "bigdecimal",
  "bytes",
  "committee",
  "crc",
@@ -104,6 +105,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "types",
+ "uuid",
  "zkvm",
 ]
 

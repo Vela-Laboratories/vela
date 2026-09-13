@@ -155,12 +155,12 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Add account-level sequence or version controls for concurrency.
 - [x] Implement atomic balance materialization from journal entries.
 - [x] Implement available, locked, and pending balance categories.
-- [ ] Journal fees and maker rebates explicitly.
+- [x] Journal matcher-produced fees and maker rebates explicitly.
 - [ ] Add auditable administrative adjustment transactions.
 - [ ] Require dual approval for production administrative adjustments.
 - [ ] Build deterministic replay from the journal.
-- [ ] Integrate the matcher so accepted trades produce atomic ownership transfers.
-- [ ] Prevent the matcher from acknowledging a financially effective result before the ledger commits.
+- [x] Integrate the matcher so accepted trades produce atomic ownership transfers.
+- [x] Prevent the matcher from acknowledging a financially effective result before the ledger commits.
 - [ ] Remove the engine's role as authoritative owner of customer funds.
 
 ### M2 acceptance criteria
@@ -169,7 +169,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Concurrent operations cannot overspend an account.
 - [x] Duplicate requests return the original result without applying twice.
 - [ ] A full ledger replay reproduces all materialized balances exactly.
-- [ ] A completed trade moves base, quote, fees, and rebates atomically.
+- [x] A completed trade moves base, quote, fees, and rebates atomically.
 - [ ] Engine restart does not change customer ownership.
 
 ## Milestone 3: verified deposit pipeline
@@ -439,6 +439,11 @@ Work should begin in this order. Each item should land as a small, independently
 14. [ ] **EX-014: Managed PostgreSQL provisioning and disaster recovery**
     - Select and provision isolated managed production and staging PostgreSQL 16 services when budget permits.
     - Configure replication, encrypted offsite backups, point-in-time recovery, alerts, and provider-specific restore rehearsal before accepting real funds.
+15. [x] **EX-015: Matcher-ledger financial commit boundary**
+    - Execute order batches against private proposal state, derive balanced customer and platform account effects, and publish engine state only after the authoritative ledger commits.
+    - Journal order reservations, releases, trades, taker fees, maker fees, maker rebates, and referral payouts with deterministic idempotency keys and exact asset-decimal conversion.
+    - Fail closed without acknowledging or publishing speculative state when validation, account resolution, or PostgreSQL commit fails; expose a rejection counter for alerting.
+    - Verify acknowledgement ordering, rollback behavior, and a complete ETH/USDC trade against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

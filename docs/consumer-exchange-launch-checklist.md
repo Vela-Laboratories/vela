@@ -70,17 +70,17 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Use redundant RPC providers.
 - [ ] Add RPC disagreement and stale-head detection.
 - [x] Decide which ledger is authoritative.
-- [ ] Complete integration of the double-entry financial ledger; the schema and atomic posting primitive are implemented, but exchange financial flows do not use it yet.
+- [ ] Complete integration of the double-entry financial ledger; matcher reservations, releases, trades, fees, rebates, and referral payouts use it when configured, while deposits, withdrawals, recovery, and reconciliation remain open.
 - [ ] Journal every deposit.
-- [ ] Journal every trade.
-- [ ] Journal every fee.
-- [ ] Journal every rebate.
+- [x] Journal every matcher-produced trade when the authoritative ledger is configured.
+- [x] Journal every matcher-produced fee when the authoritative ledger is configured.
+- [x] Journal every matcher-produced rebate when the authoritative ledger is configured.
 - [ ] Journal every withdrawal reservation.
 - [ ] Journal every completed withdrawal.
 - [ ] Journal every failed or reversed withdrawal.
 - [ ] Journal every administrative adjustment.
 - [x] Require balanced debits and credits for every journal transaction at the PostgreSQL commit boundary.
-- [ ] Make ledger writes durable before acknowledging financial operations.
+- [ ] Make ledger writes durable before acknowledging every financial operation; matcher operations now satisfy this, but deposits and withdrawals remain open.
 - [ ] Give every financial operation a globally unique idempotency key.
 - [ ] Prevent test, synthetic, bridge, and real-money balances from mixing.
 - [ ] Add separate environments and ledger namespaces for testnet and production.

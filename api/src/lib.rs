@@ -35,6 +35,7 @@ pub mod fix_adapter;
 pub mod fix_gateway;
 pub mod handler;
 pub mod historical;
+pub mod ledger_coordinator;
 pub mod listings;
 pub mod mcp;
 pub mod mm;
@@ -317,6 +318,11 @@ impl AppState {
         let threshold_decryptor = Arc::new(Mutex::new(committee::ThresholdDecryptor::new(t, n)));
 
         let batch_metrics = BatchMetrics::new();
+        let financial_committer = ledger.as_ref().map(|ledger| {
+            Arc::new(crate::ledger_coordinator::LedgerFinancialCommitter::new(
+                Arc::clone(ledger),
+            )) as Arc<dyn engine::FinancialCommitter>
+        });
 
         let oracle = crate::oracle::PriceOracle::new();
 
@@ -400,6 +406,7 @@ impl AppState {
             max_batch_size,
             Arc::clone(&batch_metrics),
             None,
+            financial_committer,
         ));
         tokio::spawn(ws::run_background_task(Arc::clone(&state)));
         tokio::spawn(midnight_reset_task(Arc::clone(&state)));

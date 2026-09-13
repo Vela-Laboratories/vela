@@ -367,6 +367,12 @@ pub struct Fill {
     pub quantity: Quantity,
     pub maker_fee: i64,
     pub taker_fee: i64,
+    /// Optional referral recipient paid from the taker fee.
+    #[serde(default)]
+    pub referral_recipient: Option<UserId>,
+    /// Quote-asset amount paid to `referral_recipient` in engine units.
+    #[serde(default)]
+    pub referral_fee: u64,
     pub timestamp: Timestamp,
     /// Adverse-selection toxicity score in [0.0, 1.0] for the taker order.
     /// 0.0 for non-taker fills (e.g., resting orders posted without a match).
@@ -377,7 +383,7 @@ pub struct Fill {
     pub ofi_snapshot: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Balance {
     pub user: UserId,
     pub asset: AssetId,

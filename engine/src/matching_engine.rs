@@ -24,6 +24,7 @@ type ExpiryCandidate = (
     Option<String>,
 );
 
+#[derive(Clone)]
 pub struct MatchingEngine {
     pub order_books: EngineMap<MarketId, OrderBook>,
     pub balances: EngineMap<(UserId, AssetId), Balance>,
@@ -308,6 +309,12 @@ impl MatchingEngine {
             return Err(VelaError::PostOnlyWouldMatch);
         }
 
+        // Reserve the incoming order's complete spend before matching. Fills
+        // settle from locked funds, and the unused reservation is released
+        // below. Without this step a marketable taker could receive assets
+        // while its available spend balance remained unchanged.
+        delta.lock_available(&req.user, &spend_asset, order_notional, bal_base);
+
         let mut order = Order {
             id: order_id,
             user: req.user.clone(),
@@ -330,11 +337,24 @@ impl MatchingEngine {
             self.match_order(&order, market, delta)?;
 
         let total_filled: u64 = fills.iter().map(|f| f.quantity).sum();
+        let filled_spend: u64 = match req.side {
+            OrderSide::Bid => fills
+                .iter()
+                .map(|fill| CreditSystem::compute_notional(fill.price, fill.quantity))
+                .sum(),
+            OrderSide::Ask => total_filled,
+        };
         order.filled_quantity = total_filled;
 
         // STP short-circuit: taker is canceled, any maker cancels from STP
         // remain committed. Skip FOK, min_quantity, and resting logic.
         if taker_canceled_by_stp {
+            delta.unlock_to_available(
+                &req.user,
+                &spend_asset,
+                order_notional.saturating_sub(filled_spend),
+                bal_base,
+            );
             order.status = OrderStatus::Canceled;
             delta.set_metadata(meta);
             let mut responses: Vec<Response> = room_cancels;
@@ -381,7 +401,10 @@ impl MatchingEngine {
                 OrderSide::Bid => CreditSystem::compute_notional(req.price, remaining),
                 OrderSide::Ask => remaining,
             };
-            delta.lock_available(&req.user, &spend_asset, resting_spend, bal_base);
+            let unused_reservation = order_notional
+                .saturating_sub(filled_spend)
+                .saturating_sub(resting_spend);
+            delta.unlock_to_available(&req.user, &spend_asset, unused_reservation, bal_base);
             order.status = if total_filled > 0 {
                 OrderStatus::PartiallyFilled
             } else {
@@ -392,6 +415,12 @@ impl MatchingEngine {
             delta.set_metadata(meta);
             delta.record_insert(req.market.clone(), order.clone());
         } else {
+            delta.unlock_to_available(
+                &req.user,
+                &spend_asset,
+                order_notional.saturating_sub(filled_spend),
+                bal_base,
+            );
             order.status = if total_filled >= req.quantity {
                 OrderStatus::Filled
             } else {
@@ -562,6 +591,16 @@ impl MatchingEngine {
 
                 let taker_fee = (fill_notional as i64 * taker_bps) / 10_000;
                 let maker_fee = (fill_notional as i64 * maker_bps) / 10_000;
+                let (referral_recipient, referral_fee) = if taker_fee > 0 {
+                    taker_meta_for_fee
+                        .ref_by
+                        .as_deref()
+                        .and_then(|reference| UserId::from_hex(reference).ok())
+                        .map(|user| (Some(user), (taker_fee as u64) / 5))
+                        .unwrap_or((None, 0))
+                } else {
+                    (None, 0)
+                };
 
                 let fill = Fill {
                     maker_order_id: resting.id,
@@ -574,6 +613,8 @@ impl MatchingEngine {
                     quantity: fill_qty,
                     maker_fee,
                     taker_fee,
+                    referral_recipient,
+                    referral_fee,
                     timestamp: self.timestamp,
                     // Populated below after scoring.
                     toxicity_score: 0.0,
@@ -840,20 +881,13 @@ impl MatchingEngine {
         let net_exchange_fee = fill.taker_fee + fill.maker_fee;
         delta.add_exchange_fee(market.quote.as_str(), net_exchange_fee);
 
-        if fill.taker_fee > 0 {
-            let taker_meta = delta.get_metadata(&fill.taker, meta_base);
-            if let Some(ref_hex) = taker_meta.ref_by {
-                if let Ok(ref_user) = UserId::from_hex(&ref_hex) {
-                    let referral_amount = (fill.taker_fee as u64) / 5;
-                    if referral_amount > 0 {
-                        delta.credit_available(&ref_user, &market.quote, referral_amount, bal_base);
-                        delta.add_exchange_fee(market.quote.as_str(), -(referral_amount as i64));
-                        let mut ref_meta = delta.get_metadata(&ref_user, meta_base);
-                        ref_meta.ref_earnings =
-                            ref_meta.ref_earnings.saturating_add(referral_amount);
-                        delta.set_metadata(ref_meta);
-                    }
-                }
+        if let Some(ref_user) = fill.referral_recipient.as_ref() {
+            if fill.referral_fee > 0 {
+                delta.credit_available(ref_user, &market.quote, fill.referral_fee, bal_base);
+                delta.add_exchange_fee(market.quote.as_str(), -(fill.referral_fee as i64));
+                let mut ref_meta = delta.get_metadata(ref_user, meta_base);
+                ref_meta.ref_earnings = ref_meta.ref_earnings.saturating_add(fill.referral_fee);
+                delta.set_metadata(ref_meta);
             }
         }
     }

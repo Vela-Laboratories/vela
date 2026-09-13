@@ -1,4 +1,7 @@
-use crate::{BatchMetrics, BatchedRequest, EngineMap, MatchingEngine, UserState};
+use crate::{
+    BatchMetrics, BatchedRequest, EngineMap, FinancialCommitter, FinancialEffectSet,
+    MatchingEngine, UserState,
+};
 use futures::future::join_all;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,6 +35,131 @@ impl MarketShards {
             .insert(market_id, Arc::new(TokioMutex::new(MarketShard { engine })));
     }
 
+    pub async fn dispatch_sharded_batch(
+        shards: Arc<MarketShards>,
+        pending: Vec<BatchedRequest>,
+        window_open: Instant,
+        metrics: Arc<BatchMetrics>,
+    ) -> BatchResult {
+        Self::dispatch_sharded_batch_with_committer(shards, pending, window_open, metrics, None)
+            .await
+    }
+
+    pub async fn dispatch_sharded_batch_with_committer(
+        shards: Arc<MarketShards>,
+        pending: Vec<BatchedRequest>,
+        window_open: Instant,
+        metrics: Arc<BatchMetrics>,
+        committer: Option<Arc<dyn FinancialCommitter>>,
+    ) -> BatchResult {
+        let Some(committer) = committer else {
+            return Self::dispatch_sharded_batch_in_place(shards, pending, window_open, metrics)
+                .await;
+        };
+
+        // Hold the committed state locks for the complete proposal lifecycle.
+        // Readers cannot observe speculative order-book or balance changes, and
+        // other writers cannot be lost when the proposal is published.
+        let mut committed_user_state = shards.user_state.write().await;
+        let mut shard_ids: Vec<MarketId> = shards.shards.keys().cloned().collect();
+        shard_ids.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut committed_shards = Vec::with_capacity(shard_ids.len());
+        for market_id in &shard_ids {
+            let shard = shards
+                .shards
+                .get(market_id)
+                .expect("market id came from shard map")
+                .lock()
+                .await;
+            committed_shards.push((market_id.clone(), shard));
+        }
+
+        let proposed_user_state = Arc::new(RwLock::new(committed_user_state.clone()));
+        let mut proposed_shards = MarketShards::new(Arc::clone(&proposed_user_state));
+        for (market_id, shard) in &committed_shards {
+            proposed_shards.add_shard(market_id.clone(), shard.engine.clone());
+        }
+        let proposed_shards = Arc::new(proposed_shards);
+
+        // The in-place executor writes only to the private proposal and sends
+        // responses to proxy channels. Original callers hear nothing until the
+        // ledger commit and state publication both succeed.
+        let mut deliveries = Vec::with_capacity(pending.len());
+        let mut proxy_pending = Vec::with_capacity(pending.len());
+        for item in pending {
+            let (proxy_responder, proxy_receiver) = tokio::sync::oneshot::channel();
+            deliveries.push((item.responder, proxy_receiver));
+            proxy_pending.push(BatchedRequest {
+                request: item.request,
+                ts: item.ts,
+                responder: proxy_responder,
+                decryption_proof: item.decryption_proof,
+            });
+        }
+
+        let mut batch_result = Self::dispatch_sharded_batch_in_place(
+            Arc::clone(&proposed_shards),
+            proxy_pending,
+            window_open,
+            Arc::clone(&metrics),
+        )
+        .await;
+
+        let mut proposed_responses = Vec::with_capacity(deliveries.len());
+        for (_, receiver) in &mut deliveries {
+            proposed_responses.push(receiver.await.unwrap_or_else(|_| {
+                vec![Response::Error(types::ErrorResponse {
+                    code: types::ErrorCode::InternalError,
+                    message: "financial proposal failed".to_owned(),
+                })]
+            }));
+        }
+
+        let proposed_user_guard = proposed_user_state.read().await;
+        let commit_result = match FinancialEffectSet::between(
+            &committed_user_state,
+            &proposed_user_guard,
+            &batch_result.responses,
+            batch_result.batch_size,
+        ) {
+            Ok(Some(effects)) => committer.commit(&effects).await,
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
+        };
+
+        if let Err(error) = commit_result {
+            metrics.record_financial_commit_failure();
+            tracing::error!(error = %error, "financial proposal rejected; committed state unchanged");
+            proposed_responses = (0..deliveries.len())
+                .map(|_| {
+                    vec![Response::Error(types::ErrorResponse {
+                        code: types::ErrorCode::InternalError,
+                        message: "financial commit failed".to_owned(),
+                    })]
+                })
+                .collect();
+            batch_result.responses = proposed_responses.iter().flatten().cloned().collect();
+        } else {
+            *committed_user_state = proposed_user_guard.clone();
+            for (market_id, committed_shard) in &mut committed_shards {
+                let proposed_shard = proposed_shards
+                    .shards
+                    .get(market_id)
+                    .expect("proposal contains every committed shard")
+                    .lock()
+                    .await;
+                committed_shard.engine = proposed_shard.engine.clone();
+            }
+        }
+        drop(proposed_user_guard);
+
+        for ((responder, _), responses) in deliveries.into_iter().zip(proposed_responses) {
+            let _ = responder.send(responses);
+        }
+
+        batch_result
+    }
+
     /// Main sharded dispatch: implements 3-phase protocol.
     ///
     /// Phase 1 has two sub-passes:
@@ -45,7 +173,7 @@ impl MarketShards {
     /// their base. They accept nonces and lock balances themselves.
     ///
     /// Phase 3: apply shard balance/metadata/fee deltas back to UserState.
-    pub async fn dispatch_sharded_batch(
+    async fn dispatch_sharded_batch_in_place(
         shards: Arc<MarketShards>,
         pending: Vec<BatchedRequest>,
         window_open: Instant,
@@ -338,6 +466,7 @@ impl MarketShards {
         max_batch_size: usize,
         metrics: Arc<BatchMetrics>,
         result_tx: Option<tokio::sync::mpsc::Sender<BatchResult>>,
+        financial_committer: Option<Arc<dyn FinancialCommitter>>,
     ) {
         loop {
             let first = match rx.recv().await {
@@ -358,11 +487,12 @@ impl MarketShards {
                 }
             }
 
-            let batch_result = Self::dispatch_sharded_batch(
+            let batch_result = Self::dispatch_sharded_batch_with_committer(
                 Arc::clone(&shards),
                 pending,
                 window_open,
                 Arc::clone(&metrics),
+                financial_committer.clone(),
             )
             .await;
 

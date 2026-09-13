@@ -15,6 +15,8 @@ engine = { workspace = true }
 perp = { path = "../perp" }
 fix = { path = "../fix" }
 ledger = { path = "../ledger" }
+bigdecimal = { workspace = true }
+uuid = { workspace = true }
 zkvm = { path = "../zkvm" }
 tee = { path = "../tee" }
 committee = { path = "../committee" }

@@ -580,6 +580,16 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         "vela_batch_dispatch_latency_ns {}",
         state.batch_metrics.batch_dispatch_latency_ns()
     );
+    let _ = writeln!(
+        out,
+        "# HELP vela_financial_commit_failures_total Financial proposals rejected before publication."
+    );
+    let _ = writeln!(out, "# TYPE vela_financial_commit_failures_total counter");
+    let _ = writeln!(
+        out,
+        "vela_financial_commit_failures_total {}",
+        state.batch_metrics.financial_commit_failures()
+    );
 
     let _ = writeln!(
         out,

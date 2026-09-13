@@ -4,10 +4,10 @@ This crate is the PostgreSQL financial source of truth described by ADR-001. It 
 
 ## Local verification
 
-The integration tests create isolated databases through SQLx and therefore require a PostgreSQL administrator URL:
+The ledger and matcher integration tests create isolated databases through SQLx and therefore require a PostgreSQL administrator URL:
 
 ```sh
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test -p ledger
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test -p ledger -p api --test ledger_financial_commit
 ```
 
 CI starts PostgreSQL 16 and runs the ledger tests as part of the workspace test suite. No production database is provisioned by this crate.
@@ -35,8 +35,13 @@ each login exactly one of `vela_ledger_migrator`, `vela_ledger_writer`, or
 `GET /health` is process liveness. `GET /ready` checks database connectivity and
 the exact ledger schema version whenever the ledger is configured. Production
 returns not-ready when the ledger is absent or unhealthy; development and the
-public testnet demo may run without a ledger while matcher integration remains
-unfinished.
+public testnet demo may run without a ledger. When configured, the matcher
+keeps each batch private until its complete balanced financial effect commits;
+failure discards the proposal and returns an internal error.
+
+See [the matcher-ledger commit boundary](../docs/architecture/matcher-ledger-commit.md)
+for account requirements, decimal conversion, acknowledgement ordering, and
+current limitations.
 
 See [the ledger database runbook](../docs/operations/ledger-database.md) for
 setup, migration, access, and recovery procedures.

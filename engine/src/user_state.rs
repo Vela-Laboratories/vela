@@ -5,6 +5,7 @@ use types::{
     PostOrderRequest, Timestamp, UserId, UserMetadata, VelaError, WithdrawalRequest,
 };
 
+#[derive(Clone)]
 pub struct UserState {
     pub balances: EngineMap<(UserId, AssetId), Balance>,
     pub metadata: EngineMap<UserId, UserMetadata>,

@@ -52,6 +52,20 @@ pub struct NewAccount {
     pub allow_negative: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AccountLookup {
+    pub asset_code: String,
+    pub owner_type: String,
+    pub owner_reference: String,
+    pub account_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAccount {
+    pub id: Uuid,
+    pub asset_decimals: i16,
+}
+
 #[derive(Debug, Error)]
 pub enum LedgerError {
     #[error("journal transaction must contain at least two legs")]
@@ -74,6 +88,14 @@ pub enum LedgerError {
     IdempotencyConflict,
     #[error("ledger schema version mismatch: expected {expected}, found {found}")]
     SchemaVersion { expected: i64, found: i64 },
+    #[error(
+        "ledger account is not provisioned for asset {asset_code}, owner {owner_reference}, type {account_type}"
+    )]
+    MissingAccount {
+        asset_code: String,
+        owner_reference: String,
+        account_type: String,
+    },
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -235,6 +257,48 @@ impl Ledger {
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    pub async fn resolve_accounts(
+        &self,
+        lookups: &[AccountLookup],
+    ) -> Result<HashMap<AccountLookup, ResolvedAccount>, LedgerError> {
+        let mut resolved = HashMap::with_capacity(lookups.len());
+        for lookup in lookups {
+            if resolved.contains_key(lookup) {
+                continue;
+            }
+            let account = sqlx::query_as::<_, (Uuid, i16)>(
+                r#"
+                SELECT account.id, asset.decimals
+                FROM ledger_accounts account
+                JOIN ledger_assets asset ON asset.id = account.asset_id
+                WHERE asset.code = $1
+                  AND account.owner_type = $2
+                  AND account.owner_reference = $3
+                  AND account.account_type = $4
+                "#,
+            )
+            .bind(&lookup.asset_code)
+            .bind(&lookup.owner_type)
+            .bind(&lookup.owner_reference)
+            .bind(&lookup.account_type)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| LedgerError::MissingAccount {
+                asset_code: lookup.asset_code.clone(),
+                owner_reference: lookup.owner_reference.clone(),
+                account_type: lookup.account_type.clone(),
+            })?;
+            resolved.insert(
+                lookup.clone(),
+                ResolvedAccount {
+                    id: account.0,
+                    asset_decimals: account.1,
+                },
+            );
+        }
+        Ok(resolved)
     }
 
     pub async fn post(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {

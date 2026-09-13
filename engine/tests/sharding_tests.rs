@@ -366,3 +366,209 @@ async fn test_concurrent_fill_determinism() {
         "One maker order should remain in book"
     );
 }
+
+struct BlockingCommitter {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Semaphore>,
+    should_fail: bool,
+    seen_fills: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl engine::FinancialCommitter for BlockingCommitter {
+    fn commit<'a>(
+        &'a self,
+        effects: &'a engine::FinancialEffectSet,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
+        Box::pin(async move {
+            self.seen_fills
+                .store(effects.fills.len(), std::sync::atomic::Ordering::SeqCst);
+            self.entered.notify_one();
+            self.release
+                .acquire()
+                .await
+                .expect("release semaphore should stay open")
+                .forget();
+            if self.should_fail {
+                Err("injected ledger failure".to_owned())
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+async fn resting_ask_and_crossing_bid(
+    shards: &Arc<MarketShards>,
+    user_state: &Arc<RwLock<UserState>>,
+) -> (
+    engine::BatchedRequest,
+    tokio::sync::oneshot::Receiver<Vec<types::Response>>,
+) {
+    let maker = make_user(90);
+    let taker = make_user(91);
+    deposit(user_state, maker.clone(), "ETH", 2 * types::QUANTITY_SCALE).await;
+    deposit(
+        user_state,
+        taker.clone(),
+        "USDC",
+        10_000 * types::PRICE_SCALE,
+    )
+    .await;
+
+    let (maker_sender, maker_receiver) = tokio::sync::oneshot::channel();
+    let maker_request = engine::BatchedRequest {
+        request: Request::PostOrder(PostOrderRequest {
+            user: maker,
+            market: MarketId("ETH-USDC".to_owned()),
+            side: OrderSide::Ask,
+            order_type: OrderType::GoodTillCanceled,
+            price: 2_000 * types::PRICE_SCALE,
+            quantity: types::QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: None,
+            signature: vec![],
+            stp: Default::default(),
+            min_quantity: None,
+            display_quantity: None,
+        }),
+        ts: 1,
+        responder: maker_sender,
+        decryption_proof: None,
+    };
+    MarketShards::dispatch_sharded_batch(
+        Arc::clone(shards),
+        vec![maker_request],
+        std::time::Instant::now(),
+        engine::BatchMetrics::new(),
+    )
+    .await;
+    maker_receiver.await.unwrap();
+
+    let (taker_sender, taker_receiver) = tokio::sync::oneshot::channel();
+    let taker_request = engine::BatchedRequest {
+        request: Request::PostOrder(PostOrderRequest {
+            user: taker,
+            market: MarketId("ETH-USDC".to_owned()),
+            side: OrderSide::Bid,
+            order_type: OrderType::GoodTillCanceled,
+            price: 2_000 * types::PRICE_SCALE,
+            quantity: types::QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: None,
+            signature: vec![],
+            stp: Default::default(),
+            min_quantity: None,
+            display_quantity: None,
+        }),
+        ts: 2,
+        responder: taker_sender,
+        decryption_proof: None,
+    };
+    (taker_request, taker_receiver)
+}
+
+#[tokio::test]
+async fn financial_ack_waits_for_commit_before_publishing_state() {
+    let (shards, user_state) = build_shards(&["ETH-USDC"]).await;
+    let (taker_request, mut taker_receiver) =
+        resting_ask_and_crossing_bid(&shards, &user_state).await;
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let seen_fills = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let committer = Arc::new(BlockingCommitter {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+        should_fail: false,
+        seen_fills: Arc::clone(&seen_fills),
+    });
+    let entered_wait = entered.notified();
+    let metrics = engine::BatchMetrics::new();
+
+    let dispatch = tokio::spawn(engine::MarketShards::dispatch_sharded_batch_with_committer(
+        Arc::clone(&shards),
+        vec![taker_request],
+        std::time::Instant::now(),
+        Arc::clone(&metrics),
+        Some(committer),
+    ));
+    entered_wait.await;
+
+    assert!(matches!(
+        taker_receiver.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    let shard = shards.shards.get(&MarketId("ETH-USDC".to_owned())).unwrap();
+    assert!(
+        shard.try_lock().is_err(),
+        "committed shard must stay fenced"
+    );
+    assert_eq!(seen_fills.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    release.add_permits(1);
+    dispatch.await.unwrap();
+    let responses = taker_receiver.await.unwrap();
+    assert!(responses
+        .iter()
+        .any(|response| matches!(response, types::Response::OrderFilled(_))));
+    let shard = shard.lock().await;
+    assert!(shard
+        .engine
+        .order_books
+        .get(&MarketId("ETH-USDC".to_owned()))
+        .unwrap()
+        .all_orders()
+        .is_empty());
+    assert_eq!(metrics.financial_commit_failures(), 0);
+}
+
+#[tokio::test]
+async fn financial_commit_failure_discards_proposal_and_returns_error() {
+    let (shards, user_state) = build_shards(&["ETH-USDC"]).await;
+    let (taker_request, taker_receiver) = resting_ask_and_crossing_bid(&shards, &user_state).await;
+    let before = user_state.read().await.balances.clone();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let committer = Arc::new(BlockingCommitter {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+        should_fail: true,
+        seen_fills: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    });
+    let entered_wait = entered.notified();
+    let metrics = engine::BatchMetrics::new();
+
+    let dispatch = tokio::spawn(engine::MarketShards::dispatch_sharded_batch_with_committer(
+        Arc::clone(&shards),
+        vec![taker_request],
+        std::time::Instant::now(),
+        Arc::clone(&metrics),
+        Some(committer),
+    ));
+    entered_wait.await;
+    release.add_permits(1);
+    dispatch.await.unwrap();
+
+    let responses = taker_receiver.await.unwrap();
+    assert!(responses.iter().any(|response| matches!(
+        response,
+        types::Response::Error(error) if error.code == types::ErrorCode::InternalError
+    )));
+    assert_eq!(user_state.read().await.balances, before);
+    assert_eq!(metrics.financial_commit_failures(), 1);
+    let shard = shards
+        .shards
+        .get(&MarketId("ETH-USDC".to_owned()))
+        .unwrap()
+        .lock()
+        .await;
+    assert_eq!(
+        shard
+            .engine
+            .order_books
+            .get(&MarketId("ETH-USDC".to_owned()))
+            .unwrap()
+            .all_orders()
+            .len(),
+        1
+    );
+}

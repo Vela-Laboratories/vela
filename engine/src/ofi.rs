@@ -17,6 +17,7 @@ pub const CREDIT_PENALTY_DURATION_US: u64 = 10_000_000;
 ///
 /// +qty for buyer-initiated fills, -qty for seller-initiated fills.
 /// All operations are O(1) with no heap allocation after construction.
+#[derive(Clone)]
 pub struct OfiAccumulator {
     buf: [i64; DEFAULT_OFI_WINDOW],
     /// Next write slot; wraps at DEFAULT_OFI_WINDOW.
@@ -87,6 +88,7 @@ pub fn compute_toxicity(ofi_imbalance: f64, size_fraction: f64, walked_book: boo
 }
 
 /// Maintains per-market OFI accumulators and computes toxicity on each taker fill.
+#[derive(Clone)]
 pub struct ToxicityScorer {
     pub accumulators: HashMap<MarketId, OfiAccumulator>,
 }
