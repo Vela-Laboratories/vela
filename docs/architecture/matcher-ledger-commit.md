@@ -36,14 +36,20 @@ The journal metadata retains the complete effect set and engine responses, and r
 
 ## Account provisioning
 
-Account lookup is exact and fails closed. Before an order can affect an account, the database must contain the matching asset and account tuple:
+Asset lookup is exact and fails closed. The controlled `ledger-bootstrap` command provisions and verifies approved ETH/USDC assets plus platform fee/rebate accounts. Matcher commits idempotently create missing customer available/locked accounts only for those already-approved assets:
 
 | Owner | Owner reference | Account types |
 | --- | --- | --- |
 | Customer | Lowercase `UserId::to_hex()` | `customer_available`, `customer_locked` |
 | Platform | `platform:vela` | `fee_revenue`, `rebate_expense` |
 
-Only accounts with a nonzero effect are required for a particular transaction. Customer accounts remain nonnegative. Platform policy determines whether fee and rebate accounts may carry signed balances.
+Only accounts with a nonzero effect are required for a particular transaction. Customer accounts remain nonnegative. Platform fee and rebate accounts use the signed policy established by bootstrap. A missing asset or conflicting account policy rejects the proposal before publication.
+
+## Startup replay
+
+When a ledger is configured, API construction replays every journal leg in identity sequence under one repeatable-read, read-only PostgreSQL snapshot. It independently totals every account and compares the result with `ledger_account_balances`. Any missing account reference or projection mismatch aborts startup.
+
+Customer available and locked balances, plus the net platform fee/rebate balance, are converted exactly into engine units and replace financial values recovered from snapshots or WAL. This makes the matching engine a derived financial cache and prevents stale local state from changing customer ownership after restart. Pending deposits, withdrawal reservations, and custody accounts remain authoritative in PostgreSQL but are intentionally not made tradable engine balances.
 
 ## Amount conversion
 
@@ -53,4 +59,4 @@ The engine represents price and quantity with eight decimal places. Ledger asset
 
 Automated tests prove that responses and committed shard state remain unavailable while a financial commit is blocked, failed commits roll back the proposal, missing accounts fail closed, and an ETH/USDC fill moves base, quote, taker fee, and maker rebate atomically in PostgreSQL.
 
-This chapter does not complete deposit indexing, withdrawal orchestration, journal replay, custody reconciliation, or managed database disaster recovery. Those remain explicit launch blockers in the engineering plan and launch checklist.
+This chapter does not complete deposit indexing, withdrawal orchestration, complete order-book replay without snapshots/WAL, custody reconciliation, or managed database disaster recovery. Those remain explicit launch blockers in the engineering plan and launch checklist.

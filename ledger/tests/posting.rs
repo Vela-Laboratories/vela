@@ -1,5 +1,8 @@
 use bigdecimal::BigDecimal;
-use ledger::{JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset, PostTransaction};
+use ledger::{
+    AccountProvisionRequest, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
+    PostTransaction,
+};
 use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -379,5 +382,89 @@ async fn readiness_rejects_database_without_current_schema(pool: PgPool) {
             expected: 1,
             found: 0
         })
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn account_provisioning_is_idempotent_and_policy_checked(pool: PgPool) {
+    let ledger = Ledger::from_pool(pool);
+    ledger
+        .ensure_asset(&NewAsset {
+            id: Uuid::new_v4(),
+            code: "ETH".to_owned(),
+            decimals: 18,
+            chain_id: Some(8453),
+            contract_address: None,
+        })
+        .await
+        .unwrap();
+    ledger
+        .ensure_asset(&NewAsset {
+            id: Uuid::new_v4(),
+            code: "ETH".to_owned(),
+            decimals: 18,
+            chain_id: Some(8453),
+            contract_address: None,
+        })
+        .await
+        .unwrap();
+
+    let request = AccountProvisionRequest {
+        asset_code: "ETH".to_owned(),
+        owner_type: "customer".to_owned(),
+        owner_reference: "0x0000000000000000000000000000000000000001".to_owned(),
+        account_type: "customer_available".to_owned(),
+        allow_negative: false,
+    };
+    let first = ledger.ensure_accounts(&[request.clone()]).await.unwrap();
+    let second = ledger.ensure_accounts(&[request.clone()]).await.unwrap();
+    assert_eq!(
+        first.values().next().unwrap(),
+        second.values().next().unwrap()
+    );
+
+    let mut invalid = request;
+    invalid.allow_negative = true;
+    assert!(matches!(
+        ledger.ensure_accounts(&[invalid]).await,
+        Err(LedgerError::InvalidAccountProvision(_))
+    ));
+
+    let conflicting_asset = ledger
+        .ensure_asset(&NewAsset {
+            id: Uuid::new_v4(),
+            code: "ETH".to_owned(),
+            decimals: 8,
+            chain_id: Some(8453),
+            contract_address: None,
+        })
+        .await;
+    assert!(matches!(
+        conflicting_asset,
+        Err(LedgerError::AssetConfigurationConflict(code)) if code == "ETH"
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn journal_replay_matches_projection_and_detects_divergence(pool: PgPool) {
+    let fixture = Fixture::new(pool.clone()).await;
+    fixture.seed_source(100).await;
+
+    let replayed = fixture.ledger.replay_account_balances().await.unwrap();
+    let source = replayed
+        .iter()
+        .find(|account| account.account_id == fixture.source_id)
+        .unwrap();
+    assert_eq!(source.balance, BigDecimal::from(100));
+
+    sqlx::query("UPDATE ledger_account_balances SET balance = balance + 1 WHERE account_id = $1")
+        .bind(fixture.source_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture.ledger.replay_account_balances().await,
+        Err(LedgerError::ReplayProjectionMismatch { account_id, .. })
+            if account_id == fixture.source_id
     ));
 }

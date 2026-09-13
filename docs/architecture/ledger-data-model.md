@@ -54,6 +54,7 @@ The request hash binds an idempotency key to its original command. An identical 
 | Retries cannot apply twice | `ledger::Ledger` | Unique idempotency key | Same-request and conflicting-request tests |
 | Journal and evidence history is immutable | Ledger services | Mutation triggers | Journal update/delete test plus migration constraints |
 | Balance projections equal journal history | `ledger::Ledger` | Atomic transaction | Projection verification test |
+| Engine financial cache equals journal ownership after restart | API startup replay | Immutable journal sequence | PostgreSQL restart and stale-cache replacement test |
 | Financial events follow commit | Outbox publisher | Transactional outbox foreign key | Outbox assertion in posting test |
 | Deposits have one canonical event identity | Future Base indexer | Unique chain-event constraints | Migration constraint; indexer integration test pending |
 | Administrative corrections require two people | Future admin service | Initiator/approver inequality | Service authorization test pending |

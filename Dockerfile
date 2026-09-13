@@ -24,6 +24,7 @@ RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src
     && echo 'fn main() {}' > api/src/main.rs \
     && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
     && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
+    && echo 'fn main() {}' > ledger/src/bin/bootstrap.rs \
     && echo 'fn main() {}' > engine/benches/matching_engine_bench.rs \
     && echo 'fn main() {}' > benches/benches/matching.rs \
     && echo 'fn main() {}' > benches/benches/e2e_http.rs \
@@ -35,7 +36,7 @@ RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src
 COPY . .
 RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src \
       -type f -exec touch {} + \
-    && cargo build --release --bin api --bin ledger-migrate
+    && cargo build --release --bin api --bin ledger-migrate --bin ledger-bootstrap
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -50,6 +51,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/api /usr/local/bin/api
 COPY --from=builder /app/target/release/ledger-migrate /usr/local/bin/ledger-migrate
+COPY --from=builder /app/target/release/ledger-bootstrap /usr/local/bin/ledger-bootstrap
 
 USER vela
 WORKDIR /app

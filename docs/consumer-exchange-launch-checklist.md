@@ -189,8 +189,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Fail closed when a financial snapshot is corrupt.
 - [ ] Require explicit operator recovery procedures for corrupted state.
 - [ ] Store the financial journal in replicated durable storage.
-- [ ] Separate the matching-engine cache from the authoritative ledger.
-- [ ] Rebuild engine state from the authoritative journal.
+- [x] Treat matching-engine customer balances and platform fees as a cache rebuilt from the authoritative journal whenever the ledger is configured.
+- [ ] Rebuild complete engine state from authoritative records; financial balances and fees replay now, while complete order-book and nonfinancial state recovery still depends on snapshots/WAL.
 - [ ] Add cryptographic checksums to snapshots and journal segments.
 - [ ] Sign production snapshots.
 - [ ] Store snapshot version and deployed code version.

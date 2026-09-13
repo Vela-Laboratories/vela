@@ -3,7 +3,10 @@ use bigdecimal::BigDecimal;
 use engine::{
     BatchMetrics, BatchedRequest, FinancialCommitter, MarketShards, MatchingEngine, UserState,
 };
-use ledger::{JournalLegInput, Ledger, NewAccount, NewAsset, PostTransaction};
+use ledger::{
+    AccountLookup, AccountProvisionRequest, JournalLegInput, Ledger, NewAccount, NewAsset,
+    PostTransaction,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -76,7 +79,7 @@ struct LedgerFixture {
 }
 
 impl LedgerFixture {
-    async fn new(pool: sqlx::PgPool, customers: &[UserId]) -> Self {
+    async fn new(pool: sqlx::PgPool) -> Self {
         let ledger = Arc::new(Ledger::from_pool(pool));
         let mut assets = HashMap::new();
         for (code, decimals) in [("ETH", 18_i16), ("USDC", 6_i16)] {
@@ -107,35 +110,6 @@ impl LedgerFixture {
                 true,
             )
             .await;
-            for account_type in ["fee_revenue", "rebate_expense"] {
-                Self::create_account(
-                    &ledger,
-                    &mut accounts,
-                    code,
-                    *asset_id,
-                    "platform",
-                    "platform:vela",
-                    account_type,
-                    true,
-                )
-                .await;
-            }
-            for customer in customers {
-                let reference = customer.to_hex().to_ascii_lowercase();
-                for account_type in ["customer_available", "customer_locked"] {
-                    Self::create_account(
-                        &ledger,
-                        &mut accounts,
-                        code,
-                        *asset_id,
-                        "customer",
-                        &reference,
-                        account_type,
-                        false,
-                    )
-                    .await;
-                }
-            }
         }
         Self { ledger, accounts }
     }
@@ -176,6 +150,23 @@ impl LedgerFixture {
 
     async fn seed(&self, asset: &str, customer: &UserId, amount: i128) {
         let reference = customer.to_hex().to_ascii_lowercase();
+        let lookup = AccountLookup {
+            asset_code: asset.to_owned(),
+            owner_type: "customer".to_owned(),
+            owner_reference: reference.clone(),
+            account_type: "customer_available".to_owned(),
+        };
+        let provisioned = self
+            .ledger
+            .ensure_accounts(&[AccountProvisionRequest {
+                asset_code: asset.to_owned(),
+                owner_type: "customer".to_owned(),
+                owner_reference: reference.clone(),
+                account_type: "customer_available".to_owned(),
+                allow_negative: false,
+            }])
+            .await
+            .unwrap();
         self.ledger
             .post(&PostTransaction {
                 id: Uuid::new_v4(),
@@ -194,7 +185,7 @@ impl LedgerFixture {
                         amount: BigDecimal::from(-amount),
                     },
                     JournalLegInput {
-                        account_id: self.account(asset, &reference, "customer_available"),
+                        account_id: provisioned[&lookup].id,
                         amount: BigDecimal::from(amount),
                     },
                 ],
@@ -204,10 +195,22 @@ impl LedgerFixture {
     }
 
     async fn balance(&self, asset: &str, owner_reference: &str, account_type: &str) -> BigDecimal {
-        self.ledger
-            .balance(self.account(asset, owner_reference, account_type))
+        let lookup = AccountLookup {
+            asset_code: asset.to_owned(),
+            owner_type: if owner_reference.starts_with("platform:") {
+                "platform".to_owned()
+            } else {
+                "customer".to_owned()
+            },
+            owner_reference: owner_reference.to_owned(),
+            account_type: account_type.to_owned(),
+        };
+        let resolved = self
+            .ledger
+            .resolve_accounts(&[lookup.clone()])
             .await
-            .unwrap()
+            .unwrap();
+        self.ledger.balance(resolved[&lookup].id).await.unwrap()
     }
 }
 
@@ -215,7 +218,7 @@ impl LedgerFixture {
 async fn matcher_commits_trade_fees_and_rebate_before_ack(pool: sqlx::PgPool) {
     let maker = user(1);
     let taker = user(2);
-    let fixture = LedgerFixture::new(pool.clone(), &[maker.clone(), taker.clone()]).await;
+    let fixture = LedgerFixture::new(pool.clone()).await;
     fixture.seed("ETH", &maker, 2_000_000_000_000_000_000).await;
     fixture.seed("USDC", &taker, 10_000_000_000).await;
 
@@ -333,6 +336,52 @@ async fn matcher_commits_trade_fees_and_rebate_before_ack(pool: sqlx::PgPool) {
     .unwrap();
     assert_eq!(trade_count, 1);
     assert!(fixture.ledger.verify_balance_projection().await.unwrap());
+
+    let provisioned_account_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_accounts WHERE owner_reference <> 'platform:operations'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(provisioned_account_count, 7);
+
+    let mut restarted_engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+    restarted_engine.add_market(market());
+    restarted_engine.process(
+        Request::Deposit(DepositRequest {
+            user: maker.clone(),
+            asset: AssetId::from_str("ETH"),
+            amount: 99,
+            l1_tx_hash: [9_u8; 32],
+            source_chain: Default::default(),
+            bridge_id: None,
+        }),
+        3,
+    );
+    let stats = api::ledger_coordinator::restore_engine_financial_state(
+        &mut restarted_engine,
+        &fixture.ledger,
+    )
+    .await
+    .unwrap();
+    assert_eq!(stats.customer_balances, 4);
+    assert_eq!(
+        restarted_engine
+            .balances
+            .get(&(maker.clone(), AssetId::from_str("ETH")))
+            .unwrap()
+            .available,
+        QUANTITY_SCALE
+    );
+    assert_eq!(
+        restarted_engine
+            .balances
+            .get(&(taker.clone(), AssetId::from_str("USDC")))
+            .unwrap()
+            .available,
+        7_999 * PRICE_SCALE
+    );
+    assert_eq!(restarted_engine.fee_balances.get("USDC"), Some(&80_000_000));
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

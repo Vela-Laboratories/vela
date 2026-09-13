@@ -66,6 +66,26 @@ pub struct ResolvedAccount {
     pub asset_decimals: i16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AccountProvisionRequest {
+    pub asset_code: String,
+    pub owner_type: String,
+    pub owner_reference: String,
+    pub account_type: String,
+    pub allow_negative: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayedAccountBalance {
+    pub account_id: Uuid,
+    pub asset_code: String,
+    pub asset_decimals: i16,
+    pub owner_type: String,
+    pub owner_reference: String,
+    pub account_type: String,
+    pub balance: BigDecimal,
+}
+
 #[derive(Debug, Error)]
 pub enum LedgerError {
     #[error("journal transaction must contain at least two legs")]
@@ -96,6 +116,22 @@ pub enum LedgerError {
         owner_reference: String,
         account_type: String,
     },
+    #[error("ledger asset is not provisioned: {0}")]
+    MissingAsset(String),
+    #[error("existing ledger asset configuration does not match requested asset: {0}")]
+    AssetConfigurationConflict(String),
+    #[error("invalid ledger account provisioning request: {0}")]
+    InvalidAccountProvision(String),
+    #[error("journal replay referenced unknown account: {0}")]
+    UnknownReplayAccount(Uuid),
+    #[error(
+        "journal replay differs from materialized projection for account {account_id}: replayed {replayed}, projected {projected}"
+    )]
+    ReplayProjectionMismatch {
+        account_id: Uuid,
+        replayed: BigDecimal,
+        projected: BigDecimal,
+    },
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -116,6 +152,23 @@ struct ExistingTransaction {
     idempotency_key: String,
     request_hash: Vec<u8>,
     created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct ReplayAccountProjection {
+    account_id: Uuid,
+    asset_code: String,
+    asset_decimals: i16,
+    owner_type: String,
+    owner_reference: String,
+    account_type: String,
+    projected_balance: BigDecimal,
+}
+
+#[derive(Debug, FromRow)]
+struct ReplayLeg {
+    account_id: Uuid,
+    amount: BigDecimal,
 }
 
 #[derive(Clone)]
@@ -233,6 +286,39 @@ impl Ledger {
         Ok(())
     }
 
+    pub async fn ensure_asset(&self, asset: &NewAsset) -> Result<(), LedgerError> {
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_assets (id, code, decimals, chain_id, contract_address)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (code) DO NOTHING
+            "#,
+        )
+        .bind(asset.id)
+        .bind(&asset.code)
+        .bind(asset.decimals)
+        .bind(asset.chain_id)
+        .bind(&asset.contract_address)
+        .execute(&self.pool)
+        .await?;
+
+        let existing = sqlx::query_as::<_, (i16, Option<i64>, Option<String>)>(
+            "SELECT decimals, chain_id, contract_address FROM ledger_assets WHERE code = $1",
+        )
+        .bind(&asset.code)
+        .fetch_one(&self.pool)
+        .await?;
+        let address_matches = match (&existing.2, &asset.contract_address) {
+            (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
+            (None, None) => true,
+            _ => false,
+        };
+        if existing.0 != asset.decimals || existing.1 != asset.chain_id || !address_matches {
+            return Err(LedgerError::AssetConfigurationConflict(asset.code.clone()));
+        }
+        Ok(())
+    }
+
     pub async fn create_account(&self, account: &NewAccount) -> Result<(), LedgerError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
@@ -299,6 +385,162 @@ impl Ledger {
             );
         }
         Ok(resolved)
+    }
+
+    pub async fn ensure_accounts(
+        &self,
+        requests: &[AccountProvisionRequest],
+    ) -> Result<HashMap<AccountLookup, ResolvedAccount>, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        let mut resolved = HashMap::with_capacity(requests.len());
+
+        for request in requests {
+            validate_account_provision(request)?;
+            let lookup = AccountLookup {
+                asset_code: request.asset_code.clone(),
+                owner_type: request.owner_type.clone(),
+                owner_reference: request.owner_reference.clone(),
+                account_type: request.account_type.clone(),
+            };
+            if resolved.contains_key(&lookup) {
+                continue;
+            }
+
+            let asset = sqlx::query_as::<_, (Uuid, i16)>(
+                "SELECT id, decimals FROM ledger_assets WHERE code = $1",
+            )
+            .bind(&request.asset_code)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| LedgerError::MissingAsset(request.asset_code.clone()))?;
+
+            let account_id = Uuid::new_v4();
+            sqlx::query(
+                r#"
+                INSERT INTO ledger_accounts
+                    (id, asset_id, owner_type, owner_reference, account_type, allow_negative)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (asset_id, owner_type, owner_reference, account_type) DO NOTHING
+                "#,
+            )
+            .bind(account_id)
+            .bind(asset.0)
+            .bind(&request.owner_type)
+            .bind(&request.owner_reference)
+            .bind(&request.account_type)
+            .bind(request.allow_negative)
+            .execute(&mut *tx)
+            .await?;
+
+            let existing = sqlx::query_as::<_, (Uuid, bool)>(
+                r#"
+                SELECT id, allow_negative
+                FROM ledger_accounts
+                WHERE asset_id = $1
+                  AND owner_type = $2
+                  AND owner_reference = $3
+                  AND account_type = $4
+                "#,
+            )
+            .bind(asset.0)
+            .bind(&request.owner_type)
+            .bind(&request.owner_reference)
+            .bind(&request.account_type)
+            .fetch_one(&mut *tx)
+            .await?;
+            if existing.1 != request.allow_negative {
+                return Err(LedgerError::InvalidAccountProvision(format!(
+                    "allow_negative policy mismatch for {} {}",
+                    request.asset_code, request.account_type
+                )));
+            }
+
+            sqlx::query(
+                "INSERT INTO ledger_account_balances (account_id) VALUES ($1) ON CONFLICT DO NOTHING",
+            )
+            .bind(existing.0)
+            .execute(&mut *tx)
+            .await?;
+            resolved.insert(
+                lookup,
+                ResolvedAccount {
+                    id: existing.0,
+                    asset_decimals: asset.1,
+                },
+            );
+        }
+
+        tx.commit().await?;
+        Ok(resolved)
+    }
+
+    pub async fn replay_account_balances(
+        &self,
+    ) -> Result<Vec<ReplayedAccountBalance>, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+
+        let accounts = sqlx::query_as::<_, ReplayAccountProjection>(
+            r#"
+            SELECT
+                account.id AS account_id,
+                asset.code AS asset_code,
+                asset.decimals AS asset_decimals,
+                account.owner_type,
+                account.owner_reference,
+                account.account_type,
+                balance.balance AS projected_balance
+            FROM ledger_accounts account
+            JOIN ledger_assets asset ON asset.id = account.asset_id
+            JOIN ledger_account_balances balance ON balance.account_id = account.id
+            ORDER BY asset.code, account.owner_type, account.owner_reference, account.account_type
+            "#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let legs = sqlx::query_as::<_, ReplayLeg>(
+            "SELECT account_id, amount FROM ledger_journal_legs ORDER BY id",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut replayed: HashMap<Uuid, BigDecimal> = accounts
+            .iter()
+            .map(|account| (account.account_id, BigDecimal::zero()))
+            .collect();
+        for leg in legs {
+            let balance = replayed
+                .get_mut(&leg.account_id)
+                .ok_or(LedgerError::UnknownReplayAccount(leg.account_id))?;
+            *balance += leg.amount;
+        }
+
+        let mut result = Vec::with_capacity(accounts.len());
+        for account in accounts {
+            let replayed_balance = replayed
+                .remove(&account.account_id)
+                .ok_or(LedgerError::UnknownReplayAccount(account.account_id))?;
+            if replayed_balance != account.projected_balance {
+                return Err(LedgerError::ReplayProjectionMismatch {
+                    account_id: account.account_id,
+                    replayed: replayed_balance,
+                    projected: account.projected_balance,
+                });
+            }
+            result.push(ReplayedAccountBalance {
+                account_id: account.account_id,
+                asset_code: account.asset_code,
+                asset_decimals: account.asset_decimals,
+                owner_type: account.owner_type,
+                owner_reference: account.owner_reference,
+                account_type: account.account_type,
+                balance: replayed_balance,
+            });
+        }
+        tx.commit().await?;
+        Ok(result)
     }
 
     pub async fn post(&self, command: &PostTransaction) -> Result<PostedTransaction, LedgerError> {
@@ -474,6 +716,42 @@ fn is_retryable_transaction_error(error: &LedgerError) -> bool {
         LedgerError::Database(sqlx::Error::Database(database_error))
             if matches!(database_error.code().as_deref(), Some("40001" | "40P01"))
     )
+}
+
+fn validate_account_provision(request: &AccountProvisionRequest) -> Result<(), LedgerError> {
+    if request.owner_reference.is_empty() || request.owner_reference.len() > 255 {
+        return Err(LedgerError::InvalidAccountProvision(
+            "owner reference length is invalid".to_owned(),
+        ));
+    }
+    let valid_pair = match request.owner_type.as_str() {
+        "customer" => {
+            !request.allow_negative
+                && matches!(
+                    request.account_type.as_str(),
+                    "customer_available"
+                        | "customer_locked"
+                        | "customer_pending"
+                        | "customer_withdrawal_reserved"
+                )
+        }
+        "custody" => matches!(
+            request.account_type.as_str(),
+            "custody_vault" | "custody_withdrawn"
+        ),
+        "platform" => matches!(
+            request.account_type.as_str(),
+            "fee_revenue" | "rebate_expense" | "operational_adjustment"
+        ),
+        _ => false,
+    };
+    if !valid_pair {
+        return Err(LedgerError::InvalidAccountProvision(format!(
+            "owner type {} cannot use account type {} with allow_negative={}",
+            request.owner_type, request.account_type, request.allow_negative
+        )));
+    }
+    Ok(())
 }
 
 fn validate_command(command: &PostTransaction) -> Result<(), LedgerError> {

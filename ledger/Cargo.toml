@@ -18,3 +18,7 @@ uuid = { workspace = true }
 [[bin]]
 name = "ledger-migrate"
 path = "src/bin/migrate.rs"
+
+[[bin]]
+name = "ledger-bootstrap"
+path = "src/bin/bootstrap.rs"

@@ -28,3 +28,9 @@ jobs:
         env:
           DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
         run: cargo run --locked --release -p ledger --bin ledger-migrate
+      - name: Bootstrap ETH/USDC ledger accounts
+        env:
+          DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
+          VELA_CHAIN_ID: ${{ vars.VELA_CHAIN_ID }}
+          VELA_USDC_ADDRESS: ${{ vars.VELA_USDC_ADDRESS }}
+        run: cargo run --locked --release -p ledger --bin ledger-bootstrap

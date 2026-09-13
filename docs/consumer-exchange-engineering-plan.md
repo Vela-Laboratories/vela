@@ -158,7 +158,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Journal matcher-produced fees and maker rebates explicitly.
 - [ ] Add auditable administrative adjustment transactions.
 - [ ] Require dual approval for production administrative adjustments.
-- [ ] Build deterministic replay from the journal.
+- [x] Build deterministic financial-balance replay from the journal.
 - [x] Integrate the matcher so accepted trades produce atomic ownership transfers.
 - [x] Prevent the matcher from acknowledging a financially effective result before the ledger commits.
 - [ ] Remove the engine's role as authoritative owner of customer funds.
@@ -168,9 +168,9 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Property tests prove every journal transaction balances.
 - [x] Concurrent operations cannot overspend an account.
 - [x] Duplicate requests return the original result without applying twice.
-- [ ] A full ledger replay reproduces all materialized balances exactly.
+- [x] A full ledger replay reproduces all materialized account balances exactly.
 - [x] A completed trade moves base, quote, fees, and rebates atomically.
-- [ ] Engine restart does not change customer ownership.
+- [x] Engine restart reloads customer available/locked ownership and platform fees from the authoritative journal.
 
 ## Milestone 3: verified deposit pipeline
 
@@ -444,6 +444,12 @@ Work should begin in this order. Each item should land as a small, independently
     - Journal order reservations, releases, trades, taker fees, maker fees, maker rebates, and referral payouts with deterministic idempotency keys and exact asset-decimal conversion.
     - Fail closed without acknowledging or publishing speculative state when validation, account resolution, or PostgreSQL commit fails; expose a rejection counter for alerting.
     - Verify acknowledgement ordering, rollback behavior, and a complete ETH/USDC trade against PostgreSQL 16.
+16. [x] **EX-016: Ledger account provisioning and financial replay**
+    - Add idempotent, policy-checked account provisioning for approved assets, customer available/locked balances, and platform fee/rebate accounts.
+    - Add an explicit ETH/USDC bootstrap command that verifies chain and asset configuration and is run only with the migrator credential.
+    - Replay journal legs in sequence under a consistent PostgreSQL snapshot, verify every replayed value against the materialized projection, and fail startup on divergence.
+    - Replace snapshot/WAL financial balances with replayed customer ownership and platform fee balances before ledger-backed API traffic starts.
+    - Verify restart ownership, stale-cache replacement, decimal exactness, account idempotency, configuration conflict rejection, and projection-corruption detection against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

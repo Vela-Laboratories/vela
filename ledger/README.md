@@ -26,6 +26,15 @@ Migrations use a separate privileged secret and an explicit command:
 DATABASE_MIGRATOR_URL=postgres://... cargo run --locked -p ledger --bin ledger-migrate
 ```
 
+After migration, bootstrap the approved ETH/USDC asset definitions and platform accounts. The command is idempotent and rejects configuration drift:
+
+```sh
+DATABASE_MIGRATOR_URL=postgres://... \
+VELA_CHAIN_ID=8453 \
+VELA_USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
+cargo run --locked -p ledger --bin ledger-bootstrap
+```
+
 The API never reads `DATABASE_MIGRATOR_URL` and never runs migrations at
 startup. After the initial migration, apply `sql/roles.sql` as the database
 owner. Create separate secret-bearing login roles outside the script and grant
@@ -38,6 +47,12 @@ returns not-ready when the ledger is absent or unhealthy; development and the
 public testnet demo may run without a ledger. When configured, the matcher
 keeps each batch private until its complete balanced financial effect commits;
 failure discards the proposal and returns an internal error.
+
+Ledger-backed API startup replays journal legs under a consistent database
+snapshot, verifies the result against every materialized account balance, and
+then replaces cached customer available/locked balances and platform fees. A
+projection mismatch, malformed customer owner, overflow, or inexact decimal
+conversion aborts startup.
 
 See [the matcher-ledger commit boundary](../docs/architecture/matcher-ledger-commit.md)
 for account requirements, decimal conversion, acknowledgement ordering, and

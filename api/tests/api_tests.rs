@@ -120,7 +120,10 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
         make_wal(),
         types::RuntimeMode::Production,
         Some(ledger),
-    );
+    )
+    .await
+    .unwrap();
+    assert!(state.shards.user_state.read().await.balances.is_empty());
     let server = TestServer::new(api::build_router(state)).unwrap();
 
     let response = server.get("/ready").await;

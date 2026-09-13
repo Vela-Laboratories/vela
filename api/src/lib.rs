@@ -215,10 +215,32 @@ impl AppState {
         wal: Arc<wal::Wal>,
         runtime_mode: RuntimeMode,
     ) -> Arc<Self> {
-        Self::new_with_runtime_and_ledger(engine, wal, runtime_mode, None)
+        Self::new_inner(engine, wal, runtime_mode, None)
     }
 
-    pub fn new_with_runtime_and_ledger(
+    pub async fn new_with_runtime_and_ledger(
+        mut engine: MatchingEngine,
+        wal: Arc<wal::Wal>,
+        runtime_mode: RuntimeMode,
+        ledger: Option<Arc<ledger::Ledger>>,
+    ) -> Result<Arc<Self>, String> {
+        if let Some(authoritative_ledger) = ledger.as_ref() {
+            let stats = crate::ledger_coordinator::restore_engine_financial_state(
+                &mut engine,
+                authoritative_ledger,
+            )
+            .await?;
+            tracing::info!(
+                replayed_accounts = stats.replayed_accounts,
+                customer_balances = stats.customer_balances,
+                platform_fee_assets = stats.platform_fee_assets,
+                "restored matching-engine financial cache from authoritative journal"
+            );
+        }
+        Ok(Self::new_inner(engine, wal, runtime_mode, ledger))
+    }
+
+    fn new_inner(
         engine: MatchingEngine,
         wal: Arc<wal::Wal>,
         runtime_mode: RuntimeMode,

@@ -51,6 +51,21 @@ Migration rules:
 - Write an explicit forward-fix or rollback procedure before approval.
 - Deploy schema-compatible application code around the migration window.
 
+## Asset and platform-account bootstrap
+
+After migration, run the idempotent bootstrap command with the same controlled migrator credential:
+
+```sh
+DATABASE_MIGRATOR_URL=postgres://... \
+VELA_CHAIN_ID=8453 \
+VELA_USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
+cargo run --locked --release -p ledger --bin ledger-bootstrap
+```
+
+Use the chain ID and native USDC contract for the target environment. The command provisions ETH, USDC, and `platform:vela` fee/rebate accounts. It refuses to overwrite an existing asset definition with different decimals, chain, or contract. Matcher commits may create missing customer available/locked accounts for these approved assets, but cannot introduce a new asset.
+
+The manually approved GitHub migration workflow runs migration and bootstrap in sequence. Configure `VELA_CHAIN_ID` and `VELA_USDC_ADDRESS` as environment variables and keep `DATABASE_MIGRATOR_URL` as an environment secret.
+
 ## Database roles and secrets
 
 After the first migration, apply the role policy as the database owner:
@@ -85,8 +100,9 @@ with bounded exponential backoff.
   a ledger is configured.
 - Production startup rejects a missing `DATABASE_URL`.
 - Production readiness rejects a missing, unreachable, or stale-schema ledger.
-- The current development and `testnet-demo` modes may omit the ledger until the
-  matcher-to-ledger boundary is implemented.
+- Development and `testnet-demo` may omit the ledger; such runs are explicitly non-authoritative.
+- When configured, startup replays the immutable journal and independently compares every result with its materialized account projection.
+- Replay divergence, invalid customer ownership, overflow, or inexact asset conversion aborts ledger-backed startup.
 
 Do not add the migrator credential to the API runtime. Database errors returned
 by readiness are intentionally sanitized; use protected service logs for the

@@ -345,7 +345,16 @@ async fn main() {
     let previous_sequence = wal.current_sequence();
 
     let state =
-        api::AppState::new_with_runtime_and_ledger(engine, Arc::clone(&wal), runtime.mode, ledger);
+        api::AppState::new_with_runtime_and_ledger(engine, Arc::clone(&wal), runtime.mode, ledger)
+            .await
+            .unwrap_or_else(|_| panic!("authoritative ledger replay failed"));
+
+    {
+        let replayed_engine = state.engine.lock().await;
+        runtime
+            .validate_engine_state(&replayed_engine)
+            .unwrap_or_else(|error| panic!("replayed engine state is unsafe: {error}"));
+    }
 
     {
         *state.incidents.lock().await = loaded_incidents;
