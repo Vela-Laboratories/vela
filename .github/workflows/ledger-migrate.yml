@@ -33,4 +33,5 @@ jobs:
           DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
           VELA_CHAIN_ID: ${{ vars.VELA_CHAIN_ID }}
           VELA_USDC_ADDRESS: ${{ vars.VELA_USDC_ADDRESS }}
+          VELA_CUSTODY_VAULT_ADDRESS: ${{ vars.VELA_CUSTODY_VAULT_ADDRESS }}
         run: cargo run --locked --release -p ledger --bin ledger-bootstrap

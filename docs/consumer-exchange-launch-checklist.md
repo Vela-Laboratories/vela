@@ -62,10 +62,10 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Wait for an asset-specific number of confirmations before final credit.
 - [ ] Handle chain reorganizations.
 - [ ] Reverse or quarantine deposits invalidated by a reorganization.
-- [ ] Make deposit crediting idempotent.
-- [ ] Prevent the same transaction or event from being credited twice.
-- [ ] Store block number, block hash, transaction index, and log index for every deposit.
-- [ ] Add pending, confirming, confirmed, failed, and reversed deposit states.
+- [x] Make finalized deposit crediting idempotent at the ledger boundary.
+- [x] Prevent the same canonical transaction log from being recorded or credited twice at the ledger boundary.
+- [x] Store chain ID, vault, block number, block hash, transaction hash, transaction index, and log index for every authoritative deposit observation.
+- [ ] Complete observed, confirming, finalized, credited, rejected, orphaned, quarantined, and reversed deposit workflows; typed states and guarded pre-credit transitions exist, while post-credit reversal remains open.
 - [ ] Build a dedicated deposit indexer.
 - [ ] Use redundant RPC providers.
 - [ ] Add RPC disagreement and stale-head detection.
@@ -86,7 +86,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Give every financial operation a globally unique idempotency key.
 - [ ] Prevent test, synthetic, bridge, and real-money balances from mixing.
 - [ ] Add separate environments and ledger namespaces for testnet and production.
-- [ ] Establish per-asset custody accounts.
+- [x] Provision controlled per-asset custody-vault counter-accounts for ETH and USDC during ledger bootstrap.
 - [ ] Reconcile each asset independently.
 - [ ] Continuously compare custody assets against total customer liabilities.
 - [ ] Halt affected operations automatically when reconciliation fails.

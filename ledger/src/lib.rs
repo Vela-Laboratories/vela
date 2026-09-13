@@ -10,6 +10,9 @@ use sqlx::{postgres::PgPoolOptions, FromRow, PgPool, Postgres, Transaction};
 use thiserror::Error;
 use uuid::Uuid;
 
+mod deposits;
+pub use deposits::*;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalLegInput {
     pub account_id: Uuid,
@@ -174,6 +177,16 @@ pub enum LedgerError {
     AssetConfigurationConflict(String),
     #[error("invalid ledger account provisioning request: {0}")]
     InvalidAccountProvision(String),
+    #[error("invalid deposit command: {0}")]
+    InvalidDeposit(String),
+    #[error("deposit observation conflicts with an existing canonical event")]
+    DepositObservationConflict,
+    #[error("deposit was not found: {0}")]
+    DepositNotFound(Uuid),
+    #[error("invalid deposit transition from {from} to {to}")]
+    InvalidDepositTransition { from: String, to: String },
+    #[error("independent RPC providers did not agree on finalized evidence")]
+    DepositFinalityDisagreement,
     #[error("journal replay referenced unknown account: {0}")]
     UnknownReplayAccount(Uuid),
     #[error(
@@ -230,7 +243,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 1;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 2;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {
@@ -692,26 +705,8 @@ impl Ledger {
             .execute(&mut *tx)
             .await?;
 
-        let inserted = sqlx::query_as::<_, PostedTransaction>(
-            r#"
-            INSERT INTO ledger_journal_transactions
-                (id, operation_type, idempotency_key, request_hash, external_reference, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (idempotency_key) DO NOTHING
-            RETURNING id, idempotency_key, created_at
-            "#,
-        )
-        .bind(command.id)
-        .bind(&command.operation_type)
-        .bind(&command.idempotency_key)
-        .bind(command.request_hash.as_slice())
-        .bind(&command.external_reference)
-        .bind(&command.metadata)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        let Some(posted) = inserted else {
-            let posted = resolve_idempotent_replay(&mut tx, command).await?;
+        let post_result = post_command_in_transaction(&mut tx, command).await?;
+        if !post_result.inserted {
             if let Some(correction) = correction {
                 let audit_exists = sqlx::query_scalar::<_, bool>(
                     r#"
@@ -723,104 +718,18 @@ impl Ledger {
                     "#,
                 )
                 .bind(correction.correction_id)
-                .bind(posted.id)
+                .bind(post_result.transaction.id)
                 .fetch_one(&mut *tx)
                 .await?;
                 if !audit_exists {
-                    return Err(LedgerError::AdministrativeCorrectionAuditMissing(posted.id));
+                    return Err(LedgerError::AdministrativeCorrectionAuditMissing(
+                        post_result.transaction.id,
+                    ));
                 }
             }
             tx.commit().await?;
-            return Ok(posted);
-        };
-
-        let mut account_ids: Vec<Uuid> = command.legs.iter().map(|leg| leg.account_id).collect();
-        account_ids.sort_unstable();
-
-        let locked_accounts = sqlx::query_as::<_, LockedAccount>(
-            r#"
-            SELECT a.id, a.asset_id, a.allow_negative, b.balance
-            FROM ledger_accounts a
-            JOIN ledger_account_balances b ON b.account_id = a.id
-            WHERE a.id = ANY($1)
-            ORDER BY a.id
-            FOR UPDATE OF b
-            "#,
-        )
-        .bind(&account_ids)
-        .fetch_all(&mut *tx)
-        .await?;
-
-        let account_map: HashMap<Uuid, LockedAccount> = locked_accounts
-            .into_iter()
-            .map(|account| (account.id, account))
-            .collect();
-
-        let mut asset_totals: HashMap<Uuid, BigDecimal> = HashMap::new();
-        for leg in &command.legs {
-            let account = account_map
-                .get(&leg.account_id)
-                .ok_or(LedgerError::UnknownAccount(leg.account_id))?;
-            *asset_totals
-                .entry(account.asset_id)
-                .or_insert_with(BigDecimal::zero) += leg.amount.clone();
+            return Ok(post_result.transaction);
         }
-
-        if let Some(asset_id) = asset_totals
-            .iter()
-            .find_map(|(asset_id, total)| (!total.is_zero()).then_some(*asset_id))
-        {
-            return Err(LedgerError::Unbalanced(asset_id));
-        }
-
-        for leg in &command.legs {
-            let account = &account_map[&leg.account_id];
-            let next_balance = &account.balance + &leg.amount;
-            if !account.allow_negative && next_balance < BigDecimal::zero() {
-                return Err(LedgerError::InsufficientFunds {
-                    account_id: account.id,
-                    balance: account.balance.clone(),
-                    delta: leg.amount.clone(),
-                });
-            }
-
-            sqlx::query(
-                r#"
-                INSERT INTO ledger_journal_legs
-                    (transaction_id, account_id, asset_id, amount)
-                VALUES ($1, $2, $3, $4)
-                "#,
-            )
-            .bind(command.id)
-            .bind(leg.account_id)
-            .bind(account.asset_id)
-            .bind(&leg.amount)
-            .execute(&mut *tx)
-            .await?;
-
-            sqlx::query(
-                r#"
-                UPDATE ledger_account_balances
-                SET balance = $2, version = version + 1, updated_at = transaction_timestamp()
-                WHERE account_id = $1
-                "#,
-            )
-            .bind(leg.account_id)
-            .bind(&next_balance)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        sqlx::query(
-            r#"
-            INSERT INTO ledger_outbox (transaction_id, event_type, payload)
-            VALUES ($1, 'ledger.transaction_posted', $2)
-            "#,
-        )
-        .bind(command.id)
-        .bind(json!({ "transaction_id": command.id }))
-        .execute(&mut *tx)
-        .await?;
 
         if let Some(correction) = correction {
             sqlx::query(
@@ -853,7 +762,7 @@ impl Ledger {
         }
 
         tx.commit().await?;
-        Ok(posted)
+        Ok(post_result.transaction)
     }
 
     pub async fn balance(&self, account_id: Uuid) -> Result<BigDecimal, LedgerError> {
@@ -882,6 +791,129 @@ impl Ledger {
         .await?;
         Ok(mismatch_count == 0)
     }
+}
+
+struct PostCommandResult {
+    transaction: PostedTransaction,
+    inserted: bool,
+}
+
+async fn post_command_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    command: &PostTransaction,
+) -> Result<PostCommandResult, LedgerError> {
+    let inserted = sqlx::query_as::<_, PostedTransaction>(
+        r#"
+        INSERT INTO ledger_journal_transactions
+            (id, operation_type, idempotency_key, request_hash, external_reference, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id, idempotency_key, created_at
+        "#,
+    )
+    .bind(command.id)
+    .bind(&command.operation_type)
+    .bind(&command.idempotency_key)
+    .bind(command.request_hash.as_slice())
+    .bind(&command.external_reference)
+    .bind(&command.metadata)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(posted) = inserted else {
+        return Ok(PostCommandResult {
+            transaction: resolve_idempotent_replay(tx, command).await?,
+            inserted: false,
+        });
+    };
+
+    let mut account_ids: Vec<Uuid> = command.legs.iter().map(|leg| leg.account_id).collect();
+    account_ids.sort_unstable();
+    let locked_accounts = sqlx::query_as::<_, LockedAccount>(
+        r#"
+        SELECT a.id, a.asset_id, a.allow_negative, b.balance
+        FROM ledger_accounts a
+        JOIN ledger_account_balances b ON b.account_id = a.id
+        WHERE a.id = ANY($1)
+        ORDER BY a.id
+        FOR UPDATE OF b
+        "#,
+    )
+    .bind(&account_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    let account_map: HashMap<Uuid, LockedAccount> = locked_accounts
+        .into_iter()
+        .map(|account| (account.id, account))
+        .collect();
+
+    let mut asset_totals: HashMap<Uuid, BigDecimal> = HashMap::new();
+    for leg in &command.legs {
+        let account = account_map
+            .get(&leg.account_id)
+            .ok_or(LedgerError::UnknownAccount(leg.account_id))?;
+        *asset_totals
+            .entry(account.asset_id)
+            .or_insert_with(BigDecimal::zero) += leg.amount.clone();
+    }
+    if let Some(asset_id) = asset_totals
+        .iter()
+        .find_map(|(asset_id, total)| (!total.is_zero()).then_some(*asset_id))
+    {
+        return Err(LedgerError::Unbalanced(asset_id));
+    }
+
+    for leg in &command.legs {
+        let account = &account_map[&leg.account_id];
+        let next_balance = &account.balance + &leg.amount;
+        if !account.allow_negative && next_balance < BigDecimal::zero() {
+            return Err(LedgerError::InsufficientFunds {
+                account_id: account.id,
+                balance: account.balance.clone(),
+                delta: leg.amount.clone(),
+            });
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_journal_legs
+                (transaction_id, account_id, asset_id, amount)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(command.id)
+        .bind(leg.account_id)
+        .bind(account.asset_id)
+        .bind(&leg.amount)
+        .execute(&mut **tx)
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE ledger_account_balances
+            SET balance = $2, version = version + 1, updated_at = transaction_timestamp()
+            WHERE account_id = $1
+            "#,
+        )
+        .bind(leg.account_id)
+        .bind(&next_balance)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_outbox (transaction_id, event_type, payload)
+        VALUES ($1, 'ledger.transaction_posted', $2)
+        "#,
+    )
+    .bind(command.id)
+    .bind(json!({ "transaction_id": command.id }))
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(PostCommandResult {
+        transaction: posted,
+        inserted: true,
+    })
 }
 
 fn is_retryable_transaction_error(error: &LedgerError) -> bool {

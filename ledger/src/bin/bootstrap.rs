@@ -18,6 +18,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !is_evm_address(&usdc_address) {
         return Err("VELA_USDC_ADDRESS must be a 20-byte 0x-prefixed hex address".into());
     }
+    let custody_vault_address = std::env::var("VELA_CUSTODY_VAULT_ADDRESS")
+        .map_err(|_| "VELA_CUSTODY_VAULT_ADDRESS must be set for ledger bootstrap")?;
+    if !is_evm_address(&custody_vault_address) {
+        return Err("VELA_CUSTODY_VAULT_ADDRESS must be a 20-byte 0x-prefixed hex address".into());
+    }
 
     let ledger = Ledger::connect_with_options(
         &database_url,
@@ -48,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ledger.ensure_asset(&asset).await?;
     }
 
-    let platform_accounts: Vec<AccountProvisionRequest> = ["ETH", "USDC"]
+    let mut controlled_accounts: Vec<AccountProvisionRequest> = ["ETH", "USDC"]
         .into_iter()
         .flat_map(|asset_code| {
             ["fee_revenue", "rebate_expense"].map(move |account_type| AccountProvisionRequest {
@@ -60,9 +65,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
         })
         .collect();
-    ledger.ensure_accounts(&platform_accounts).await?;
+    controlled_accounts.extend(["ETH", "USDC"].map(|asset_code| AccountProvisionRequest {
+        asset_code: asset_code.to_owned(),
+        owner_type: "custody".to_owned(),
+        owner_reference: custody_vault_address.to_ascii_lowercase(),
+        account_type: "custody_vault".to_owned(),
+        allow_negative: true,
+    }));
+    ledger.ensure_accounts(&controlled_accounts).await?;
 
-    println!("ledger bootstrap complete for ETH/USDC on chain {chain_id}");
+    println!("ledger bootstrap complete for ETH/USDC and custody vault on chain {chain_id}");
     Ok(())
 }
 

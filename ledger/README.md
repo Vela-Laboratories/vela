@@ -26,12 +26,13 @@ Migrations use a separate privileged secret and an explicit command:
 DATABASE_MIGRATOR_URL=postgres://... cargo run --locked -p ledger --bin ledger-migrate
 ```
 
-After migration, bootstrap the approved ETH/USDC asset definitions and platform accounts. The command is idempotent and rejects configuration drift:
+After migration, bootstrap the approved ETH/USDC asset definitions, platform accounts, and the custody-vault counter-accounts. The command is idempotent and rejects configuration drift:
 
 ```sh
 DATABASE_MIGRATOR_URL=postgres://... \
 VELA_CHAIN_ID=8453 \
 VELA_USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
+VELA_CUSTODY_VAULT_ADDRESS=0x... \
 cargo run --locked -p ledger --bin ledger-bootstrap
 ```
 

@@ -182,13 +182,13 @@ The implementation and tests must preserve these invariants at all times:
 
 - [ ] Build a dedicated chain indexer for the selected launch chain.
 - [ ] Observe the correct contract and deposit event signature.
-- [ ] Record chain ID, contract, block number, block hash, transaction hash, transaction index, and log index.
+- [x] Record chain ID, contract, block number, block hash, transaction hash, transaction index, and log index in the durable observation command.
 - [ ] Verify depositor, beneficiary, asset, and actual received amount.
-- [ ] Implement pending, confirming, finalized, failed, quarantined, and reversed states.
+- [ ] Complete pending, confirming, finalized, failed, quarantined, and reversed workflows; the typed model, database guards, confirming/finalized path, and pre-credit orphan handling are implemented, while credited reversal remains open.
 - [ ] Define confirmation thresholds per asset and chain.
 - [ ] Detect and process chain reorganizations.
-- [ ] Make event identity unique and idempotent.
-- [ ] Journal final deposit credits through the ledger.
+- [x] Make canonical event identity unique and observation idempotent.
+- [x] Journal final deposit credits through the ledger atomically with credited state and immutable history.
 - [ ] Add redundant RPC providers.
 - [ ] Detect stale providers and provider disagreement.
 - [ ] Expose deposit progress and evidence to the customer API.
@@ -198,7 +198,7 @@ The implementation and tests must preserve these invariants at all times:
 ### M3 acceptance criteria
 
 - [ ] No API request can credit funds without a verified chain event.
-- [ ] The same log cannot be credited twice.
+- [x] The same canonical log cannot be recorded or credited twice at the ledger boundary.
 - [ ] Reorganizations do not leave invalid finalized credits.
 - [ ] Provider failure cannot silently produce a credit.
 - [ ] Customers can see pending and finalized deposit status.
@@ -460,6 +460,11 @@ Work should begin in this order. Each item should land as a small, independently
     - Fail closed on projection read or exact-decimal conversion errors instead of falling back to local matching-engine state.
     - Reject every legacy API path that directly changes the engine balance map while the ledger is authoritative, including demo/bridge credits, withdrawals, forced inclusion, RFQ settlement, subaccount transfers, vault flows, and listing bonds.
     - Preserve those synthetic flows only for explicitly non-authoritative development and `testnet-demo`, and prove an external credit cannot mutate a ledger-backed engine projection.
+19. [x] **EX-019: Durable verified-deposit ledger foundation**
+    - Add typed observation, state, two-provider finality, orphaning, and finalized-credit commands over the existing deposit evidence tables.
+    - Enforce canonical case-insensitive chain-event identity, immutable deposit facts, valid state transitions, and same-transaction history in PostgreSQL migration 0002.
+    - Atomically post the custody/customer journal movement, balance projections, outbox event, credited state, and history under a chain-derived idempotency key.
+    - Provision per-asset custody-vault counter-accounts and verify exact retries, conflicting evidence, provider disagreement, pre-finality rejection, reorg orphaning, transition bypass, atomic credit, and double-credit prevention against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

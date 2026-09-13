@@ -59,12 +59,13 @@ After migration, run the idempotent bootstrap command with the same controlled m
 DATABASE_MIGRATOR_URL=postgres://... \
 VELA_CHAIN_ID=8453 \
 VELA_USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
+VELA_CUSTODY_VAULT_ADDRESS=0x... \
 cargo run --locked --release -p ledger --bin ledger-bootstrap
 ```
 
-Use the chain ID and native USDC contract for the target environment. The command provisions ETH, USDC, and `platform:vela` fee/rebate accounts. It refuses to overwrite an existing asset definition with different decimals, chain, or contract. Matcher commits may create missing customer available/locked accounts for these approved assets, but cannot introduce a new asset.
+Use the chain ID, native USDC contract, and allowlisted omnibus vault for the target environment. The command provisions ETH, USDC, `platform:vela` fee/rebate accounts, and negative-enabled custody-vault counter-accounts for both assets. It refuses to overwrite an existing asset definition or account policy with different configuration. Matcher commits may create missing customer available/locked accounts for these approved assets, but cannot introduce a new asset.
 
-The manually approved GitHub migration workflow runs migration and bootstrap in sequence. Configure `VELA_CHAIN_ID` and `VELA_USDC_ADDRESS` as environment variables and keep `DATABASE_MIGRATOR_URL` as an environment secret.
+The manually approved GitHub migration workflow runs migration and bootstrap in sequence. Configure `VELA_CHAIN_ID`, `VELA_USDC_ADDRESS`, and `VELA_CUSTODY_VAULT_ADDRESS` as environment variables and keep `DATABASE_MIGRATOR_URL` as an environment secret.
 
 ## Database roles and secrets
 

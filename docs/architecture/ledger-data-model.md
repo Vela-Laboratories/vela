@@ -4,7 +4,7 @@
 
 PostgreSQL is Vela's authoritative financial system of record. The matching engine proposes deterministic effects; the ledger validates and commits ownership changes before any success response or public event. All asset amounts are signed integer base units stored as PostgreSQL `NUMERIC`, never floating point.
 
-The first migration lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
+The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
 
 ## Accounts
 
@@ -34,7 +34,7 @@ The request hash binds an idempotency key to its original command. An identical 
 
 ## Deposits and withdrawals
 
-`ledger_deposits`, `ledger_deposit_chain_events`, and `ledger_deposit_state_history` store the complete deposit projection, canonical chain identity, and append-only transition history. `(chain_id, transaction_hash, log_index)` and the vault deposit ID are independently unique.
+`ledger_deposits`, `ledger_deposit_chain_events`, and `ledger_deposit_state_history` store the complete deposit projection, canonical chain identity, and append-only transition history. `(chain_id, lower(transaction_hash), log_index)` and the vault deposit ID are independently unique. The typed ledger service makes observation replay-safe, requires two-provider finalized evidence, and commits the final custody/customer journal movement atomically with `credited` state and history. See [Verified deposit ledger boundary](verified-deposit-ledger.md).
 
 `ledger_withdrawals` and `ledger_withdrawal_state_history` store the current withdrawal projection, immutable transition history, reservation/completion/release journal references, destination, nonce, expiry, and broadcast identity. The allowed state values match ADR-003 and ADR-004.
 
@@ -56,7 +56,8 @@ The request hash binds an idempotency key to its original command. An identical 
 | Balance projections equal journal history | `ledger::Ledger` | Atomic transaction | Projection verification test |
 | Engine financial cache equals journal ownership after restart | API startup replay | Immutable journal sequence | PostgreSQL restart and stale-cache replacement test |
 | Financial events follow commit | Outbox publisher | Transactional outbox foreign key | Outbox assertion in posting test |
-| Deposits have one canonical event identity | Future Base indexer | Unique chain-event constraints | Migration constraint; indexer integration test pending |
+| Deposits have one canonical event identity | Deposit ledger service and future Base indexer | Case-insensitive unique chain-event constraints | Observation retry and conflict integration tests; indexer remains pending |
+| Finalized deposit credit is atomic and idempotent | Deposit ledger service | Journal, projection, deposit transaction FK, transition/history triggers | PostgreSQL finality, double-credit, balance, and transition-bypass tests |
 | Administrative corrections require two people | Typed ledger correction command | Initiator/approver inequality | Self-approval, idempotency, bypass, and atomic-rollback tests |
 
 ## Schema evolution
