@@ -4,7 +4,7 @@
 
 PostgreSQL is Vela's authoritative financial system of record. The matching engine proposes deterministic effects; the ledger validates and commits ownership changes before any success response or public event. All asset amounts are signed integer base units stored as PostgreSQL `NUMERIC`, never floating point.
 
-The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. Migration `0003_chain_indexer.sql` adds the immutable deployment registry, single-worker lease, monotonic finalized checkpoint, and halt evidence for the Base indexer. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
+The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. Migration `0003_chain_indexer.sql` adds the immutable deployment registry, single-worker lease, monotonic finalized checkpoint, and halt evidence for the Base indexer. Migration `0004_deposit_reorg_recovery.sql` adds cyclic finalized-history audits, credited-deposit reversal references, and asset-wide financial halts. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
 
 ## Accounts
 
@@ -58,6 +58,7 @@ The request hash binds an idempotency key to its original command. An identical 
 | Financial events follow commit | Outbox publisher | Transactional outbox foreign key | Outbox assertion in posting test |
 | Deposits have one canonical event identity | Deposit ledger service and future Base indexer | Case-insensitive unique chain-event constraints | Observation retry and conflict integration tests; indexer remains pending |
 | Finalized deposit credit is atomic and idempotent | Deposit ledger service | Journal, projection, deposit transaction FK, transition/history triggers | PostgreSQL finality, double-credit, balance, and transition-bypass tests |
+| Contradicted credits cannot remain usable | Deposit indexer and ledger service | Asset-halt journal trigger, reversal FK, transition/history guards | Two-provider historical rewrite, complete reversal, spent-credit quarantine, blocked-operation, and retry tests |
 | Administrative corrections require two people | Typed ledger correction command | Initiator/approver inequality | Self-approval, idempotency, bypass, and atomic-rollback tests |
 
 ## Schema evolution

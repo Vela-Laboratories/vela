@@ -118,6 +118,7 @@ pub struct DepositRecord {
     pub amount: BigDecimal,
     pub state: DepositState,
     pub credit_transaction_id: Option<Uuid>,
+    pub reversal_transaction_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -126,6 +127,71 @@ pub struct DepositRecord {
 pub struct CreditedDeposit {
     pub deposit: DepositRecord,
     pub transaction: PostedTransaction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RpcCanonicalContradiction {
+    pub provider: String,
+    pub chain_id: i64,
+    pub finalized_block_number: i64,
+    pub finalized_block_hash: String,
+    pub deposit_block_number: i64,
+    pub stored_block_hash: String,
+    pub canonical_block_hash: String,
+    pub transaction_hash: String,
+    pub log_index: i32,
+    pub canonical_log_matches: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReverseCreditedDeposit {
+    pub deposit_id: Uuid,
+    pub deployment_id: Uuid,
+    pub pending_account_id: Uuid,
+    pub reversal_transaction_id: Uuid,
+    pub halt_id: Uuid,
+    pub first: RpcCanonicalContradiction,
+    pub second: RpcCanonicalContradiction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DepositContradictionOutcome {
+    Reversed {
+        deposit: DepositRecord,
+        transaction: PostedTransaction,
+    },
+    Quarantined {
+        deposit: DepositRecord,
+        transaction: Option<PostedTransaction>,
+        available_balance: BigDecimal,
+        shortfall: BigDecimal,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetHaltReason {
+    CreditedDepositContradiction,
+    HistoricalDepositAppeared,
+}
+
+impl AssetHaltReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CreditedDepositContradiction => "credited_deposit_contradiction",
+            Self::HistoricalDepositAppeared => "historical_deposit_appeared",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivateAssetHalt {
+    pub halt_id: Uuid,
+    pub asset_id: Uuid,
+    pub deployment_id: Uuid,
+    pub source_deposit_id: Option<Uuid>,
+    pub reason: AssetHaltReason,
+    pub evidence: Value,
 }
 
 #[derive(Debug, FromRow)]
@@ -137,6 +203,7 @@ struct StoredDeposit {
     amount: BigDecimal,
     state: String,
     credit_transaction_id: Option<Uuid>,
+    reversal_transaction_id: Option<Uuid>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -150,6 +217,7 @@ struct StoredObservation {
     amount: BigDecimal,
     state: String,
     credit_transaction_id: Option<Uuid>,
+    reversal_transaction_id: Option<Uuid>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     chain_id: i64,
@@ -182,6 +250,7 @@ struct CreditableDeposit {
     amount: BigDecimal,
     state: String,
     credit_transaction_id: Option<Uuid>,
+    reversal_transaction_id: Option<Uuid>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     chain_id: i64,
@@ -201,6 +270,7 @@ impl TryFrom<StoredDeposit> for DepositRecord {
             amount: value.amount,
             state: DepositState::from_str(&value.state)?,
             credit_transaction_id: value.credit_transaction_id,
+            reversal_transaction_id: value.reversal_transaction_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
         })
@@ -208,6 +278,72 @@ impl TryFrom<StoredDeposit> for DepositRecord {
 }
 
 impl Ledger {
+    pub async fn activate_asset_halt(
+        &self,
+        command: &ActivateAssetHalt,
+    ) -> Result<(), LedgerError> {
+        if command.halt_id == Uuid::nil()
+            || command.asset_id == Uuid::nil()
+            || command.deployment_id == Uuid::nil()
+            || !command.evidence.is_object()
+        {
+            return Err(LedgerError::InvalidDeposit(
+                "asset halt identity and evidence are required".to_owned(),
+            ));
+        }
+        let scope_is_valid: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM ledger_assets asset
+                JOIN ledger_chain_deployments deployment
+                  ON deployment.id = $2 AND deployment.chain_id = asset.chain_id
+                WHERE asset.id = $1
+                  AND (
+                      $3::uuid IS NULL
+                      OR EXISTS (
+                          SELECT 1
+                          FROM ledger_deposits deposit
+                          JOIN ledger_deposit_chain_events event
+                            ON event.deposit_id = deposit.id
+                          WHERE deposit.id = $3
+                            AND deposit.asset_id = asset.id
+                            AND event.chain_id = deployment.chain_id
+                            AND lower(event.vault_address) = lower(deployment.vault_address)
+                      )
+                  )
+            )
+            "#,
+        )
+        .bind(command.asset_id)
+        .bind(command.deployment_id)
+        .bind(command.source_deposit_id)
+        .fetch_one(&self.pool)
+        .await?;
+        if !scope_is_valid {
+            return Err(LedgerError::InvalidDeposit(
+                "asset halt does not match its deployment or source deposit".to_owned(),
+            ));
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_asset_halts (
+                id, asset_id, deployment_id, source_deposit_id, reason, evidence
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (asset_id) WHERE resolved_at IS NULL DO NOTHING
+            "#,
+        )
+        .bind(command.halt_id)
+        .bind(command.asset_id)
+        .bind(command.deployment_id)
+        .bind(command.source_deposit_id)
+        .bind(command.reason.as_str())
+        .bind(&command.evidence)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn observe_deposit(
         &self,
         observation: &ObserveDeposit,
@@ -606,6 +742,252 @@ impl Ledger {
         })
     }
 
+    pub async fn reverse_credited_deposit(
+        &self,
+        command: &ReverseCreditedDeposit,
+    ) -> Result<DepositContradictionOutcome, LedgerError> {
+        validate_canonical_contradiction(command)?;
+        let mut attempt = 0_u32;
+        loop {
+            match self.reverse_credited_deposit_once(command).await {
+                Err(error)
+                    if is_retryable_transaction_error(&error)
+                        && attempt < self.max_serializable_retries =>
+                {
+                    retry_backoff(attempt).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn reverse_credited_deposit_once(
+        &self,
+        command: &ReverseCreditedDeposit,
+    ) -> Result<DepositContradictionOutcome, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let deposit = load_creditable_deposit(&mut tx, command.deposit_id).await?;
+        let state = DepositState::from_str(&deposit.state)?;
+        validate_contradiction_against_stored_event(&mut tx, &deposit, command).await?;
+        validate_pending_account(
+            &mut tx,
+            command.pending_account_id,
+            deposit.asset_id,
+            &deposit.customer_reference,
+        )
+        .await?;
+
+        let evidence = serde_json::to_value(command).map_err(|error| {
+            LedgerError::InvalidDeposit(format!(
+                "could not encode canonical contradiction evidence: {error}"
+            ))
+        })?;
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_asset_halts (
+                id, asset_id, deployment_id, source_deposit_id, reason, evidence
+            ) VALUES ($1, $2, $3, $4, 'credited_deposit_contradiction', $5)
+            ON CONFLICT (asset_id) WHERE resolved_at IS NULL DO NOTHING
+            "#,
+        )
+        .bind(command.halt_id)
+        .bind(deposit.asset_id)
+        .bind(command.deployment_id)
+        .bind(deposit.id)
+        .bind(&evidence)
+        .execute(&mut *tx)
+        .await?;
+        let idempotency_key = format!(
+            "deposit-reversal:{}:{}:{}",
+            deposit.chain_id,
+            deposit.transaction_hash.to_ascii_lowercase(),
+            deposit.log_index
+        );
+
+        if state == DepositState::Reversed {
+            let transaction_id = deposit.reversal_transaction_id.ok_or_else(|| {
+                LedgerError::InvalidDeposit(
+                    "reversed deposit has no reversal journal transaction".to_owned(),
+                )
+            })?;
+            let (posted, stored_hash) = load_posted_transaction(&mut tx, transaction_id).await?;
+            let expected_hash = deposit_reversal_hash(
+                &deposit,
+                command.pending_account_id,
+                &idempotency_key,
+                &deposit.amount,
+            );
+            if stored_hash != expected_hash {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            let record = creditable_record(&deposit)?;
+            tx.commit().await?;
+            return Ok(DepositContradictionOutcome::Reversed {
+                deposit: record,
+                transaction: posted,
+            });
+        }
+        if state == DepositState::Quarantined {
+            let (transaction, available_balance) = match deposit.reversal_transaction_id {
+                Some(transaction_id) => {
+                    let posted = load_posted_transaction(&mut tx, transaction_id).await?.0;
+                    let isolated = load_isolated_reversal_amount(
+                        &mut tx,
+                        transaction_id,
+                        deposit.destination_account_id,
+                    )
+                    .await?;
+                    (Some(posted), isolated)
+                }
+                None => (
+                    None,
+                    account_balance_for_update(&mut tx, deposit.destination_account_id).await?,
+                ),
+            };
+            let shortfall = (&deposit.amount - &available_balance).max(BigDecimal::zero());
+            let record = creditable_record(&deposit)?;
+            tx.commit().await?;
+            return Ok(DepositContradictionOutcome::Quarantined {
+                deposit: record,
+                transaction,
+                available_balance,
+                shortfall,
+            });
+        }
+        if state != DepositState::Credited {
+            return Err(invalid_transition(state, DepositState::Reversed));
+        }
+
+        let available_balance = reversal_available_balance_for_update(
+            &mut tx,
+            deposit.destination_account_id,
+            command.pending_account_id,
+        )
+        .await?;
+        if available_balance < deposit.amount {
+            let shortfall = &deposit.amount - &available_balance;
+            let transaction = if available_balance > BigDecimal::zero() {
+                let request_hash = deposit_reversal_hash(
+                    &deposit,
+                    command.pending_account_id,
+                    &idempotency_key,
+                    &available_balance,
+                );
+                let journal = deposit_reversal_command(
+                    &deposit,
+                    command,
+                    idempotency_key.clone(),
+                    request_hash,
+                    available_balance.clone(),
+                );
+                validate_command(&journal)?;
+                Some(
+                    post_command_in_transaction(&mut tx, &journal)
+                        .await?
+                        .transaction,
+                )
+            } else {
+                None
+            };
+            let updated = sqlx::query(
+                r#"
+                UPDATE ledger_deposits
+                SET state = 'quarantined', reversal_transaction_id = $2,
+                    updated_at = transaction_timestamp()
+                WHERE id = $1 AND state = 'credited'
+                "#,
+            )
+            .bind(deposit.id)
+            .bind(transaction.as_ref().map(|posted| posted.id))
+            .execute(&mut *tx)
+            .await?;
+            if updated.rows_affected() != 1 {
+                return Err(invalid_transition(
+                    DepositState::Credited,
+                    DepositState::Quarantined,
+                ));
+            }
+            insert_history(
+                &mut tx,
+                deposit.id,
+                Some(DepositState::Credited),
+                DepositState::Quarantined,
+                Some("credited deposit contradicted canonical finalized history and has an unresolved shortfall"),
+                json!({
+                    "contradiction": evidence,
+                    "isolated_amount": available_balance,
+                    "required_amount": deposit.amount,
+                    "shortfall": shortfall,
+                    "journal_transaction_id": transaction.as_ref().map(|posted| posted.id),
+                }),
+            )
+            .await?;
+            let record: DepositRecord = load_deposit(&mut tx, deposit.id).await?.try_into()?;
+            tx.commit().await?;
+            return Ok(DepositContradictionOutcome::Quarantined {
+                deposit: record,
+                transaction,
+                available_balance,
+                shortfall,
+            });
+        }
+
+        let request_hash = deposit_reversal_hash(
+            &deposit,
+            command.pending_account_id,
+            &idempotency_key,
+            &deposit.amount,
+        );
+        let journal = deposit_reversal_command(
+            &deposit,
+            command,
+            idempotency_key,
+            request_hash,
+            deposit.amount.clone(),
+        );
+        validate_command(&journal)?;
+        let posted = post_command_in_transaction(&mut tx, &journal).await?;
+        let updated = sqlx::query(
+            r#"
+            UPDATE ledger_deposits
+            SET state = 'reversed', reversal_transaction_id = $2,
+                updated_at = transaction_timestamp()
+            WHERE id = $1 AND state = 'credited'
+            "#,
+        )
+        .bind(deposit.id)
+        .bind(posted.transaction.id)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(invalid_transition(
+                DepositState::Credited,
+                DepositState::Reversed,
+            ));
+        }
+        insert_history(
+            &mut tx,
+            deposit.id,
+            Some(DepositState::Credited),
+            DepositState::Reversed,
+            Some("credited deposit contradicted canonical finalized history and was isolated"),
+            json!({
+                "contradiction": evidence,
+                "journal_transaction_id": posted.transaction.id,
+                "pending_account_id": command.pending_account_id,
+            }),
+        )
+        .await?;
+        let record: DepositRecord = load_deposit(&mut tx, deposit.id).await?.try_into()?;
+        tx.commit().await?;
+        Ok(DepositContradictionOutcome::Reversed {
+            deposit: record,
+            transaction: posted.transaction,
+        })
+    }
+
     pub async fn deposit(&self, deposit_id: Uuid) -> Result<DepositRecord, LedgerError> {
         let mut tx = self.pool.begin().await?;
         let stored = load_deposit(&mut tx, deposit_id).await?;
@@ -629,7 +1011,8 @@ async fn find_existing_observations(
         r#"
         SELECT
             d.id, d.customer_reference, d.destination_account_id, d.asset_id,
-            d.amount, d.state, d.credit_transaction_id, d.created_at, d.updated_at,
+            d.amount, d.state, d.credit_transaction_id, d.reversal_transaction_id,
+            d.created_at, d.updated_at,
             e.chain_id, e.block_number, e.block_hash, e.transaction_hash,
             e.transaction_index, e.log_index, e.vault_address, e.vault_deposit_id,
             e.sender_address, e.asset_address, e.actual_amount
@@ -686,6 +1069,7 @@ fn stored_observation_record(stored: &StoredObservation) -> Result<DepositRecord
         amount: stored.amount.clone(),
         state: stored.state.clone(),
         credit_transaction_id: stored.credit_transaction_id,
+        reversal_transaction_id: stored.reversal_transaction_id,
         created_at: stored.created_at,
         updated_at: stored.updated_at,
     }
@@ -754,6 +1138,122 @@ async fn validate_custody_account(
     Ok(())
 }
 
+async fn validate_pending_account(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    asset_id: Uuid,
+    customer_reference: &str,
+) -> Result<(), LedgerError> {
+    let account = sqlx::query_as::<_, (Uuid, String, String, String, bool)>(
+        r#"
+        SELECT asset_id, owner_type, owner_reference, account_type, allow_negative
+        FROM ledger_accounts
+        WHERE id = $1
+        "#,
+    )
+    .bind(account_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(LedgerError::UnknownAccount(account_id))?;
+    if account.0 != asset_id
+        || account.1 != "customer"
+        || account.2 != customer_reference
+        || account.3 != "customer_pending"
+        || account.4
+    {
+        return Err(LedgerError::InvalidDeposit(
+            "deposit reversal requires the customer's non-negative pending account for the same asset"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn account_balance_for_update(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+) -> Result<BigDecimal, LedgerError> {
+    sqlx::query_scalar(
+        "SELECT balance FROM ledger_account_balances WHERE account_id = $1 FOR UPDATE",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(LedgerError::UnknownAccount(account_id))
+}
+
+async fn reversal_available_balance_for_update(
+    tx: &mut Transaction<'_, Postgres>,
+    available_account_id: Uuid,
+    pending_account_id: Uuid,
+) -> Result<BigDecimal, LedgerError> {
+    let balances = sqlx::query_as::<_, (Uuid, BigDecimal)>(
+        r#"
+        SELECT account_id, balance
+        FROM ledger_account_balances
+        WHERE account_id = ANY($1)
+        ORDER BY account_id
+        FOR UPDATE
+        "#,
+    )
+    .bind(vec![available_account_id, pending_account_id])
+    .fetch_all(&mut **tx)
+    .await?;
+    if balances.len() != 2 {
+        let missing = if balances.iter().any(|(id, _)| *id == available_account_id) {
+            pending_account_id
+        } else {
+            available_account_id
+        };
+        return Err(LedgerError::UnknownAccount(missing));
+    }
+    balances
+        .into_iter()
+        .find_map(|(id, balance)| (id == available_account_id).then_some(balance))
+        .ok_or(LedgerError::UnknownAccount(available_account_id))
+}
+
+async fn validate_contradiction_against_stored_event(
+    tx: &mut Transaction<'_, Postgres>,
+    deposit: &CreditableDeposit,
+    command: &ReverseCreditedDeposit,
+) -> Result<(), LedgerError> {
+    let event = sqlx::query_as::<_, (i64, i64, String, String, i32, String)>(
+        r#"
+        SELECT chain_id, block_number, block_hash, transaction_hash, log_index, vault_address
+        FROM ledger_deposit_chain_events
+        WHERE deposit_id = $1
+        "#,
+    )
+    .bind(deposit.id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let deployment = sqlx::query_as::<_, (i64, String)>(
+        "SELECT chain_id, vault_address FROM ledger_chain_deployments WHERE id = $1",
+    )
+    .bind(command.deployment_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| {
+        LedgerError::InvalidDeposit("contradiction referenced an unknown deployment".to_owned())
+    })?;
+    let first = &command.first;
+    if event.0 != first.chain_id
+        || event.1 != first.deposit_block_number
+        || !event.2.eq_ignore_ascii_case(&first.stored_block_hash)
+        || !event.3.eq_ignore_ascii_case(&first.transaction_hash)
+        || event.4 != first.log_index
+        || deployment.0 != event.0
+        || !deployment.1.eq_ignore_ascii_case(&event.5)
+    {
+        return Err(LedgerError::InvalidDeposit(
+            "canonical contradiction does not match the stored deposit event and deployment"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 async fn load_deposit(
     tx: &mut Transaction<'_, Postgres>,
     deposit_id: Uuid,
@@ -761,7 +1261,7 @@ async fn load_deposit(
     sqlx::query_as::<_, StoredDeposit>(
         r#"
         SELECT id, customer_reference, destination_account_id, asset_id, amount,
-               state, credit_transaction_id, created_at, updated_at
+               state, credit_transaction_id, reversal_transaction_id, created_at, updated_at
         FROM ledger_deposits WHERE id = $1
         "#,
     )
@@ -778,7 +1278,7 @@ async fn load_deposit_for_update(
     sqlx::query_as::<_, StoredDeposit>(
         r#"
         SELECT id, customer_reference, destination_account_id, asset_id, amount,
-               state, credit_transaction_id, created_at, updated_at
+               state, credit_transaction_id, reversal_transaction_id, created_at, updated_at
         FROM ledger_deposits WHERE id = $1 FOR UPDATE
         "#,
     )
@@ -795,7 +1295,8 @@ async fn load_creditable_deposit(
     sqlx::query_as::<_, CreditableDeposit>(
         r#"
         SELECT d.id, d.customer_reference, d.destination_account_id, d.asset_id,
-               d.amount, d.state, d.credit_transaction_id, d.created_at, d.updated_at,
+               d.amount, d.state, d.credit_transaction_id, d.reversal_transaction_id,
+               d.created_at, d.updated_at,
                e.chain_id, e.transaction_hash, e.log_index
         FROM ledger_deposits d
         JOIN ledger_deposit_chain_events e ON e.deposit_id = d.id
@@ -818,6 +1319,7 @@ fn creditable_record(stored: &CreditableDeposit) -> Result<DepositRecord, Ledger
         amount: stored.amount.clone(),
         state: stored.state.clone(),
         credit_transaction_id: stored.credit_transaction_id,
+        reversal_transaction_id: stored.reversal_transaction_id,
         created_at: stored.created_at,
         updated_at: stored.updated_at,
     }
@@ -845,6 +1347,30 @@ async fn load_posted_transaction(
         },
         request_hash,
     ))
+}
+
+async fn load_isolated_reversal_amount(
+    tx: &mut Transaction<'_, Postgres>,
+    transaction_id: Uuid,
+    available_account_id: Uuid,
+) -> Result<BigDecimal, LedgerError> {
+    let amount: BigDecimal = sqlx::query_scalar(
+        r#"
+        SELECT amount
+        FROM ledger_journal_legs
+        WHERE transaction_id = $1 AND account_id = $2
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(available_account_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if amount >= BigDecimal::zero() {
+        return Err(LedgerError::InvalidDeposit(
+            "stored deposit reversal did not debit the available account".to_owned(),
+        ));
+    }
+    Ok(-amount)
 }
 
 async fn update_state(
@@ -972,6 +1498,49 @@ fn validate_finality_agreement(finality: &FinalizeDeposit) -> Result<(), LedgerE
     Ok(())
 }
 
+fn validate_canonical_contradiction(command: &ReverseCreditedDeposit) -> Result<(), LedgerError> {
+    let first = &command.first;
+    let second = &command.second;
+    let identities_valid = command.deposit_id != Uuid::nil()
+        && command.deployment_id != Uuid::nil()
+        && command.pending_account_id != Uuid::nil()
+        && command.reversal_transaction_id != Uuid::nil()
+        && command.halt_id != Uuid::nil();
+    let evidence_valid = !first.provider.trim().is_empty()
+        && !second.provider.trim().is_empty()
+        && !first.provider.eq_ignore_ascii_case(&second.provider)
+        && first.chain_id > 0
+        && first.finalized_block_number >= first.deposit_block_number
+        && first.deposit_block_number >= 0
+        && first.log_index >= 0
+        && is_hex_bytes(&first.finalized_block_hash, 32)
+        && is_hex_bytes(&first.stored_block_hash, 32)
+        && is_hex_bytes(&first.canonical_block_hash, 32)
+        && is_hex_bytes(&first.transaction_hash, 32)
+        && !first.canonical_log_matches;
+    let providers_agree = first.chain_id == second.chain_id
+        && first.finalized_block_number == second.finalized_block_number
+        && first
+            .finalized_block_hash
+            .eq_ignore_ascii_case(&second.finalized_block_hash)
+        && first.deposit_block_number == second.deposit_block_number
+        && first
+            .stored_block_hash
+            .eq_ignore_ascii_case(&second.stored_block_hash)
+        && first
+            .canonical_block_hash
+            .eq_ignore_ascii_case(&second.canonical_block_hash)
+        && first
+            .transaction_hash
+            .eq_ignore_ascii_case(&second.transaction_hash)
+        && first.log_index == second.log_index
+        && first.canonical_log_matches == second.canonical_log_matches;
+    if !identities_valid || !evidence_valid || !providers_agree {
+        return Err(LedgerError::DepositFinalityDisagreement);
+    }
+    Ok(())
+}
+
 fn allowed_transition(from: DepositState, to: DepositState) -> bool {
     matches!(
         (from, to),
@@ -1011,6 +1580,65 @@ fn deposit_credit_hash(
         hasher.update(value);
     }
     hasher.finalize().into()
+}
+
+fn deposit_reversal_hash(
+    deposit: &CreditableDeposit,
+    pending_account_id: Uuid,
+    idempotency_key: &str,
+    isolated_amount: &BigDecimal,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for value in [
+        deposit.id.as_bytes().as_slice(),
+        deposit.destination_account_id.as_bytes().as_slice(),
+        pending_account_id.as_bytes().as_slice(),
+        idempotency_key.as_bytes(),
+        deposit.amount.normalized().to_string().as_bytes(),
+        isolated_amount.normalized().to_string().as_bytes(),
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value);
+    }
+    hasher.finalize().into()
+}
+
+fn deposit_reversal_command(
+    deposit: &CreditableDeposit,
+    command: &ReverseCreditedDeposit,
+    idempotency_key: String,
+    request_hash: [u8; 32],
+    isolated_amount: BigDecimal,
+) -> PostTransaction {
+    PostTransaction {
+        id: command.reversal_transaction_id,
+        operation_type: "deposit_reversal".to_owned(),
+        idempotency_key,
+        request_hash,
+        external_reference: Some(json!({
+            "deposit_id": deposit.id,
+            "chain_id": deposit.chain_id,
+            "transaction_hash": deposit.transaction_hash,
+            "log_index": deposit.log_index,
+        })),
+        metadata: json!({
+            "source": "credited_deposit_contradiction",
+            "asset_halt_id": command.halt_id,
+            "deployment_id": command.deployment_id,
+            "isolated_amount": isolated_amount,
+            "original_deposit_amount": deposit.amount,
+        }),
+        legs: vec![
+            JournalLegInput {
+                account_id: deposit.destination_account_id,
+                amount: -isolated_amount.clone(),
+            },
+            JournalLegInput {
+                account_id: command.pending_account_id,
+                amount: isolated_amount,
+            },
+        ],
+    }
 }
 
 fn optional_address_eq(left: &Option<String>, right: &Option<String>) -> bool {

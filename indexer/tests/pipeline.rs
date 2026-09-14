@@ -24,6 +24,7 @@ struct FakeRpc {
     finalized: RpcBlock,
     logs: Vec<RpcLog>,
     code: String,
+    deposit_block_hash: String,
 }
 
 #[async_trait]
@@ -39,6 +40,12 @@ impl Rpc for FakeRpc {
     async fn block(&self, tag: &str) -> Result<RpcBlock, IndexerError> {
         if tag == "latest" {
             Ok(self.latest.clone())
+        } else if tag == "0x6e" {
+            Ok(RpcBlock {
+                number: 110,
+                hash: self.deposit_block_hash.clone(),
+                timestamp: self.finalized.timestamp,
+            })
         } else {
             Ok(self.finalized.clone())
         }
@@ -138,6 +145,7 @@ impl Fixture {
             max_head_age: Duration::from_secs(120),
             max_provider_block_lag: 3,
             batch_size: 500,
+            audit_batch_size: 500,
             lease_duration: Duration::from_secs(30),
         }
     }
@@ -159,6 +167,7 @@ impl Fixture {
             },
             logs: vec![deposit_log()],
             code: self.code.clone(),
+            deposit_block_hash: hash(0x44),
         }
     }
 }
@@ -242,6 +251,18 @@ async fn agreed_finalized_event_is_credited_once_and_checkpointed(pool: PgPool) 
     .await
     .unwrap();
     assert_eq!(journal_count, 1);
+    let audit_next: i64 =
+        sqlx::query_scalar("SELECT next_block FROM ledger_indexer_audit_checkpoints")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(audit_next, 121);
+    assert!(
+        sqlx::query("UPDATE ledger_indexer_audit_checkpoints SET next_block = 100")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]
@@ -361,4 +382,183 @@ async fn second_worker_cannot_take_live_lease_or_rewind_checkpoint(pool: PgPool)
             .await
             .is_err()
     );
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn finalized_history_contradiction_halts_and_reverses_credit_to_pending(pool: PgPool) {
+    let fixture = Fixture::new(pool.clone()).await;
+    let mut first = DepositIndexer::new(
+        fixture.config(),
+        fixture.store.clone(),
+        fixture.rpc("provider-a"),
+        fixture.rpc("provider-b"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.tick().await.unwrap(), 1);
+
+    sqlx::query(
+        "UPDATE ledger_indexer_checkpoints SET lease_expires_at = transaction_timestamp() - interval '1 second'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut primary = fixture.rpc("provider-a");
+    primary.logs.clear();
+    primary.deposit_block_hash = hash(0x66);
+    let mut secondary = fixture.rpc("provider-b");
+    secondary.logs.clear();
+    secondary.deposit_block_hash = hash(0x66);
+    let mut recovery =
+        DepositIndexer::new(fixture.config(), fixture.store.clone(), primary, secondary)
+            .await
+            .unwrap();
+
+    assert!(matches!(
+        recovery.tick().await,
+        Err(IndexerError::Safety {
+            reason: HaltReason::CreditedDepositContradiction,
+            ..
+        })
+    ));
+    let state: String = sqlx::query_scalar("SELECT state FROM ledger_deposits")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "reversed");
+    let customer_available: BigDecimal = sqlx::query_scalar(
+        r#"
+        SELECT balance.balance
+        FROM ledger_account_balances balance
+        JOIN ledger_accounts account ON account.id = balance.account_id
+        WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'
+        "#,
+    )
+    .bind(CUSTOMER)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let customer_pending: BigDecimal = sqlx::query_scalar(
+        r#"
+        SELECT balance.balance
+        FROM ledger_account_balances balance
+        JOIN ledger_accounts account ON account.id = balance.account_id
+        WHERE account.owner_reference = $1 AND account.account_type = 'customer_pending'
+        "#,
+    )
+    .bind(CUSTOMER)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(customer_available, BigDecimal::from(0));
+    assert_eq!(customer_pending, BigDecimal::from(1_500_000_i64));
+    let active_halts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM ledger_asset_halts WHERE resolved_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(active_halts, 1);
+    let audit_next: i64 =
+        sqlx::query_scalar("SELECT next_block FROM ledger_indexer_audit_checkpoints")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(audit_next, 100);
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn audit_provider_disagreement_does_not_reverse_credited_deposit(pool: PgPool) {
+    let fixture = Fixture::new(pool.clone()).await;
+    let mut first = DepositIndexer::new(
+        fixture.config(),
+        fixture.store.clone(),
+        fixture.rpc("provider-a"),
+        fixture.rpc("provider-b"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.tick().await.unwrap(), 1);
+    sqlx::query(
+        "UPDATE ledger_indexer_checkpoints SET lease_expires_at = transaction_timestamp() - interval '1 second'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut primary = fixture.rpc("provider-a");
+    primary.logs.clear();
+    let secondary = fixture.rpc("provider-b");
+    let mut recovery = DepositIndexer::new(fixture.config(), fixture.store, primary, secondary)
+        .await
+        .unwrap();
+    assert!(matches!(
+        recovery.tick().await,
+        Err(IndexerError::Safety {
+            reason: HaltReason::ProviderDisagreement,
+            ..
+        })
+    ));
+    let state: String = sqlx::query_scalar("SELECT state FROM ledger_deposits")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "credited");
+    let active_halts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM ledger_asset_halts WHERE resolved_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(active_halts, 0);
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn newly_appeared_event_behind_forward_checkpoint_halts_asset(pool: PgPool) {
+    let fixture = Fixture::new(pool.clone()).await;
+    let mut primary = fixture.rpc("provider-a");
+    primary.logs.clear();
+    let mut secondary = fixture.rpc("provider-b");
+    secondary.logs.clear();
+    let mut first =
+        DepositIndexer::new(fixture.config(), fixture.store.clone(), primary, secondary)
+            .await
+            .unwrap();
+    assert_eq!(first.tick().await.unwrap(), 0);
+    sqlx::query(
+        "UPDATE ledger_indexer_checkpoints SET lease_expires_at = transaction_timestamp() - interval '1 second'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut audit = DepositIndexer::new(
+        fixture.config(),
+        fixture.store.clone(),
+        fixture.rpc("provider-a"),
+        fixture.rpc("provider-b"),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        audit.tick().await,
+        Err(IndexerError::Safety {
+            reason: HaltReason::HistoricalDepositAppeared,
+            ..
+        })
+    ));
+    let deposits: i64 = sqlx::query_scalar("SELECT count(*) FROM ledger_deposits")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(deposits, 0);
+    let active_halts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM ledger_asset_halts WHERE resolved_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(active_halts, 1);
+    let next_block: i64 = sqlx::query_scalar("SELECT next_block FROM ledger_indexer_checkpoints")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(next_block, 121);
 }

@@ -63,6 +63,13 @@ audit record commit atomically. `Ledger::post` rejects the administrative
 operation type so ordinary posting cannot bypass this audit boundary. Any future
 operator API must authenticate both actor references before calling the command.
 
+Credited-deposit contradictions use `Ledger::reverse_credited_deposit`. The
+command verifies two-provider canonical evidence against the stored event,
+activates an asset-wide halt, and atomically isolates available funds into the
+customer pending account. A shortfall produces a quarantined deposit rather
+than a false success. PostgreSQL blocks new credits, trading, and withdrawals
+for an actively halted asset while allowing releases and compensating reversal.
+
 See [the matcher-ledger commit boundary](../docs/architecture/matcher-ledger-commit.md)
 for account requirements, decimal conversion, acknowledgement ordering, and
 current limitations.

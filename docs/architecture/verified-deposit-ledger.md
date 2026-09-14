@@ -16,7 +16,9 @@ The typed state model follows ADR-003: `observed`, `confirming`, `finalized`, `c
 
 Only the dedicated finality command can move a confirming deposit to finalized. It requires two distinctly named RPC providers to report the same finalized block number and hash, deposit block hash, transaction hash, and log index. The evidence must also match the stored canonical event, and the finalized height cannot precede the deposit block.
 
-A pre-credit reorganization moves the deposit to `orphaned` and cannot produce a balance. Compensating reversal of an already credited deposit, automatic asset halts, and reconciliation are deliberately not implemented in this chapter.
+A pre-credit reorganization moves the deposit to `orphaned` and cannot produce a balance. Previously processed finalized ranges are also re-audited continuously against both providers. If a credited event disappears or its immutable facts change, the ledger atomically activates an asset-wide halt before isolating the customer credit.
+
+If the complete credited amount remains available, a compensating `deposit_reversal` journal entry moves it from `customer_available` to `customer_pending` and the deposit becomes `reversed`. If some of the amount has already moved, every remaining available unit is moved to pending and the deposit becomes `quarantined` with the exact shortfall in immutable evidence. No partial result is described as a successful reversal.
 
 ## Atomic credit
 
@@ -32,10 +34,12 @@ The idempotency key is derived from canonical chain-event identity and its reque
 
 ## Indexer boundary
 
-Migration 0003 adds an append-only deployment registry, a single-worker lease, a monotonic restart checkpoint, and immutable halt evidence. The indexer scans only through the providers' highest common finalized height. It rejects stale latest heads, excessive provider lag, wrong chain IDs, finalized hash disagreement or regression, runtime bytecode mismatch, malformed or duplicate logs, out-of-range results, unregistered assets, and ledger rejection. Checkpoints advance only after every event in the range reaches an idempotent terminal credit result.
+Migration 0003 adds an append-only deployment registry, a single-worker lease, a monotonic restart checkpoint, and immutable halt evidence. Migration 0004 adds a separately guarded cyclic audit checkpoint, credited-deposit reversal references, and durable per-asset halts. The indexer scans only through the providers' highest common finalized height. It rejects stale latest heads, excessive provider lag, wrong chain IDs, finalized hash disagreement or regression, runtime bytecode mismatch, malformed or duplicate logs, out-of-range results, unregistered assets, and ledger rejection. Forward checkpoints advance only after every event in the range reaches an idempotent terminal credit result. Audit checkpoints advance only after the already-processed range still agrees with both providers.
+
+An active asset halt blocks new deposit credits, order reservations, trades, fees, rebates, withdrawal reservations, and withdrawal completions at the PostgreSQL journal-leg boundary. Releases and deposit reversals remain permitted so the system can reduce exposure. Halt evidence is append-only; resolution requires evidence and two distinct actor references, and the restricted runtime writer cannot resolve it.
 
 The legacy Sepolia deployment emits the older three-field event and is intentionally incompatible. Only a newly deployed contract with `Deposited(bytes32,address,address,uint256)` can be registered.
 
 ## Remaining launch work
 
-Base Sepolia contract deployment, managed indexer hosting, protected provider/database configuration, customer deposit-status API, frontend transaction discovery, credited-event reversal, custody reconciliation, and operational alerting remain Milestone 3 blockers.
+Base Sepolia contract deployment, managed indexer hosting, protected provider/database configuration, customer deposit-status API, frontend transaction discovery, custody reconciliation, and operational alerting remain Milestone 3 blockers.

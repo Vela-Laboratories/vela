@@ -150,6 +150,14 @@ indexer checkpoints and halt evidence while an attempted deployment-registry
 insert was denied. This does not replace a managed-environment migration or
 restore rehearsal.
 
+On 2026-09-14 migration 0004 was rehearsed from an empty PostgreSQL 16
+database. The schema reached exact version 4, `roles.sql` reapplied cleanly,
+and the restricted writer could insert and advance the cyclic history-audit
+checkpoint and create asset-halt evidence. The same role was denied both
+asset-halt resolution and deployment-registry insertion. This remains local
+evidence only and does not replace a managed-environment migration, restore,
+reconciliation, or incident-response rehearsal.
+
 ## Managed-environment completion gate
 
 Before marking managed database provisioning complete:

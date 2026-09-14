@@ -18,6 +18,8 @@ The process credits only logs that satisfy all of these conditions:
 
 Any uncertainty stops credits. Safety failures are written to `ledger_indexer_halts`, and the monotonic PostgreSQL checkpoint advances only after the complete range is processed. A database lease prevents two workers from owning one deployment concurrently. A crash after a credit but before checkpoint advancement is safe because deposit and journal identities are deterministic and idempotent.
 
+The same worker continuously cycles a second checkpoint from the registered deployment block through the already-processed finalized range. Both providers must continue returning identical canonical logs. A missing or changed credited event activates an asset-wide halt before the ledger moves every still-available unit into `customer_pending`; a complete isolation becomes `reversed`, while any shortfall becomes `quarantined`. A newly appeared historical event also halts the affected asset because it is behind the monotonic forward checkpoint.
+
 ## Contract and registry requirement
 
 The current source emits:
@@ -40,7 +42,7 @@ The two hashes must match. Record the result as `VELA_CUSTODY_VAULT_CODE_HASH` i
 
 ## Controlled registration
 
-Run migration 0003, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs those steps in that order.
+Run all migrations through 0004, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs those steps in that order.
 
 For a local Base Sepolia rehearsal:
 
@@ -85,4 +87,6 @@ When credits stop:
 5. Register a new immutable deployment row for replacement bytecode or address.
 6. Resolve a halt record only after the evidence is retained and an incident owner is named.
 
-Provider recovery permits an idempotent retry from the unchanged checkpoint. Credited-event reversal and automatic asset halting remain separate required work; do not interpret this service as complete reorganization recovery.
+For `credited_deposit_contradiction` or `historical_deposit_appeared`, also inspect `ledger_asset_halts`, the deposit state history, the reversal journal transaction, customer pending balance, and recorded shortfall. Do not re-enable the asset merely because providers later converge. Resolution requires a fresh successful reconciliation plus distinct initiator and approver identities; the runtime writer has no resolution permission.
+
+Provider recovery permits an idempotent retry from the unchanged checkpoint. Automatic reversal contains customer spendability but does not prove custody solvency, notify customers, page an operator, or replace the required reconciliation and incident process.

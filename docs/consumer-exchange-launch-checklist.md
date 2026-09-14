@@ -60,12 +60,12 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Verify the indexed asset address against the ledger asset registry.
 - [x] Verify the actual amount received; ERC20 custody now measures and emits the vault balance delta.
 - [x] Wait for the asset-and-chain finality policy before final credit; Base ETH and USDC require two-provider agreement at the highest common `finalized` height.
-- [ ] Handle chain reorganizations.
-- [ ] Reverse or quarantine deposits invalidated by a reorganization.
+- [x] Handle chain reorganizations by continuously re-auditing already-processed finalized history through two agreeing providers and a guarded cyclic checkpoint.
+- [x] Reverse or quarantine deposits invalidated by a reorganization; remaining available funds move to customer pending, exact shortfalls are recorded, and the affected asset is halted first.
 - [x] Make finalized deposit crediting idempotent at the ledger boundary.
 - [x] Prevent the same canonical transaction log from being recorded or credited twice at the ledger boundary.
 - [x] Store chain ID, vault, block number, block hash, transaction hash, transaction index, and log index for every authoritative deposit observation.
-- [ ] Complete observed, confirming, finalized, credited, rejected, orphaned, quarantined, and reversed deposit workflows; typed states and guarded pre-credit transitions exist, while post-credit reversal remains open.
+- [x] Complete observed, confirming, finalized, credited, rejected, orphaned, quarantined, and reversed deposit workflows with guarded state history and compensating journals where funds can be isolated.
 - [x] Build a dedicated deposit indexer with restart-safe PostgreSQL checkpointing and a single-worker lease.
 - [x] Use redundant RPC providers with distinct configured names and origins.
 - [x] Add RPC disagreement, wrong-chain, stale-head, provider-lag, finalized-regression, and pinned-bytecode detection that halts credits.
@@ -580,11 +580,11 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Testing and launch gates
 
-- [ ] Preserve the currently passing Rust and Solidity suites.
+- [x] Preserve the currently passing Rust and Solidity suites; EX-021 passes the full Rust workspace, Clippy with warnings denied, Foundry formatting/build/tests, frontend validation, and the production Docker build.
 - [ ] Add end-to-end custody tests across Rust, Solidity, RPC, and frontend layers.
 - [ ] Test that every credited deposit has custody evidence.
 - [ ] Test that no deposit event can be credited twice.
-- [ ] Test deposit reorganization handling.
+- [x] Test deposit reorganization handling, including provider disagreement, historical event invalidation, complete pending isolation, spent-funds quarantine, operation halts, retry idempotency, and audit-checkpoint rewind rejection.
 - [ ] Test ledger and contract reconciliation.
 - [ ] Test trade settlement across two users and two assets.
 - [ ] Test withdrawal reservation and completion.

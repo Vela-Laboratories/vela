@@ -184,9 +184,9 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Observe the correct contract and deposit event signature; the source now emits and the indexer strictly decodes `Deposited(bytes32,address,address,uint256)`. The legacy Sepolia deployment is intentionally incompatible and must not be registered.
 - [x] Record chain ID, contract, block number, block hash, transaction hash, transaction index, and log index in the durable observation command.
 - [x] Verify depositor, beneficiary, asset, and actual received amount; the current self-deposit ABI binds depositor and beneficiary to the indexed user, allowlists the ledger asset, and emits the measured ERC20 balance delta.
-- [ ] Complete pending, confirming, finalized, failed, quarantined, and reversed workflows; the typed model, database guards, confirming/finalized path, and pre-credit orphan handling are implemented, while credited reversal remains open.
+- [x] Complete observed, confirming, finalized, credited, rejected, orphaned, quarantined, and reversed workflows; credited contradictions atomically halt the asset and either isolate the full amount into pending or quarantine an exact shortfall.
 - [x] Define confirmation thresholds per asset and chain; launch-scope Base ETH and USDC both use the pinned `rpc_finalized_two_provider` policy, and latest-head confirmation counts are evidence only.
-- [ ] Detect and process chain reorganizations.
+- [x] Detect and process chain reorganizations; a cyclic two-provider audit rechecks every already-processed finalized range and never rewinds its checkpoint except through a guarded cycle reset to the immutable deployment block.
 - [x] Make canonical event identity unique and observation idempotent.
 - [x] Journal final deposit credits through the ledger atomically with credited state and immutable history.
 - [x] Add redundant RPC providers with distinct configured names and URL origins.
@@ -199,7 +199,7 @@ The implementation and tests must preserve these invariants at all times:
 
 - [ ] No API request can credit funds without a verified chain event.
 - [x] The same canonical log cannot be recorded or credited twice at the ledger boundary.
-- [ ] Reorganizations do not leave invalid finalized credits.
+- [x] Reorganizations do not leave invalid finalized credits usable; the database blocks affected-asset credits, trading, and withdrawals before complete reversal or shortfall quarantine.
 - [x] Provider failure cannot silently produce a credit at the indexer boundary; timeout, stale head, chain mismatch, bytecode mismatch, log disagreement, and finalized disagreement all fail closed.
 - [ ] Customers can see pending and finalized deposit status.
 - [ ] Custody and ledger amounts reconcile after every finalized deposit.
@@ -472,6 +472,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Route verified ETH/USDC events through deterministic observation, confirming, finality, and atomic ledger credit commands; reject unregistered assets and missing custody accounts.
     - Add a PostgreSQL single-worker lease, monotonic restart checkpoint, immutable halt evidence, bounded retry/backoff, graceful shutdown, controlled deployment-registration command, and migration-workflow grants.
     - Verify exact credit and checkpointing, restart idempotency, malformed and duplicate log rejection, provider disagreement, stale heads, wrong bytecode, lease exclusion, registry immutability, and checkpoint rewind prevention against PostgreSQL 16.
+21. [x] **EX-021: Credited-deposit contradiction containment and reorganization recovery**
+    - Add a separately guarded cyclic checkpoint that continuously re-audits previously processed finalized ranges against identical normalized logs from both RPC providers.
+    - Detect missing, changed, or newly appeared historical deposit events behind the monotonic forward checkpoint, and require provider agreement before any financial recovery command.
+    - Atomically activate an append-only asset-wide halt before moving a contradicted credit from customer available into customer pending; mark complete isolation `reversed` and any spent-funds shortfall `quarantined` with exact evidence.
+    - Enforce halted-asset deposit-credit, trading, fee, rebate, withdrawal-reservation, and withdrawal-completion rejection at the PostgreSQL journal boundary while preserving safe releases and reversal.
+    - Require evidence plus distinct initiator and approver identities to resolve a halt, and withhold resolution permission from the restricted runtime writer.
+    - Verify complete reversal, partial-balance isolation, exact shortfall quarantine, idempotent retry, blocked financial operations, immutable halt evidence, audit-provider disagreement, and audit-checkpoint rewind prevention against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

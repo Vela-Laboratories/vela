@@ -252,7 +252,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 3;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 4;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {

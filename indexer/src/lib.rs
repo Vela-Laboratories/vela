@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use chrono::Utc;
 use ledger::{
-    AccountLookup, AccountProvisionRequest, DepositChainEvent, DepositState, FinalizeDeposit,
-    Ledger, LedgerError, ObserveDeposit, RpcFinalityObservation,
+    AccountLookup, AccountProvisionRequest, ActivateAssetHalt, AssetHaltReason, DepositChainEvent,
+    DepositContradictionOutcome, DepositState, FinalizeDeposit, Ledger, LedgerError,
+    ObserveDeposit, ReverseCreditedDeposit, RpcCanonicalContradiction, RpcFinalityObservation,
 };
 use reqwest::Url;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -12,6 +13,7 @@ use sha3::{Digest, Keccak256};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
 use std::{
     cmp::min,
+    collections::HashMap,
     env,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
@@ -42,6 +44,7 @@ pub struct Config {
     pub max_head_age: Duration,
     pub max_provider_block_lag: u64,
     pub batch_size: u64,
+    pub audit_batch_size: u64,
     pub lease_duration: Duration,
 }
 
@@ -78,6 +81,7 @@ impl Config {
             max_head_age: seconds("VELA_INDEXER_MAX_HEAD_AGE_SECONDS", 120)?,
             max_provider_block_lag: positive_u64("VELA_INDEXER_MAX_PROVIDER_BLOCK_LAG", 3)?,
             batch_size: positive_u64("VELA_INDEXER_BATCH_SIZE", 500)?,
+            audit_batch_size: positive_u64("VELA_INDEXER_AUDIT_BATCH_SIZE", 500)?,
             lease_duration: seconds("VELA_INDEXER_LEASE_SECONDS", 30)?,
         })
     }
@@ -169,6 +173,8 @@ pub enum HaltReason {
     UnregisteredAsset,
     LedgerRejection,
     LeaseLost,
+    CreditedDepositContradiction,
+    HistoricalDepositAppeared,
 }
 
 impl HaltReason {
@@ -183,6 +189,8 @@ impl HaltReason {
             Self::UnregisteredAsset => "unregistered_asset",
             Self::LedgerRejection => "ledger_rejection",
             Self::LeaseLost => "lease_lost",
+            Self::CreditedDepositContradiction => "credited_deposit_contradiction",
+            Self::HistoricalDepositAppeared => "historical_deposit_appeared",
         }
     }
 }
@@ -226,6 +234,32 @@ struct Checkpoint {
     next_block: u64,
     last_finalized_block_number: Option<u64>,
     last_finalized_block_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuditCheckpoint {
+    next_block: u64,
+    cycle: u64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct AuditableDeposit {
+    deposit_id: Uuid,
+    customer_reference: String,
+    asset_id: Uuid,
+    asset_code: String,
+    state: String,
+    chain_id: i64,
+    block_number: i64,
+    block_hash: String,
+    transaction_hash: String,
+    transaction_index: i32,
+    log_index: i32,
+    vault_address: String,
+    vault_deposit_id: String,
+    sender_address: String,
+    asset_address: Option<String>,
+    actual_amount: BigDecimal,
 }
 
 #[derive(Clone)]
@@ -380,6 +414,140 @@ impl IndexerStore {
                 .map_err(|_| IndexerError::Config("negative finalized checkpoint".to_owned()))?,
             last_finalized_block_hash: row.2,
         })
+    }
+
+    async fn load_audit_checkpoint(
+        &self,
+        deployment: &Deployment,
+        owner: Uuid,
+    ) -> Result<AuditCheckpoint, IndexerError> {
+        let row = sqlx::query_as::<_, (i64, i64)>(
+            r#"
+            INSERT INTO ledger_indexer_audit_checkpoints (deployment_id, next_block)
+            SELECT $1, $2
+            WHERE EXISTS (
+                SELECT 1 FROM ledger_indexer_checkpoints
+                WHERE deployment_id = $1 AND lease_owner = $3
+                  AND lease_expires_at > transaction_timestamp()
+            )
+            ON CONFLICT (deployment_id) DO UPDATE
+            SET updated_at = ledger_indexer_audit_checkpoints.updated_at
+            WHERE EXISTS (
+                SELECT 1 FROM ledger_indexer_checkpoints
+                WHERE deployment_id = $1 AND lease_owner = $3
+                  AND lease_expires_at > transaction_timestamp()
+            )
+            RETURNING next_block, cycle
+            "#,
+        )
+        .bind(deployment.id)
+        .bind(deployment.start_block)
+        .bind(owner)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            safety(
+                HaltReason::LeaseLost,
+                "indexer lease expired before history audit",
+                json!({"deployment_id": deployment.id}),
+            )
+        })?;
+        Ok(AuditCheckpoint {
+            next_block: u64::try_from(row.0)
+                .map_err(|_| IndexerError::Config("negative audit checkpoint".to_owned()))?,
+            cycle: u64::try_from(row.1)
+                .map_err(|_| IndexerError::Config("negative audit cycle".to_owned()))?,
+        })
+    }
+
+    async fn advance_audit_checkpoint(
+        &self,
+        deployment: &Deployment,
+        owner: Uuid,
+        next_block: u64,
+        cycle: u64,
+        last_scanned: Option<&RpcBlock>,
+    ) -> Result<(), IndexerError> {
+        let next_block = i64::try_from(next_block).map_err(|_| {
+            IndexerError::Config("audit checkpoint exceeds PostgreSQL bigint".to_owned())
+        })?;
+        let cycle = i64::try_from(cycle).map_err(|_| {
+            IndexerError::Config("audit cycle exceeds PostgreSQL bigint".to_owned())
+        })?;
+        let last_number = last_scanned
+            .map(|block| i64::try_from(block.number))
+            .transpose()
+            .map_err(|_| {
+                IndexerError::Config("audited block exceeds PostgreSQL bigint".to_owned())
+            })?;
+        let last_hash = last_scanned.map(|block| block.hash.as_str());
+        let updated = sqlx::query(
+            r#"
+            UPDATE ledger_indexer_audit_checkpoints audit
+            SET next_block = $3, cycle = $4,
+                last_scanned_block_number = $5,
+                last_scanned_block_hash = $6,
+                updated_at = transaction_timestamp()
+            WHERE audit.deployment_id = $1
+              AND EXISTS (
+                  SELECT 1 FROM ledger_indexer_checkpoints live
+                  WHERE live.deployment_id = $1 AND live.lease_owner = $2
+                    AND live.lease_expires_at > transaction_timestamp()
+              )
+            "#,
+        )
+        .bind(deployment.id)
+        .bind(owner)
+        .bind(next_block)
+        .bind(cycle)
+        .bind(last_number)
+        .bind(last_hash)
+        .execute(&self.pool)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(safety(
+                HaltReason::LeaseLost,
+                "indexer lease expired before history audit checkpoint",
+                json!({"deployment_id": deployment.id}),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn auditable_deposits(
+        &self,
+        deployment: &Deployment,
+        from: u64,
+        to: u64,
+    ) -> Result<Vec<AuditableDeposit>, IndexerError> {
+        let from = i64::try_from(from).map_err(|_| {
+            IndexerError::Config("audit range exceeds PostgreSQL bigint".to_owned())
+        })?;
+        let to = i64::try_from(to).map_err(|_| {
+            IndexerError::Config("audit range exceeds PostgreSQL bigint".to_owned())
+        })?;
+        Ok(sqlx::query_as::<_, AuditableDeposit>(
+            r#"
+            SELECT d.id AS deposit_id, d.customer_reference, d.asset_id,
+                   asset.code AS asset_code, d.state, event.chain_id,
+                   event.block_number, event.block_hash, event.transaction_hash,
+                   event.transaction_index, event.log_index, event.vault_address,
+                   event.vault_deposit_id, event.sender_address,
+                   event.asset_address, event.actual_amount
+            FROM ledger_deposits d
+            JOIN ledger_deposit_chain_events event ON event.deposit_id = d.id
+            JOIN ledger_assets asset ON asset.id = d.asset_id
+            WHERE event.chain_id = $1 AND lower(event.vault_address) = lower($2)
+              AND event.block_number BETWEEN $3 AND $4
+            ORDER BY event.block_number, event.log_index, lower(event.transaction_hash)
+            "#,
+        )
+        .bind(deployment.chain_id)
+        .bind(&deployment.vault_address)
+        .bind(from)
+        .bind(to)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     async fn advance_checkpoint(
@@ -939,6 +1107,8 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         self.verify_live_heads(&primary_latest, &secondary_latest)?;
         let finalized = self.agreed_finalized_head(&checkpoint).await?;
         self.verify_vault_code(finalized.number).await?;
+        self.audit_finalized_history(&checkpoint, &finalized)
+            .await?;
 
         if checkpoint.next_block > finalized.number {
             self.store
@@ -1128,6 +1298,319 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             ));
         }
         Ok(())
+    }
+
+    async fn audit_finalized_history(
+        &self,
+        checkpoint: &Checkpoint,
+        finalized: &RpcBlock,
+    ) -> Result<(), IndexerError> {
+        let audit = self
+            .store
+            .load_audit_checkpoint(&self.deployment, self.owner)
+            .await?;
+        let processed_end = checkpoint
+            .next_block
+            .saturating_sub(1)
+            .min(finalized.number);
+        if audit.next_block > processed_end {
+            if audit.next_block
+                > u64::try_from(self.deployment.start_block)
+                    .map_err(|_| IndexerError::Config("negative deployment start".to_owned()))?
+            {
+                self.store
+                    .advance_audit_checkpoint(
+                        &self.deployment,
+                        self.owner,
+                        u64::try_from(self.deployment.start_block).map_err(|_| {
+                            IndexerError::Config("negative deployment start".to_owned())
+                        })?,
+                        audit.cycle.saturating_add(1),
+                        None,
+                    )
+                    .await?;
+            }
+            return Ok(());
+        }
+        let to = processed_end.min(
+            audit
+                .next_block
+                .saturating_add(self.config.audit_batch_size - 1),
+        );
+        let (first_logs, second_logs) = tokio::try_join!(
+            self.primary.logs(
+                &self.deployment.vault_address,
+                &self.deployment.deposit_event_topic,
+                audit.next_block,
+                to,
+            ),
+            self.secondary.logs(
+                &self.deployment.vault_address,
+                &self.deployment.deposit_event_topic,
+                audit.next_block,
+                to,
+            ),
+        )?;
+        let first_logs = normalize_logs(first_logs)?;
+        let second_logs = normalize_logs(second_logs)?;
+        if first_logs != second_logs {
+            return Err(safety(
+                HaltReason::ProviderDisagreement,
+                "RPC providers disagree while re-auditing finalized deposit history",
+                json!({
+                    "from_block": audit.next_block,
+                    "to_block": to,
+                    "audit_cycle": audit.cycle,
+                    "primary_count": first_logs.len(),
+                    "secondary_count": second_logs.len(),
+                }),
+            ));
+        }
+
+        let mut canonical = HashMap::with_capacity(first_logs.len());
+        for raw in first_logs {
+            let decoded = decode_deposit(raw, &self.deployment)?;
+            if decoded.block_number < audit.next_block || decoded.block_number > to {
+                return Err(safety(
+                    HaltReason::MalformedLog,
+                    "RPC returned a historical deposit outside the audit range",
+                    event_evidence(&decoded),
+                ));
+            }
+            canonical.insert(
+                (decoded.transaction_hash.clone(), decoded.log_index),
+                decoded,
+            );
+        }
+        let stored = self
+            .store
+            .auditable_deposits(&self.deployment, audit.next_block, to)
+            .await?;
+        let stored_by_key: HashMap<_, _> = stored
+            .iter()
+            .map(|deposit| {
+                (
+                    (
+                        deposit.transaction_hash.to_ascii_lowercase(),
+                        u64::try_from(deposit.log_index).unwrap_or(u64::MAX),
+                    ),
+                    deposit,
+                )
+            })
+            .collect();
+
+        // Contain invalidated credits before reporting any newly appeared event in
+        // the same rewritten range. Otherwise an added replacement log could halt
+        // the scan before the old customer credit is isolated.
+        for stored in &stored {
+            if DepositState::from_str(&stored.state)? != DepositState::Credited {
+                continue;
+            }
+            let canonical_log = canonical.get(&(
+                stored.transaction_hash.to_ascii_lowercase(),
+                u64::try_from(stored.log_index).map_err(|_| {
+                    IndexerError::Config("stored log index was negative".to_owned())
+                })?,
+            ));
+            let canonical_log_matches = canonical_log.is_some_and(|event| {
+                stored_event_matches(stored, event, &self.deployment.vault_address)
+            });
+            if canonical_log_matches {
+                continue;
+            }
+            let canonical_block = self
+                .agreed_historical_block(
+                    u64::try_from(stored.block_number).map_err(|_| {
+                        IndexerError::Config("stored block number was negative".to_owned())
+                    })?,
+                    audit.cycle,
+                )
+                .await?;
+            self.reverse_credited_contradiction(
+                stored,
+                &canonical_block,
+                finalized,
+                canonical_log_matches,
+            )
+            .await?;
+        }
+
+        for decoded in canonical.values() {
+            if !stored_by_key.contains_key(&(
+                decoded.transaction_hash.to_ascii_lowercase(),
+                decoded.log_index,
+            )) {
+                let asset = self
+                    .ledger
+                    .resolve_chain_asset(self.deployment.chain_id, decoded.asset_address.as_deref())
+                    .await
+                    .map_err(|error| ledger_halt(decoded, error))?;
+                let evidence = json!({
+                    "audit_cycle": audit.cycle,
+                    "from_block": audit.next_block,
+                    "to_block": to,
+                    "finalized_block_number": finalized.number,
+                    "finalized_block_hash": finalized.hash,
+                    "event": event_evidence(decoded),
+                    "primary_provider": self.primary.name(),
+                    "secondary_provider": self.secondary.name(),
+                });
+                self.ledger
+                    .activate_asset_halt(&ActivateAssetHalt {
+                        halt_id: deterministic_audit_uuid("halt-historical", decoded),
+                        asset_id: asset.id,
+                        deployment_id: self.deployment.id,
+                        source_deposit_id: None,
+                        reason: AssetHaltReason::HistoricalDepositAppeared,
+                        evidence: evidence.clone(),
+                    })
+                    .await
+                    .map_err(|error| ledger_halt(decoded, error))?;
+                return Err(safety(
+                    HaltReason::HistoricalDepositAppeared,
+                    "a deposit appeared behind the durable forward checkpoint",
+                    evidence,
+                ));
+            }
+        }
+
+        let range_tip = self.agreed_historical_block(to, audit.cycle).await?;
+        self.store
+            .advance_audit_checkpoint(
+                &self.deployment,
+                self.owner,
+                to.saturating_add(1),
+                audit.cycle,
+                Some(&range_tip),
+            )
+            .await
+    }
+
+    async fn agreed_historical_block(
+        &self,
+        block_number: u64,
+        audit_cycle: u64,
+    ) -> Result<RpcBlock, IndexerError> {
+        let tag = quantity(block_number);
+        let (first, second) =
+            tokio::try_join!(self.primary.block(&tag), self.secondary.block(&tag))?;
+        if first.number != block_number
+            || second.number != block_number
+            || !first.hash.eq_ignore_ascii_case(&second.hash)
+        {
+            return Err(safety(
+                HaltReason::ProviderDisagreement,
+                "RPC providers disagree on a previously finalized block",
+                json!({
+                    "block_number": block_number,
+                    "audit_cycle": audit_cycle,
+                    "primary_hash": first.hash,
+                    "secondary_hash": second.hash,
+                }),
+            ));
+        }
+        Ok(first)
+    }
+
+    async fn reverse_credited_contradiction(
+        &self,
+        stored: &AuditableDeposit,
+        canonical_block: &RpcBlock,
+        finalized: &RpcBlock,
+        canonical_log_matches: bool,
+    ) -> Result<(), IndexerError> {
+        let pending_lookup = AccountLookup {
+            asset_code: stored.asset_code.clone(),
+            owner_type: "customer".to_owned(),
+            owner_reference: stored.customer_reference.clone(),
+            account_type: "customer_pending".to_owned(),
+        };
+        let pending = self
+            .ledger
+            .ensure_accounts(&[AccountProvisionRequest {
+                asset_code: stored.asset_code.clone(),
+                owner_type: "customer".to_owned(),
+                owner_reference: stored.customer_reference.clone(),
+                account_type: "customer_pending".to_owned(),
+                allow_negative: false,
+            }])
+            .await
+            .map_err(|error| stored_ledger_halt(stored, error))?
+            .remove(&pending_lookup)
+            .ok_or_else(|| {
+                safety(
+                    HaltReason::LedgerRejection,
+                    "pending account provisioning returned no account",
+                    stored_event_evidence(stored),
+                )
+            })?;
+        let observation = RpcCanonicalContradiction {
+            provider: self.primary.name().to_owned(),
+            chain_id: stored.chain_id,
+            finalized_block_number: checked_i64(finalized.number, "finalized block number")?,
+            finalized_block_hash: finalized.hash.clone(),
+            deposit_block_number: stored.block_number,
+            stored_block_hash: stored.block_hash.clone(),
+            canonical_block_hash: canonical_block.hash.clone(),
+            transaction_hash: stored.transaction_hash.clone(),
+            log_index: stored.log_index,
+            canonical_log_matches,
+        };
+        let command = ReverseCreditedDeposit {
+            deposit_id: stored.deposit_id,
+            deployment_id: self.deployment.id,
+            pending_account_id: pending.id,
+            reversal_transaction_id: deterministic_stored_uuid("reversal", stored),
+            halt_id: deterministic_stored_uuid("halt", stored),
+            first: observation.clone(),
+            second: RpcCanonicalContradiction {
+                provider: self.secondary.name().to_owned(),
+                ..observation
+            },
+        };
+        self.ledger
+            .activate_asset_halt(&ActivateAssetHalt {
+                halt_id: command.halt_id,
+                asset_id: stored.asset_id,
+                deployment_id: self.deployment.id,
+                source_deposit_id: Some(stored.deposit_id),
+                reason: AssetHaltReason::CreditedDepositContradiction,
+                evidence: json!({
+                    "deposit_id": stored.deposit_id,
+                    "transaction_hash": stored.transaction_hash,
+                    "log_index": stored.log_index,
+                    "stored_block_hash": stored.block_hash,
+                    "canonical_block_hash": canonical_block.hash,
+                    "canonical_log_matches": canonical_log_matches,
+                    "primary_provider": self.primary.name(),
+                    "secondary_provider": self.secondary.name(),
+                }),
+            })
+            .await
+            .map_err(|error| stored_ledger_halt(stored, error))?;
+        let outcome = self
+            .ledger
+            .reverse_credited_deposit(&command)
+            .await
+            .map_err(|error| stored_ledger_halt(stored, error))?;
+        let outcome_name = match outcome {
+            DepositContradictionOutcome::Reversed { .. } => "reversed_to_pending",
+            DepositContradictionOutcome::Quarantined { .. } => "quarantined_shortfall",
+        };
+        let evidence = json!({
+            "deposit_id": stored.deposit_id,
+            "transaction_hash": stored.transaction_hash,
+            "log_index": stored.log_index,
+            "stored_block_hash": stored.block_hash,
+            "canonical_block_hash": canonical_block.hash,
+            "canonical_log_matches": canonical_log_matches,
+            "outcome": outcome_name,
+        });
+        Err(safety(
+            HaltReason::CreditedDepositContradiction,
+            "a credited deposit contradicted canonical finalized history",
+            evidence,
+        ))
     }
 
     async fn process_deposit(
@@ -1362,6 +1845,52 @@ fn deterministic_uuid(namespace: &str, deposit: &DecodedDeposit) -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, identity.as_bytes())
 }
 
+fn deterministic_audit_uuid(namespace: &str, deposit: &DecodedDeposit) -> Uuid {
+    deterministic_uuid(namespace, deposit)
+}
+
+fn deterministic_stored_uuid(namespace: &str, deposit: &AuditableDeposit) -> Uuid {
+    let identity = format!(
+        "vela:{namespace}:{}:{}:{}",
+        deposit.transaction_hash.to_ascii_lowercase(),
+        deposit.log_index,
+        deposit.vault_deposit_id
+    );
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, identity.as_bytes())
+}
+
+fn stored_event_matches(
+    stored: &AuditableDeposit,
+    canonical: &DecodedDeposit,
+    expected_vault: &str,
+) -> bool {
+    stored.chain_id > 0
+        && u64::try_from(stored.block_number) == Ok(canonical.block_number)
+        && stored
+            .block_hash
+            .eq_ignore_ascii_case(&canonical.block_hash)
+        && stored
+            .transaction_hash
+            .eq_ignore_ascii_case(&canonical.transaction_hash)
+        && u64::try_from(stored.transaction_index) == Ok(canonical.transaction_index)
+        && u64::try_from(stored.log_index) == Ok(canonical.log_index)
+        && stored.vault_address.eq_ignore_ascii_case(expected_vault)
+        && stored.vault_deposit_id == canonical.vault_deposit_id
+        && stored
+            .sender_address
+            .eq_ignore_ascii_case(&canonical.beneficiary)
+        && optional_address_matches(&stored.asset_address, &canonical.asset_address)
+        && stored.actual_amount == canonical.amount
+}
+
+fn optional_address_matches(left: &Option<String>, right: &Option<String>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 fn event_evidence(deposit: &DecodedDeposit) -> Value {
     json!({
         "transaction_hash": deposit.transaction_hash,
@@ -1376,6 +1905,26 @@ fn ledger_halt(deposit: &DecodedDeposit, error: LedgerError) -> IndexerError {
     safety(
         HaltReason::LedgerRejection,
         "ledger rejected a finalized deposit",
+        evidence,
+    )
+}
+
+fn stored_event_evidence(deposit: &AuditableDeposit) -> Value {
+    json!({
+        "deposit_id": deposit.deposit_id,
+        "asset_id": deposit.asset_id,
+        "transaction_hash": deposit.transaction_hash,
+        "log_index": deposit.log_index,
+        "vault_deposit_id": deposit.vault_deposit_id,
+    })
+}
+
+fn stored_ledger_halt(deposit: &AuditableDeposit, error: LedgerError) -> IndexerError {
+    let mut evidence = stored_event_evidence(deposit);
+    evidence["ledger_error"] = Value::String(error.to_string());
+    safety(
+        HaltReason::LedgerRejection,
+        "ledger rejected a canonical-history recovery command",
         evidence,
     )
 }

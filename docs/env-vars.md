@@ -58,6 +58,7 @@ The indexer accepts only the pinned `Deposited(bytes32,address,address,uint256)`
 | `VELA_INDEXER_MAX_HEAD_AGE_SECONDS` | `120` | Maximum wall-clock age for each provider's latest block. |
 | `VELA_INDEXER_MAX_PROVIDER_BLOCK_LAG` | `3` | Maximum difference between provider latest-block heights. |
 | `VELA_INDEXER_BATCH_SIZE` | `500` | Maximum finalized block range per scan. |
+| `VELA_INDEXER_AUDIT_BATCH_SIZE` | `500` | Maximum previously processed finalized block range re-audited per tick. The checkpoint cycles back to the registered deployment block after each complete pass. |
 | `VELA_INDEXER_LEASE_SECONDS` | `30` | PostgreSQL single-worker lease duration. |
 
 ## Chain & contract
