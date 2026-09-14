@@ -73,3 +73,51 @@ The ledger stores that evidence, journals the exact amount from `customer_withdr
 - Add continuous replacement, dropped-transaction, and historical-finality re-auditing.
 - Reconcile finalized custody movement against ledger liabilities before reopening affected operations.
 - Run end-to-end ETH and USDC tests against the deployed contract before considering real funds.
+
+## EX-027 runtime worker
+
+The `withdrawal-worker` crate is an opt-in, fail-closed V2 observer and ledger
+reconciliation process. It starts only when
+`VELA_WITHDRAWAL_WORKER_ENABLED=true`. This flag does not enable transaction
+broadcasting: the production broadcaster remains `DisabledBroadcaster` and
+holds no private key. The worker can monitor immutable attempts that another
+reviewed relay path has already recorded.
+
+Required settings are `DATABASE_URL`, `VELA_WITHDRAWAL_DEPLOYMENT_ID`, two
+distinct provider names, and two HTTPS RPC URLs in
+`VELA_WITHDRAWAL_RPC_PRIMARY_*` and `VELA_WITHDRAWAL_RPC_SECONDARY_*`. URL
+userinfo is rejected. Request timeouts, retry ceilings, polling, lease duration,
+and batch size are positive and bounded through the corresponding
+`VELA_WITHDRAWAL_*` settings. Never put an RPC credential in logs or command
+output; the worker's provider errors identify the configured provider name but
+do not render URLs or response bodies.
+
+At startup both providers must agree on chain ID and the exact finalized block.
+Both must return runtime bytecode whose keccak256 matches the immutable enabled
+V2 deployment registry row. The registered execution topic must match the V2
+ABI. A PostgreSQL deployment lease prevents concurrent owners, while a
+monotonic scan-cycle checkpoint makes crash replay safe. The lease must cover
+the worst-case bounded RPC sequence and is renewed before and after each
+candidate. Ctrl-C releases an owned lease.
+
+Each cycle repeatedly selects actionable withdrawals by `updated_at, id` and
+always observes only the latest immutable broadcast attempt. Provider agreement
+is required on the finalized block, exact transaction fields, receipt block,
+and the complete `WithdrawalExecuted` event, including deadline, policy hash,
+and approver hash. Matching execution evidence calls the existing atomic ledger
+completion method.
+
+Two-provider `not found` evidence may mark only the current attempt dropped. It
+never releases funds. A finalized revert is not misclassified as dropped; the
+current schema has no immutable revert observation type, so EX-027 retains that
+reservation for a future exact revert-evidence migration or reviewed replacement
+broadcast. Release is considered only when the agreed finalized
+block timestamp is after the authorization deadline and both providers prove
+the request ID and customer nonce unused, no matching event from the registered
+deployment start block, and the database proves every attempt terminal. A
+reverted receipt remains ambiguous under the still-valid authorization and is
+not released early.
+
+This remains testnet-only. Before running it, externally review the HTTP RPC
+adapter, contract deployment, registry evidence, provider independence, RPC log
+range limits, alerting, and operational recovery. Do not use real funds.

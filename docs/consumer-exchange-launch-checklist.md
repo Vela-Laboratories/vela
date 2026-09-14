@@ -150,8 +150,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Store the withdrawal request before producing a custody signature.
 - [x] Bind custody authorization to chain ID, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID.
 - [x] Mark signatures as issued in immutable PostgreSQL evidence and prevent duplicate issuance per withdrawal and authorization.
-- [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts; provider-neutral attempt and observation boundaries exist but are disabled and have no runtime provider or worker.
-- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions; durable attempts, replacement lineage, finalized confirmation, and expiry failure exist, but the complete runtime lifecycle does not.
+- [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts; EX-027 can observe already-recorded attempts when explicitly configured, but production broadcasting and customer-relay discovery remain disabled.
+- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions; the opt-in worker handles pending, finalized execution, and current-attempt drops, but replacement discovery and exact finalized-revert evidence remain open.
 - [x] Restore reserved funds exactly once after a permanent V2 expiry, only when finalized two-provider evidence proves the request ID and nonce unused, no execution event, and every attempt terminal.
 - [ ] Prevent an on-chain withdrawal from succeeding without the corresponding ledger debit.
 - [x] Prevent a completion debit before finalized matching chain execution and restore the reservation after finalized V2 expiry non-execution proof; ambiguous transactions remain reserved.

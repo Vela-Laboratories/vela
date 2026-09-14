@@ -82,6 +82,7 @@ REVOKE UPDATE, DELETE ON ledger_withdrawal_broadcast_attempts FROM vela_ledger_w
 REVOKE UPDATE, DELETE ON ledger_withdrawal_chain_observations FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_executions FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_failure_releases FROM vela_ledger_writer;
+REVOKE DELETE ON ledger_withdrawal_worker_checkpoints FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
@@ -106,6 +107,15 @@ GRANT UPDATE (
     last_scanned_block_hash,
     updated_at
 ) ON ledger_indexer_audit_checkpoints TO vela_ledger_writer;
+GRANT UPDATE (
+    lease_owner,
+    lease_expires_at,
+    scan_cycle,
+    last_withdrawal_id,
+    last_withdrawal_updated_at,
+    last_completed_at,
+    updated_at
+) ON ledger_withdrawal_worker_checkpoints TO vela_ledger_writer;
 GRANT UPDATE (
     state,
     reservation_transaction_id,

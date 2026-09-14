@@ -13,6 +13,7 @@ members = [
     "fix",
     "ledger",
     "indexer",
+    "withdrawal-worker",
 ]
 resolver = "2"
 

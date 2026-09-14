@@ -219,7 +219,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Bind signing authorization to chain, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID in an immutable Keccak-256 envelope.
 - [x] Replace the authoritative withdrawal path's environment-held signing key with a provider-neutral HSM or MPC adapter boundary that is disabled by default; its deterministic signer is test-only.
 - [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states; the source-only V2 boundary now persists broadcast, replacement, finalized confirmation, and finalized expiry failure, but no runtime worker drives the complete lifecycle.
-- [ ] Observe transaction replacement and dropped transactions; immutable replacement lineage and a disabled-by-default provider adapter exist, but continuous dropped-transaction observation is not running.
+- [ ] Observe transaction replacement and dropped transactions; the opt-in EX-027 worker continuously verifies recorded current attempts and can mark two-provider `not found` evidence dropped, but replacement discovery and finalized-revert terminal evidence remain open.
 - [x] Restore reservations exactly once after permanent failure, and only after finalized two-provider evidence proves the V2 authorization expired with its request ID and nonce unused, no execution event, and all attempts terminal.
 - [ ] Implement ETH and USDC withdrawals through the same state machine; the V2 contract source supports native and ERC20 transfers, but deployed end-to-end integration is not complete.
 - [x] Add per-user, per-asset, and platform withdrawal limits in atomic asset units, with customer count and amount velocity windows.
@@ -516,6 +516,14 @@ Work should begin in this order. Each item should land as a small, independently
     - Atomically store finalized matching execution evidence, journal `customer_withdrawal_reserved` to `custody_withdrawn`, and transition to `confirmed` exactly once.
     - Release an expired reservation exactly once only after finalized proof that the request ID and nonce remain unused, no execution event exists, and every attempt is terminal; ambiguous transactions remain reserved.
     - Keep the entire chapter source- and test-only: no contract deployment, runtime broadcaster or observer worker, real RPC provider, production signer, or funds are enabled.
+27. [x] **EX-027: Restart-safe withdrawal observation worker**
+    - Add a separate, explicitly enabled Rust worker that monitors previously recorded withdrawal attempts without holding a relayer or custody key; production broadcasting remains disabled.
+    - Require two distinct HTTPS RPC origins and provider identities, bounded request timeouts and retry backoff, matching chain ID and finalized checkpoint, pinned runtime bytecode, and the registered V2 event topic before processing.
+    - Verify the current transaction, canonical receipt, and complete `WithdrawalExecuted` event, including request, customer, destination, asset, amount, nonce, deadline, policy hash, and approver hash, before invoking exactly-once ledger completion.
+    - Persist a deployment-scoped single-owner lease and durable `(updated_at, withdrawal_id)` round-robin cursor so crashes replay safely and indefinitely pending rows cannot starve later work.
+    - Mark only the current attempt dropped from matching two-provider `not found` evidence; release only after an agreed finalized post-deadline block proves the request and nonce unused, no matching event since deployment, and every attempt terminal.
+    - Fail closed on provider disagreement, malformed evidence, insufficient depth, or finalized reverts; reverted transactions remain reserved until a future exact revert-evidence migration or reviewed replacement path exists.
+    - Keep the worker unconfigured and stopped by default. No RPC credentials, deployment changes, private keys, transaction broadcast, or funds are introduced by this chapter.
 
 ## Parallel nonengineering work
 

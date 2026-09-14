@@ -1619,7 +1619,7 @@ impl Ledger {
             if predecessor.0 != command.withdrawal_id
                 || predecessor.1 + 1 != attempt_number
                 || !predecessor.2.eq_ignore_ascii_case(&command.sender_address)
-                || predecessor.3 != BigDecimal::from(command.sender_nonce)
+                || predecessor.3 != command.sender_nonce
             {
                 return Err(LedgerError::InvalidWithdrawal(
                     "replacement must reference the immediately preceding attempt with the same sender nonce"
@@ -2676,7 +2676,7 @@ fn ensure_same_broadcast_attempt(
         || !existing
             .sender_address
             .eq_ignore_ascii_case(&command.sender_address)
-        || existing.sender_nonce != BigDecimal::from(command.sender_nonce)
+        || existing.sender_nonce != command.sender_nonce
         || existing.calldata_hash != command.calldata_hash
         || existing.replacement_of != command.replacement_of
         || existing.provider_name != command.provider_name
