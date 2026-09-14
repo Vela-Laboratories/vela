@@ -222,9 +222,9 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Observe transaction replacement and dropped transactions.
 - [ ] Restore reservations exactly once after permanent failure.
 - [ ] Implement ETH and USDC withdrawals through the same state machine.
-- [ ] Add per-user, per-asset, and platform withdrawal limits.
-- [ ] Add a global withdrawal halt.
-- [ ] Add risk and compliance policy hooks without hardcoding a specific vendor.
+- [x] Add per-user, per-asset, and platform withdrawal limits in atomic asset units, with customer count and amount velocity windows.
+- [x] Add a durable global withdrawal halt that blocks reservation, approval, and signing, with three-party resolution evidence.
+- [x] Add risk and compliance policy hooks without hardcoding a specific vendor; unavailable or review dispositions fail closed and no external screening provider is configured yet.
 - [x] Expose actionable withdrawal reservation status to the frontend, including a signed pre-signing cancellation that releases funds exactly once.
 
 ### M4 acceptance criteria
@@ -500,6 +500,14 @@ Work should begin in this order. Each item should land as a small, independently
     - Make authorization and signature retries return the original evidence, reject conflicting identifiers or digests, and preserve the financial reservation throughout signing.
     - Keep the runtime signer disabled and place the deterministic secp256k1 implementation behind tests only, with no vendor account, deployable key, broadcast, or real-funds path.
     - Verify exact field binding, signature recovery, evidence immutability, transition bypass rejection, and signed-state reservation preservation.
+25. [x] **EX-025: Withdrawal risk, velocity, and halt policy boundary**
+    - Add immutable, versioned per-asset policy rows with exact atomic single-withdrawal caps, customer amount/count windows, and platform amount windows.
+    - Evaluate each reserved withdrawal in a serializable transaction, including the current reservation in velocity totals, and persist the limits, observations, provider disposition, reason codes, and SHA-256 evidence hash.
+    - Require the active policy version, an approved decision, and the same evaluator identity before PostgreSQL accepts a contract-bound custody authorization.
+    - Add a provider-neutral compliance disposition contract in which `reject` is denied and `review` or `unavailable` requires review; no external sanctions or blockchain-analytics provider is implied or configured.
+    - Add a global kill switch that blocks new withdrawal reservations, completion, approval, signing, and signature storage, while preserving safe cancellation releases.
+    - Make halt activation replay-safe and require immutable evidence plus three distinct operator identities across activation, resolution initiation, and final resolution.
+    - Verify per-withdrawal, customer amount/count, platform velocity, compliance-unavailable, authorization-bypass, replay, and global halt behavior against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

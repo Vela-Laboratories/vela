@@ -207,7 +207,7 @@ impl LedgerFixture {
         };
         let resolved = self
             .ledger
-            .resolve_accounts(&[lookup.clone()])
+            .resolve_accounts(std::slice::from_ref(&lookup))
             .await
             .unwrap();
         self.ledger.balance(resolved[&lookup].id).await.unwrap()

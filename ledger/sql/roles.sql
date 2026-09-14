@@ -73,6 +73,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vela_ledger_writer;
 REVOKE INSERT, UPDATE, DELETE ON _sqlx_migrations FROM vela_ledger_writer;
 REVOKE INSERT, UPDATE, DELETE ON ledger_chain_deployments FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_asset_halts FROM vela_ledger_writer;
+REVOKE INSERT, UPDATE, DELETE ON ledger_withdrawal_policy_limits FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_withdrawal_policy_decisions FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_global_withdrawal_halts FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
@@ -107,6 +110,13 @@ GRANT UPDATE (
     transaction_hash,
     updated_at
 ) ON ledger_withdrawals TO vela_ledger_writer;
+
+GRANT UPDATE (
+    resolution_evidence,
+    resolution_initiated_by,
+    resolved_by,
+    resolved_at
+) ON ledger_global_withdrawal_halts TO vela_ledger_writer;
 
 -- New migrations must extend these grants deliberately. There are no broad
 -- writer default privileges because a newly added financial table must fail

@@ -70,6 +70,16 @@ customer pending account. A shortfall produces a quarantined deposit rather
 than a false success. PostgreSQL blocks new credits, trading, and withdrawals
 for an actively halted asset while allowing releases and compensating reversal.
 
+Withdrawal policy limits are immutable, versioned database configuration owned
+by the migrator role. Each asset requires an effective policy before
+`Ledger::evaluate_withdrawal_policy` can approve a reservation. The evaluation
+stores customer and platform velocity evidence plus a provider-neutral
+compliance disposition. Missing policy, provider unavailability, review, active
+asset halt, or active global halt fails closed before custody authorization.
+The runtime writer may record policy decisions and activate the emergency halt,
+but cannot publish policy versions or rewrite audit evidence. Resolving the
+global halt requires three distinct operator identities.
+
 See [the matcher-ledger commit boundary](../docs/architecture/matcher-ledger-commit.md)
 for account requirements, decimal conversion, acknowledgement ordering, and
 current limitations.
@@ -80,6 +90,10 @@ setup, migration, access, and recovery procedures.
 See [the Base deposit indexer runbook](../docs/operations/base-deposit-indexer.md)
 for immutable deployment registration, redundant RPC requirements, finalized
 event ingestion, and halt response.
+
+See [the withdrawal policy runbook](../docs/operations/withdrawal-policy.md)
+for atomic-unit limit publication, provider disposition semantics, and global
+halt handling.
 
 ## Migration rules
 

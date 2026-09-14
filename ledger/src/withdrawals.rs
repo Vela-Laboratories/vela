@@ -132,6 +132,101 @@ pub struct ApproveWithdrawal {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComplianceDisposition {
+    Clear,
+    Reject,
+    Review,
+    Unavailable,
+}
+
+impl ComplianceDisposition {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Reject => "reject",
+            Self::Review => "review",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WithdrawalPolicyDisposition {
+    Approved,
+    Rejected,
+    Review,
+}
+
+impl WithdrawalPolicyDisposition {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+            Self::Review => "review",
+        }
+    }
+}
+
+impl FromStr for WithdrawalPolicyDisposition {
+    type Err = LedgerError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "approved" => Ok(Self::Approved),
+            "rejected" => Ok(Self::Rejected),
+            "review" => Ok(Self::Review),
+            other => Err(LedgerError::InvalidWithdrawal(format!(
+                "unknown withdrawal policy disposition {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EvaluateWithdrawalPolicy {
+    pub decision_id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub evaluated_by: String,
+    pub compliance_provider: String,
+    pub compliance_reference: String,
+    pub compliance_disposition: ComplianceDisposition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawalPolicyDecision {
+    pub id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub policy_version: String,
+    pub disposition: WithdrawalPolicyDisposition,
+    pub compliance_provider: String,
+    pub compliance_reference: String,
+    pub compliance_disposition: ComplianceDisposition,
+    pub reason_codes: Vec<String>,
+    pub evidence: serde_json::Value,
+    pub evidence_hash: [u8; 32],
+    pub evaluated_by: String,
+    pub evaluated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivateGlobalWithdrawalHalt {
+    pub halt_id: Uuid,
+    pub reason: String,
+    pub evidence: serde_json::Value,
+    pub activated_by: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolveGlobalWithdrawalHalt {
+    pub halt_id: Uuid,
+    pub resolution_evidence: serde_json::Value,
+    pub resolution_initiated_by: String,
+    pub resolved_by: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WithdrawalAuthorization {
     pub id: Uuid,
@@ -238,6 +333,33 @@ struct StoredWithdrawalSignature {
     signed_at: DateTime<Utc>,
 }
 
+#[derive(Debug, FromRow)]
+struct StoredWithdrawalPolicyLimit {
+    policy_version: String,
+    max_single_amount: BigDecimal,
+    max_customer_window_amount: BigDecimal,
+    max_customer_window_count: i64,
+    customer_window_seconds: i64,
+    max_platform_window_amount: BigDecimal,
+    platform_window_seconds: i64,
+}
+
+#[derive(Debug, FromRow)]
+struct StoredWithdrawalPolicyDecision {
+    id: Uuid,
+    withdrawal_id: Uuid,
+    policy_version: String,
+    disposition: String,
+    compliance_provider: String,
+    compliance_reference: String,
+    compliance_disposition: String,
+    reason_codes: serde_json::Value,
+    evidence: serde_json::Value,
+    evidence_hash: Vec<u8>,
+    evaluated_by: String,
+    evaluated_at: DateTime<Utc>,
+}
+
 impl TryFrom<StoredWithdrawalAuthorization> for WithdrawalAuthorization {
     type Error = LedgerError;
 
@@ -282,6 +404,44 @@ impl TryFrom<StoredWithdrawalSignature> for WithdrawalSignatureRecord {
             algorithm: value.algorithm,
             signature: fixed_bytes(value.signature, "withdrawal signature")?,
             signed_at: value.signed_at,
+        })
+    }
+}
+
+impl TryFrom<StoredWithdrawalPolicyDecision> for WithdrawalPolicyDecision {
+    type Error = LedgerError;
+
+    fn try_from(value: StoredWithdrawalPolicyDecision) -> Result<Self, Self::Error> {
+        let reason_codes =
+            serde_json::from_value::<Vec<String>>(value.reason_codes).map_err(|_| {
+                LedgerError::InvalidWithdrawal(
+                    "stored withdrawal policy reason codes are malformed".to_owned(),
+                )
+            })?;
+        let compliance_disposition = match value.compliance_disposition.as_str() {
+            "clear" => ComplianceDisposition::Clear,
+            "reject" => ComplianceDisposition::Reject,
+            "review" => ComplianceDisposition::Review,
+            "unavailable" => ComplianceDisposition::Unavailable,
+            other => {
+                return Err(LedgerError::InvalidWithdrawal(format!(
+                    "unknown compliance disposition {other}"
+                )))
+            }
+        };
+        Ok(Self {
+            id: value.id,
+            withdrawal_id: value.withdrawal_id,
+            policy_version: value.policy_version,
+            disposition: WithdrawalPolicyDisposition::from_str(&value.disposition)?,
+            compliance_provider: value.compliance_provider,
+            compliance_reference: value.compliance_reference,
+            compliance_disposition,
+            reason_codes,
+            evidence: value.evidence,
+            evidence_hash: fixed_bytes(value.evidence_hash, "withdrawal policy evidence hash")?,
+            evaluated_by: value.evaluated_by,
+            evaluated_at: value.evaluated_at,
         })
     }
 }
@@ -662,6 +822,294 @@ impl Ledger {
         withdrawal.try_into()
     }
 
+    pub async fn activate_global_withdrawal_halt(
+        &self,
+        command: &ActivateGlobalWithdrawalHalt,
+    ) -> Result<(), LedgerError> {
+        validate_global_halt(command)?;
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_global_withdrawal_halts (id, reason, evidence, activated_by)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(command.halt_id)
+        .bind(&command.reason)
+        .bind(&command.evidence)
+        .bind(&command.activated_by)
+        .execute(&self.pool)
+        .await?;
+
+        let stored = sqlx::query_as::<_, (String, serde_json::Value, String)>(
+            "SELECT reason, evidence, activated_by FROM ledger_global_withdrawal_halts WHERE id = $1",
+        )
+        .bind(command.halt_id)
+        .fetch_one(&self.pool)
+        .await?;
+        if stored.0 != command.reason
+            || stored.1 != command.evidence
+            || stored.2 != command.activated_by
+        {
+            return Err(LedgerError::IdempotencyConflict);
+        }
+        Ok(())
+    }
+
+    pub async fn resolve_global_withdrawal_halt(
+        &self,
+        command: &ResolveGlobalWithdrawalHalt,
+    ) -> Result<(), LedgerError> {
+        validate_global_halt_resolution(command)?;
+        let result = sqlx::query(
+            r#"
+            UPDATE ledger_global_withdrawal_halts
+            SET resolution_evidence = $2,
+                resolution_initiated_by = $3,
+                resolved_by = $4,
+                resolved_at = transaction_timestamp()
+            WHERE id = $1 AND resolved_at IS NULL
+            "#,
+        )
+        .bind(command.halt_id)
+        .bind(&command.resolution_evidence)
+        .bind(&command.resolution_initiated_by)
+        .bind(&command.resolved_by)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() != 1 {
+            return Err(LedgerError::InvalidWithdrawal(
+                "global withdrawal halt is missing or already resolved".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn evaluate_withdrawal_policy(
+        &self,
+        command: &EvaluateWithdrawalPolicy,
+    ) -> Result<WithdrawalPolicyDecision, LedgerError> {
+        validate_policy_evaluation(command)?;
+        let mut attempt = 0_u32;
+        loop {
+            match self.evaluate_withdrawal_policy_once(command).await {
+                Err(error)
+                    if (is_retryable_transaction_error(&error)
+                        || is_withdrawal_evidence_race(&error))
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn evaluate_withdrawal_policy_once(
+        &self,
+        command: &EvaluateWithdrawalPolicy,
+    ) -> Result<WithdrawalPolicyDecision, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
+
+        if let Some(existing) = load_policy_decision(&mut tx, command.withdrawal_id).await? {
+            let existing: WithdrawalPolicyDecision = existing.try_into()?;
+            ensure_same_policy_evaluation(&existing, command)?;
+            tx.commit().await?;
+            return Ok(existing);
+        }
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if state != WithdrawalState::Reserved {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Approved.as_str().to_owned(),
+            });
+        }
+
+        let limit = sqlx::query_as::<_, StoredWithdrawalPolicyLimit>(
+            r#"
+            SELECT policy_version, max_single_amount, max_customer_window_amount,
+                   max_customer_window_count, customer_window_seconds,
+                   max_platform_window_amount, platform_window_seconds
+            FROM ledger_withdrawal_policy_limits
+            WHERE asset_id = $1 AND effective_at <= transaction_timestamp()
+            ORDER BY effective_at DESC
+            LIMIT 1
+            FOR SHARE
+            "#,
+        )
+        .bind(withdrawal.asset_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| {
+            LedgerError::InvalidWithdrawal(
+                "withdrawal has no active per-asset policy limit; approval fails closed".to_owned(),
+            )
+        })?;
+
+        let (customer_count, customer_amount, platform_amount) =
+            sqlx::query_as::<_, (i64, BigDecimal, BigDecimal)>(
+                r#"
+            SELECT
+                count(*) FILTER (
+                    WHERE lower(customer_reference) = lower($2)
+                      AND created_at >= transaction_timestamp()
+                          - make_interval(secs => $3::double precision)
+                )::BIGINT,
+                COALESCE(sum(amount) FILTER (
+                    WHERE lower(customer_reference) = lower($2)
+                      AND created_at >= transaction_timestamp()
+                          - make_interval(secs => $3::double precision)
+                ), 0),
+                COALESCE(sum(amount) FILTER (
+                    WHERE created_at >= transaction_timestamp()
+                          - make_interval(secs => $4::double precision)
+                ), 0)
+            FROM ledger_withdrawals
+            WHERE asset_id = $1
+              AND state NOT IN ('rejected', 'cancelled', 'signing_failed', 'reversed')
+            "#,
+            )
+            .bind(withdrawal.asset_id)
+            .bind(&withdrawal.customer_reference)
+            .bind(limit.customer_window_seconds as f64)
+            .bind(limit.platform_window_seconds as f64)
+            .fetch_one(&mut *tx)
+            .await?;
+
+        let global_halt_active = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM ledger_global_withdrawal_halts WHERE resolved_at IS NULL)",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let asset_halt_active = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM ledger_asset_halts
+                WHERE asset_id = $1 AND withdrawals_halted AND resolved_at IS NULL
+            )
+            "#,
+        )
+        .bind(withdrawal.asset_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let mut reason_codes = Vec::new();
+        if global_halt_active {
+            reason_codes.push("global_withdrawal_halt".to_owned());
+        }
+        if asset_halt_active {
+            reason_codes.push("asset_withdrawal_halt".to_owned());
+        }
+        if withdrawal.amount > limit.max_single_amount {
+            reason_codes.push("asset_single_amount_limit".to_owned());
+        }
+        if customer_amount > limit.max_customer_window_amount {
+            reason_codes.push("customer_velocity_amount_limit".to_owned());
+        }
+        if customer_count > limit.max_customer_window_count {
+            reason_codes.push("customer_velocity_count_limit".to_owned());
+        }
+        if platform_amount > limit.max_platform_window_amount {
+            reason_codes.push("platform_velocity_amount_limit".to_owned());
+        }
+        if command.compliance_disposition == ComplianceDisposition::Reject {
+            reason_codes.push("compliance_rejected".to_owned());
+        } else if command.compliance_disposition == ComplianceDisposition::Review {
+            reason_codes.push("compliance_review_required".to_owned());
+        } else if command.compliance_disposition == ComplianceDisposition::Unavailable {
+            reason_codes.push("compliance_provider_unavailable".to_owned());
+        }
+
+        let hard_rejection = global_halt_active
+            || asset_halt_active
+            || withdrawal.amount > limit.max_single_amount
+            || customer_amount > limit.max_customer_window_amount
+            || customer_count > limit.max_customer_window_count
+            || platform_amount > limit.max_platform_window_amount
+            || command.compliance_disposition == ComplianceDisposition::Reject;
+        let disposition = if hard_rejection {
+            WithdrawalPolicyDisposition::Rejected
+        } else if matches!(
+            command.compliance_disposition,
+            ComplianceDisposition::Review | ComplianceDisposition::Unavailable
+        ) {
+            WithdrawalPolicyDisposition::Review
+        } else {
+            WithdrawalPolicyDisposition::Approved
+        };
+        let evidence = json!({
+            "withdrawal": {
+                "id": withdrawal.id,
+                "customer_reference": withdrawal.customer_reference,
+                "asset_id": withdrawal.asset_id,
+                "asset_code": withdrawal.asset_code,
+                "amount_atomic": withdrawal.amount.normalized().to_plain_string(),
+            },
+            "limits": {
+                "max_single_amount": limit.max_single_amount.normalized().to_plain_string(),
+                "max_customer_window_amount": limit.max_customer_window_amount.normalized().to_plain_string(),
+                "max_customer_window_count": limit.max_customer_window_count,
+                "customer_window_seconds": limit.customer_window_seconds,
+                "max_platform_window_amount": limit.max_platform_window_amount.normalized().to_plain_string(),
+                "platform_window_seconds": limit.platform_window_seconds,
+            },
+            "observed": {
+                "customer_window_amount": customer_amount.normalized().to_plain_string(),
+                "customer_window_count": customer_count,
+                "platform_window_amount": platform_amount.normalized().to_plain_string(),
+                "global_halt_active": global_halt_active,
+                "asset_halt_active": asset_halt_active,
+            },
+            "compliance": {
+                "provider": command.compliance_provider,
+                "reference": command.compliance_reference,
+                "disposition": command.compliance_disposition.as_str(),
+            },
+            "reason_codes": reason_codes,
+        });
+        let canonical_evidence = serde_json::to_vec(&evidence).map_err(|error| {
+            LedgerError::InvalidWithdrawal(format!("policy evidence serialization failed: {error}"))
+        })?;
+        let evidence_hash: [u8; 32] = Sha256::digest(canonical_evidence).into();
+
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_policy_decisions (
+                id, withdrawal_id, policy_version, disposition,
+                compliance_provider, compliance_reference, compliance_disposition,
+                reason_codes, evidence, evidence_hash, evaluated_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            "#,
+        )
+        .bind(command.decision_id)
+        .bind(command.withdrawal_id)
+        .bind(&limit.policy_version)
+        .bind(disposition.as_str())
+        .bind(&command.compliance_provider)
+        .bind(&command.compliance_reference)
+        .bind(command.compliance_disposition.as_str())
+        .bind(json!(&reason_codes))
+        .bind(&evidence)
+        .bind(evidence_hash.as_slice())
+        .bind(&command.evaluated_by)
+        .execute(&mut *tx)
+        .await?;
+
+        let stored = load_policy_decision(&mut tx, command.withdrawal_id)
+            .await?
+            .ok_or_else(|| {
+                LedgerError::InvalidWithdrawal(
+                    "withdrawal policy decision was not stored".to_owned(),
+                )
+            })?;
+        tx.commit().await?;
+        stored.try_into()
+    }
+
     pub async fn authorize_withdrawal(
         &self,
         command: &ApproveWithdrawal,
@@ -1039,6 +1487,24 @@ async fn load_signature(
     .await?)
 }
 
+async fn load_policy_decision(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<Option<StoredWithdrawalPolicyDecision>, LedgerError> {
+    Ok(sqlx::query_as::<_, StoredWithdrawalPolicyDecision>(
+        r#"
+        SELECT id, withdrawal_id, policy_version, disposition,
+               compliance_provider, compliance_reference, compliance_disposition,
+               reason_codes, evidence, evidence_hash, evaluated_by, evaluated_at
+        FROM ledger_withdrawal_policy_decisions
+        WHERE withdrawal_id = $1
+        "#,
+    )
+    .bind(withdrawal_id)
+    .fetch_optional(&mut **tx)
+    .await?)
+}
+
 async fn load_existing_reservation(
     tx: &mut Transaction<'_, Postgres>,
     command: &ReserveWithdrawal,
@@ -1219,6 +1685,82 @@ fn validate_approval(command: &ApproveWithdrawal) -> Result<(), LedgerError> {
         ));
     }
     Ok(())
+}
+
+fn validate_policy_evaluation(command: &EvaluateWithdrawalPolicy) -> Result<(), LedgerError> {
+    if command.decision_id == Uuid::nil()
+        || command.withdrawal_id == Uuid::nil()
+        || !is_operator_reference(&command.evaluated_by)
+        || !is_policy_reference(&command.compliance_provider, 255)
+        || !is_policy_reference(&command.compliance_reference, 1000)
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "policy decision identity, evaluator, provider, and evidence reference are required"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_same_policy_evaluation(
+    existing: &WithdrawalPolicyDecision,
+    command: &EvaluateWithdrawalPolicy,
+) -> Result<(), LedgerError> {
+    if existing.id != command.decision_id
+        || existing.withdrawal_id != command.withdrawal_id
+        || existing.evaluated_by != command.evaluated_by
+        || existing.compliance_provider != command.compliance_provider
+        || existing.compliance_reference != command.compliance_reference
+        || existing.compliance_disposition != command.compliance_disposition
+    {
+        return Err(LedgerError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn validate_global_halt(command: &ActivateGlobalWithdrawalHalt) -> Result<(), LedgerError> {
+    if command.halt_id == Uuid::nil()
+        || !is_policy_reference(&command.reason, 1000)
+        || !command.evidence.is_object()
+        || !is_operator_reference(&command.activated_by)
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "global withdrawal halt identity, reason, evidence, and actor are required".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_global_halt_resolution(
+    command: &ResolveGlobalWithdrawalHalt,
+) -> Result<(), LedgerError> {
+    if command.halt_id == Uuid::nil()
+        || !command.resolution_evidence.is_object()
+        || !is_operator_reference(&command.resolution_initiated_by)
+        || !is_operator_reference(&command.resolved_by)
+        || command
+            .resolution_initiated_by
+            .eq_ignore_ascii_case(&command.resolved_by)
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "global halt resolution requires evidence and distinct valid actors".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_operator_reference(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= 255
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-' | b'@')
+        })
+}
+
+fn is_policy_reference(value: &str, max_len: usize) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= max_len
+        && !value.bytes().any(|byte| byte.is_ascii_control())
 }
 
 fn authorization_payload(
@@ -1409,6 +1951,7 @@ fn is_withdrawal_evidence_race(error: &LedgerError) -> bool {
                             | "ledger_withdrawal_authorizations_digest_key"
                             | "ledger_withdrawal_signatures_withdrawal_id_key"
                             | "ledger_withdrawal_signatures_authorization_id_key"
+                            | "ledger_withdrawal_policy_decisions_withdrawal_id_key"
                     )
                 )
     )

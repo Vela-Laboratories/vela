@@ -144,9 +144,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Atomically reserve the withdrawal amount in the ledger.
 - [x] Check available balance before signing.
 - [ ] Check open-order and locked-balance exposure before signing.
-- [ ] Check compliance restrictions before signing.
+- [x] Require a durable provider-neutral compliance disposition before authorization and signing; `reject`, `review`, and provider unavailability cannot produce a signature, while an external screening provider remains unconfigured.
 - [ ] Check sanctions status before signing.
-- [ ] Check withdrawal velocity and risk limits.
+- [x] Check exact per-asset single-withdrawal caps plus customer amount/count and platform amount velocity windows before authorization.
 - [x] Store the withdrawal request before producing a custody signature.
 - [x] Bind custody authorization to chain ID, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID.
 - [x] Mark signatures as issued in immutable PostgreSQL evidence and prevent duplicate issuance per withdrawal and authorization.
@@ -158,11 +158,11 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Implement complete ERC-20 withdrawal support.
 - [ ] Remove the manual "processed within 24 hours" ERC-20 workflow.
 - [ ] Add configurable withdrawal confirmation requirements.
-- [ ] Add per-user, per-asset, and platform-wide withdrawal limits.
+- [x] Add versioned per-user, per-asset, and platform-wide withdrawal limits in atomic asset units.
 - [ ] Add cooling-off periods for suspicious account changes.
 - [ ] Add large-withdrawal review thresholds.
 - [ ] Add a withdrawal allowlist option.
-- [ ] Add a global withdrawal kill switch.
+- [x] Add a durable global withdrawal kill switch that blocks reservation, approval, completion, and signing while allowing safe releases; require three-party evidence to resolve it.
 - [ ] Add clear customer-visible withdrawal status and failure recovery.
 
 ## Remove test and synthetic behavior from production
@@ -236,7 +236,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Test guardian-key rotation.
 - [ ] Test multisig signer replacement.
 - [ ] Add withdrawal-signing rate limits.
-- [ ] Add withdrawal-signing policy checks.
+- [x] Require the active immutable policy version and matching approved decision at the PostgreSQL authorization and signing boundaries.
 - [ ] Add anomalous signing alerts.
 - [ ] Store a tamper-evident log of every signature request and result.
 - [ ] Require code review for changes to authentication, ledger, withdrawal, and custody code.

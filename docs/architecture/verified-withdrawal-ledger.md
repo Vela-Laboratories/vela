@@ -27,6 +27,10 @@ EX-024 adds a provider-neutral `CustodySigner` boundary for a dedicated custody 
 
 The default signer is disabled. A deterministic secp256k1 implementation exists only inside Rust tests, so this chapter adds no deployable private key, vendor account, or cost. Adapter failures leave the amount reserved and retryable rather than pretending a transfer occurred. A production HSM or MPC adapter, risk/compliance approval source, broadcast worker, permanent-failure release, and confirmation reconciliation remain required before real funds.
 
+EX-025 puts a durable risk-policy boundary in front of that signer. Immutable per-asset policy versions define a single-withdrawal maximum, customer amount and count windows, and a platform amount window in exact atomic units. A serializable evaluation stores the limits, observed totals, halt state, provider-neutral compliance disposition, reason codes, and evidence hash. PostgreSQL will not accept the authorization unless that decision is approved, uses the currently effective policy, and names the same evaluator as the authorization approver.
+
+The global withdrawal halt blocks reservations, completions, approvals, signing transitions, and signature storage while leaving cancellation releases available. It can be activated immediately, but resolution needs evidence and three distinct operator identities. Asset-wide reconciliation halts remain independently enforced. No external sanctions or blockchain-analytics service is configured by this free implementation: a provider can later supply the neutral disposition contract, and `review` or `unavailable` remains fail-closed.
+
 ## Customer status
 
 `GET /account/{address}/withdrawals` reads only PostgreSQL and returns `503` when the authoritative ledger is absent. The frontend preflights this route before requesting a wallet signature, polls it for exact status, explains whether funds are reserved or require intervention, and allows a safe pre-signing cancellation. It makes no claim that a reservation is an on-chain transfer.

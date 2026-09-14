@@ -44,7 +44,7 @@ The two hashes must match. Record the result as `VELA_CUSTODY_VAULT_CODE_HASH` i
 
 ## Controlled registration
 
-Run all migrations through 0006, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs those steps in that order.
+Run all migrations through 0007, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
 
 For a local Base Sepolia rehearsal:
 

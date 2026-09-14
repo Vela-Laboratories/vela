@@ -151,7 +151,7 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     let body: Value = response.json();
     assert_eq!(body["ok"], true);
     assert_eq!(body["ledger"], "ready");
-    assert_eq!(body["ledger_schema_version"], 6);
+    assert_eq!(body["ledger_schema_version"], 7);
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]
@@ -688,7 +688,7 @@ async fn test_get_order_by_client_id_found() {
             side: OrderSide::Bid,
             order_type: OrderType::GoodTillCanceled,
             price: 50_000 * PRICE_SCALE,
-            quantity: 1 * QUANTITY_SCALE,
+            quantity: QUANTITY_SCALE,
             nonce: 42,
             client_order_id: Some("test-coid-api".to_string()),
             signature: vec![0u8; 65],
