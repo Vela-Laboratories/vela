@@ -513,10 +513,10 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Consumer product work
 
-- [ ] Build complete deposit status UI.
+- [x] Build the ledger-backed deposit status UI; it polls exact customer-scoped states and remains hidden when the compatible Base deployment is not configured.
 - [ ] Show confirmation progress.
-- [ ] Show real transaction hashes.
-- [ ] Show failed and reversed deposits.
+- [x] Show real transaction hashes linked to the configured Base block explorer.
+- [x] Show rejected, orphaned, reversed, and quarantined deposits through the same authoritative state list.
 - [ ] Build complete withdrawal status UI.
 - [ ] Show withdrawal review and confirmation state.
 - [ ] Give customers actionable recovery instructions.
@@ -546,7 +546,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add accessibility testing.
 - [ ] Add end-to-end browser testing.
 - [ ] Add wallet-interaction integration testing.
-- [ ] Increase frontend test coverage beyond the current single test.
+- [x] Increase frontend test coverage beyond the original single smoke test with verified-deposit configuration safety tests.
 - [ ] Test deposits and withdrawals using a forked chain.
 - [ ] Test every supported wallet.
 - [ ] Test slow, rejected, replaced, and dropped transactions.

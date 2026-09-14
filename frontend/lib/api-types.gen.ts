@@ -45,6 +45,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/account/{address}/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authoritative verified-deposit status and chain evidence */
+        get: {
+            parameters: {
+                query?: {
+                    transaction_hash?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    address: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ledger-backed deposit states */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["DepositStatusResponse"][];
+                            ok?: boolean;
+                        };
+                    };
+                };
+                /** @description Invalid address, transaction hash, or limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authoritative ledger is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account/{address}/orders": {
         parameters: {
             query?: never;
@@ -274,7 +332,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Credit engine balance from L1 Ethereum event */
+        /** Create an unverified demo credit (testnet-demo only) */
         post: {
             parameters: {
                 query?: never;
@@ -284,8 +342,15 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Credited */
+                /** @description Demo credit created */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Disabled outside testnet-demo */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1289,6 +1354,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dependency readiness check */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ready to serve this runtime mode */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A required dependency is unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reserves/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sanitized aggregate engine liabilities */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Aggregate liabilities with scope and verification status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/status": {
         parameters: {
             query?: never;
@@ -1752,6 +1892,36 @@ export interface components {
             nonce: number;
             order_id?: number;
             signature: string;
+        };
+        DepositStatusResponse: {
+            /** @description Human-readable exact decimal amount */
+            amount: string;
+            /** @description Integer amount in the asset's smallest unit */
+            amount_atomic: string;
+            asset: string;
+            asset_address?: string | null;
+            block_hash: string;
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            /** Format: date-time */
+            credited_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            log_index: number;
+            /** Format: date-time */
+            observed_at: string;
+            /** Format: date-time */
+            reversed_at?: string | null;
+            /** @enum {string} */
+            state: "observed" | "confirming" | "finalized" | "credited" | "rejected" | "orphaned" | "reversed" | "quarantined";
+            transaction_hash: string;
+            transaction_index: number;
+            /** Format: date-time */
+            updated_at: string;
+            vault_address: string;
+            vault_deposit_id: string;
         };
         MarketResponse: {
             base: string;

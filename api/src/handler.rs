@@ -5,8 +5,9 @@ use crate::{
     },
     types::{
         format_amount, ApiResponse, BalanceResponse, BatchDetail, BatchSummary, BookLevel,
-        BookResponse, CancelOrderBody, DepositBody, MarketResponse, OrderFillRecord, PostOrderBody,
-        StateRootData, StoredFill, StoredOrder, WithdrawBody, WsEnvelope,
+        BookResponse, CancelOrderBody, DepositBody, DepositStatusResponse, MarketResponse,
+        OrderFillRecord, PostOrderBody, StateRootData, StoredFill, StoredOrder, WithdrawBody,
+        WsEnvelope,
     },
     wal,
     wal::{
@@ -26,6 +27,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use bigdecimal::BigDecimal;
 use engine;
 use futures_util::{SinkExt, StreamExt};
 use k256::ecdsa::SigningKey;
@@ -239,6 +241,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/markets", get(list_markets))
         .route("/markets/:market/book", get(get_book))
         .route("/account/:address/balances", get(get_balances))
+        .route("/account/:address/deposits", get(get_deposits))
         .route("/account/:address/orders", get(get_open_orders))
         .route(
             "/account/:address/orders/by-client-id/:client_id",
@@ -891,6 +894,146 @@ async fn get_balances(
         })
         .collect();
     (StatusCode::OK, Json(ApiResponse::ok(balances))).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct DepositStatusQuery {
+    transaction_hash: Option<String>,
+    limit: Option<u32>,
+}
+
+async fn get_deposits(
+    Path(address): Path<String>,
+    Query(query): Query<DepositStatusQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    let transaction_hash = query.transaction_hash.as_deref();
+    if transaction_hash.is_some_and(|hash| !is_hex_hash(hash)) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("invalid transaction_hash")),
+        )
+            .into_response();
+    }
+    let limit = query.limit.unwrap_or(25);
+    if !(1..=100).contains(&limit) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("limit must be between 1 and 100")),
+        )
+            .into_response();
+    }
+    let Some(ledger) = state.ledger.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "authoritative deposit status is unavailable",
+            )),
+        )
+            .into_response();
+    };
+
+    let deposits = match ledger
+        .customer_deposits(&user.to_hex(), transaction_hash, limit)
+        .await
+    {
+        Ok(deposits) => deposits,
+        Err(error) => {
+            tracing::error!(%error, user = %user.to_hex(), "authoritative deposit read failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err(
+                    "authoritative deposit status is unavailable",
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    let mut response = Vec::with_capacity(deposits.len());
+    for deposit in deposits {
+        let amount = match format_ledger_deposit_amount(&deposit.amount, deposit.asset_decimals) {
+            Ok(amount) => amount,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    deposit_id = %deposit.id,
+                    "authoritative deposit amount conversion failed"
+                );
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err(
+                        "authoritative deposit status is unavailable",
+                    )),
+                )
+                    .into_response();
+            }
+        };
+        response.push(DepositStatusResponse {
+            id: deposit.id.to_string(),
+            asset: deposit.asset_code,
+            amount,
+            amount_atomic: deposit.amount.normalized().to_plain_string(),
+            state: deposit.state.as_str().to_owned(),
+            chain_id: deposit.chain_id,
+            block_number: deposit.block_number,
+            block_hash: deposit.block_hash,
+            transaction_hash: deposit.transaction_hash,
+            transaction_index: deposit.transaction_index,
+            log_index: deposit.log_index,
+            vault_address: deposit.vault_address,
+            vault_deposit_id: deposit.vault_deposit_id,
+            asset_address: deposit.asset_address,
+            observed_at: deposit.observed_at.to_rfc3339(),
+            credited_at: deposit.credited_at.map(|time| time.to_rfc3339()),
+            reversed_at: deposit.reversed_at.map(|time| time.to_rfc3339()),
+            updated_at: deposit.updated_at.to_rfc3339(),
+        });
+    }
+
+    (StatusCode::OK, Json(ApiResponse::ok(response))).into_response()
+}
+
+fn is_hex_hash(value: &str) -> bool {
+    value
+        .strip_prefix("0x")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn format_ledger_deposit_amount(amount: &BigDecimal, decimals: i16) -> Result<String, String> {
+    let decimals =
+        usize::try_from(decimals).map_err(|_| "asset decimals cannot be negative".to_owned())?;
+    let digits = amount.normalized().to_plain_string();
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("deposit amount is not a positive integer base-unit value".to_owned());
+    }
+    if decimals == 0 {
+        return Ok(digits);
+    }
+
+    let padded = if digits.len() <= decimals {
+        format!("{}{}", "0".repeat(decimals + 1 - digits.len()), digits)
+    } else {
+        digits
+    };
+    let split = padded.len() - decimals;
+    let whole = &padded[..split];
+    let fractional = padded[split..].trim_end_matches('0');
+    if fractional.is_empty() {
+        Ok(whole.to_owned())
+    } else {
+        Ok(format!("{whole}.{fractional}"))
+    }
 }
 
 async fn get_open_orders(

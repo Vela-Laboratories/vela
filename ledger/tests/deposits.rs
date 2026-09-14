@@ -224,6 +224,48 @@ async fn observation_is_idempotent_and_canonical_event_is_unique(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn customer_deposit_status_is_scoped_filterable_and_chain_backed(pool: PgPool) {
+    let fixture = Fixture::new(pool).await;
+    let observation = fixture.observation();
+    fixture.credit(&observation).await;
+
+    let deposits = fixture
+        .ledger
+        .customer_deposits(&CUSTOMER.to_ascii_uppercase(), None, 25)
+        .await
+        .unwrap();
+    assert_eq!(deposits.len(), 1);
+    let status = &deposits[0];
+    assert_eq!(status.id, observation.deposit_id);
+    assert_eq!(status.asset_code, "USDC");
+    assert_eq!(status.asset_decimals, 6);
+    assert_eq!(status.amount, BigDecimal::from(1_500_000_i64));
+    assert_eq!(status.state, DepositState::Credited);
+    assert_eq!(status.chain_id, 8453);
+    assert_eq!(status.transaction_hash, hash(0x22));
+    assert!(status.credited_at.is_some());
+    assert!(status.reversed_at.is_none());
+
+    let uppercase_hash = format!("0x{}", hash(0x22)[2..].to_ascii_uppercase());
+    let by_hash = fixture
+        .ledger
+        .customer_deposits(CUSTOMER, Some(&uppercase_hash), 1)
+        .await
+        .unwrap();
+    assert_eq!(by_hash.len(), 1);
+    let absent = fixture
+        .ledger
+        .customer_deposits(CUSTOMER, Some(&hash(0x99)), 1)
+        .await
+        .unwrap();
+    assert!(absent.is_empty());
+    assert!(matches!(
+        fixture.ledger.customer_deposits(CUSTOMER, None, 0).await,
+        Err(LedgerError::InvalidDeposit(_))
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn finality_requires_two_distinct_agreeing_providers(pool: PgPool) {
     let fixture = Fixture::new(pool).await;
     let observation = fixture.observation();

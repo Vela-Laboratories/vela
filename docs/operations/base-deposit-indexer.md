@@ -20,6 +20,8 @@ Any uncertainty stops credits. Safety failures are written to `ledger_indexer_ha
 
 The same worker continuously cycles a second checkpoint from the registered deployment block through the already-processed finalized range. Both providers must continue returning identical canonical logs. A missing or changed credited event activates an asset-wide halt before the ledger moves every still-available unit into `customer_pending`; a complete isolation becomes `reversed`, while any shortfall becomes `quarantined`. A newly appeared historical event also halts the affected asset because it is behind the monotonic forward checkpoint.
 
+Customer-facing status is served by `GET /account/{address}/deposits`. The route reads the ledger directly, can be filtered by the real transaction hash, and returns `503` rather than falling back to demo state when the ledger is unavailable. The frontend requires a successful status preflight before opening the wallet, then polls the route after the wallet confirms a Base transaction; transaction submission itself never creates a customer credit.
+
 ## Contract and registry requirement
 
 The current source emits:

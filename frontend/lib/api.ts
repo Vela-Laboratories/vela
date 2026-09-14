@@ -66,6 +66,8 @@ export interface BalanceResponse {
   total: string
 }
 
+export type DepositStatus = ApiSchemas['DepositStatusResponse']
+
 export interface Order {
   id: number
   market: string
@@ -171,6 +173,20 @@ export function getBalances(
   address: string,
 ): Promise<ApiResponse<BalanceResponse[]>> {
   return apiFetch(`/account/${encodeURIComponent(address)}/balances`)
+}
+
+/** GET /account/:address/deposits */
+export function getDeposits(
+  address: string,
+  transactionHash?: string,
+): Promise<ApiResponse<DepositStatus[]>> {
+  const query = new URLSearchParams()
+  if (transactionHash) query.set('transaction_hash', transactionHash)
+  const suffix = query.size > 0 ? `?${query.toString()}` : ''
+  return apiFetch(
+    `/account/${encodeURIComponent(address)}/deposits${suffix}`,
+    { cache: 'no-store' },
+  )
 }
 
 /** GET /account/:address/orders */

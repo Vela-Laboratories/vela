@@ -155,6 +155,30 @@ pub fn openapi_spec() -> serde_json::Value {
                     }
                 }
             },
+            "/account/{address}/deposits": {
+                "get": {
+                    "summary": "Authoritative verified-deposit status and chain evidence",
+                    "parameters": [
+                        { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
+                        { "name": "transaction_hash", "in": "query", "required": false, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" } },
+                        { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 } }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Ledger-backed deposit states",
+                            "content": { "application/json": { "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ok": { "type": "boolean" },
+                                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/DepositStatusResponse" } }
+                                }
+                            } } }
+                        },
+                        "400": { "description": "Invalid address, transaction hash, or limit" },
+                        "503": { "description": "Authoritative ledger is not configured or unavailable" }
+                    }
+                }
+            },
             "/perp/markets": {
                 "get": {
                     "summary": "Perp market state (mark/index/funding)",
@@ -490,6 +514,34 @@ pub fn openapi_spec() -> serde_json::Value {
                         "available": { "type": "string" },
                         "locked": { "type": "string" },
                         "total": { "type": "string" }
+                    }
+                },
+                "DepositStatusResponse": {
+                    "type": "object",
+                    "required": [
+                        "id", "asset", "amount", "amount_atomic", "state", "chain_id",
+                        "block_number", "block_hash", "transaction_hash", "transaction_index",
+                        "log_index", "vault_address", "vault_deposit_id", "observed_at", "updated_at"
+                    ],
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "asset": { "type": "string" },
+                        "amount": { "type": "string", "description": "Human-readable exact decimal amount" },
+                        "amount_atomic": { "type": "string", "description": "Integer amount in the asset's smallest unit" },
+                        "state": { "type": "string", "enum": ["observed", "confirming", "finalized", "credited", "rejected", "orphaned", "reversed", "quarantined"] },
+                        "chain_id": { "type": "integer", "format": "int64" },
+                        "block_number": { "type": "integer", "format": "int64" },
+                        "block_hash": { "type": "string" },
+                        "transaction_hash": { "type": "string" },
+                        "transaction_index": { "type": "integer" },
+                        "log_index": { "type": "integer" },
+                        "vault_address": { "type": "string" },
+                        "vault_deposit_id": { "type": "string" },
+                        "asset_address": { "type": ["string", "null"] },
+                        "observed_at": { "type": "string", "format": "date-time" },
+                        "credited_at": { "type": ["string", "null"], "format": "date-time" },
+                        "reversed_at": { "type": ["string", "null"], "format": "date-time" },
+                        "updated_at": { "type": "string", "format": "date-time" }
                     }
                 },
                 "PortfolioLot": {

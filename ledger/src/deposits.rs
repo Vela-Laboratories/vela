@@ -124,6 +124,28 @@ pub struct DepositRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerDepositStatus {
+    pub id: Uuid,
+    pub asset_code: String,
+    pub asset_decimals: i16,
+    pub amount: BigDecimal,
+    pub state: DepositState,
+    pub chain_id: i64,
+    pub block_number: i64,
+    pub block_hash: String,
+    pub transaction_hash: String,
+    pub transaction_index: i32,
+    pub log_index: i32,
+    pub vault_address: String,
+    pub vault_deposit_id: String,
+    pub asset_address: Option<String>,
+    pub observed_at: DateTime<Utc>,
+    pub credited_at: Option<DateTime<Utc>>,
+    pub reversed_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreditedDeposit {
     pub deposit: DepositRecord,
     pub transaction: PostedTransaction,
@@ -258,6 +280,28 @@ struct CreditableDeposit {
     log_index: i32,
 }
 
+#[derive(Debug, FromRow)]
+struct StoredCustomerDepositStatus {
+    id: Uuid,
+    asset_code: String,
+    asset_decimals: i16,
+    amount: BigDecimal,
+    state: String,
+    chain_id: i64,
+    block_number: i64,
+    block_hash: String,
+    transaction_hash: String,
+    transaction_index: i32,
+    log_index: i32,
+    vault_address: String,
+    vault_deposit_id: String,
+    asset_address: Option<String>,
+    observed_at: DateTime<Utc>,
+    credited_at: Option<DateTime<Utc>>,
+    reversed_at: Option<DateTime<Utc>>,
+    updated_at: DateTime<Utc>,
+}
+
 impl TryFrom<StoredDeposit> for DepositRecord {
     type Error = LedgerError;
 
@@ -278,6 +322,88 @@ impl TryFrom<StoredDeposit> for DepositRecord {
 }
 
 impl Ledger {
+    pub async fn customer_deposits(
+        &self,
+        customer_reference: &str,
+        transaction_hash: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<CustomerDepositStatus>, LedgerError> {
+        if customer_reference.trim().is_empty()
+            || customer_reference.len() > 255
+            || transaction_hash.is_some_and(|hash| !is_hex_bytes(hash, 32))
+            || !(1..=100).contains(&limit)
+        {
+            return Err(LedgerError::InvalidDeposit(
+                "customer deposit query is invalid".to_owned(),
+            ));
+        }
+
+        let rows = sqlx::query_as::<_, StoredCustomerDepositStatus>(
+            r#"
+            SELECT
+                deposit.id,
+                asset.code AS asset_code,
+                asset.decimals AS asset_decimals,
+                deposit.amount,
+                deposit.state,
+                event.chain_id,
+                event.block_number,
+                event.block_hash,
+                event.transaction_hash,
+                event.transaction_index,
+                event.log_index,
+                event.vault_address,
+                event.vault_deposit_id,
+                event.asset_address,
+                event.observed_at,
+                credit.created_at AS credited_at,
+                reversal.created_at AS reversed_at,
+                deposit.updated_at
+            FROM ledger_deposits deposit
+            JOIN ledger_assets asset ON asset.id = deposit.asset_id
+            JOIN ledger_deposit_chain_events event ON event.deposit_id = deposit.id
+            LEFT JOIN ledger_journal_transactions credit
+              ON credit.id = deposit.credit_transaction_id
+            LEFT JOIN ledger_journal_transactions reversal
+              ON reversal.id = deposit.reversal_transaction_id
+            WHERE lower(deposit.customer_reference) = lower($1)
+              AND ($2::text IS NULL OR lower(event.transaction_hash) = lower($2))
+            ORDER BY event.block_number DESC, event.log_index DESC, deposit.id
+            LIMIT $3
+            "#,
+        )
+        .bind(customer_reference)
+        .bind(transaction_hash)
+        .bind(i64::from(limit))
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(CustomerDepositStatus {
+                    id: row.id,
+                    asset_code: row.asset_code,
+                    asset_decimals: row.asset_decimals,
+                    amount: row.amount,
+                    state: DepositState::from_str(&row.state)?,
+                    chain_id: row.chain_id,
+                    block_number: row.block_number,
+                    block_hash: row.block_hash,
+                    transaction_hash: row.transaction_hash,
+                    transaction_index: row.transaction_index,
+                    log_index: row.log_index,
+                    vault_address: row.vault_address,
+                    vault_deposit_id: row.vault_deposit_id,
+                    asset_address: row.asset_address,
+                    observed_at: row.observed_at,
+                    credited_at: row.credited_at,
+                    reversed_at: row.reversed_at,
+                    updated_at: row.updated_at,
+                })
+            })
+            .collect()
+    }
+
     pub async fn activate_asset_halt(
         &self,
         command: &ActivateAssetHalt,

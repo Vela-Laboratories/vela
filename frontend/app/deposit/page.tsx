@@ -2,16 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { parseUnits } from 'viem'
 import { useAuth } from '@/lib/auth'
-import { deposit, getBalances, type BalanceResponse } from '@/lib/api'
+import {
+  deposit,
+  getBalances,
+  getDeposits,
+  type BalanceResponse,
+  type DepositStatus,
+} from '@/lib/api'
 import {
   depositETH,
-  switchToSepolia,
   approveUSDC,
   depositToken,
   checkUSDCAllowance,
+  getVerifiedDepositConfig,
   getUSDCBalance,
-  SEPOLIA_USDC,
+  waitForTransactionReceipt,
 } from '@/lib/contract'
 import { Spinner } from '@/components/ui/Spinner'
 
@@ -21,6 +28,7 @@ const ASSETS = [
 ]
 
 const ON_CHAIN_ASSETS = new Set(['ETH', 'USDC'])
+const VERIFIED_DEPOSIT_CONFIG = getVerifiedDepositConfig()
 
 function AssetBadge({ asset }: { asset: string }) {
   if (ON_CHAIN_ASSETS.has(asset)) {
@@ -120,7 +128,8 @@ function ConnectGate() {
 interface SuccessState {
   amount: string
   asset: string
-  newBalance: string
+  creditType: 'verified' | 'demo'
+  newBalance?: string
   txHash?: string
 }
 
@@ -130,6 +139,7 @@ export default function DepositPage() {
   const [selectedAsset, setSelectedAsset] = useState('USDC')
   const [amount, setAmount] = useState('')
   const [balances, setBalances] = useState<BalanceResponse[]>([])
+  const [deposits, setDeposits] = useState<DepositStatus[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<SuccessState | null>(null)
@@ -146,7 +156,24 @@ export default function DepositPage() {
   }, [address])
 
   useEffect(() => {
-    if (!address || selectedAsset !== 'USDC') {
+    if (!address || !VERIFIED_DEPOSIT_CONFIG) return
+    let cancelled = false
+    const refresh = async () => {
+      const response = await getDeposits(address)
+      if (!cancelled && response.ok && response.data) {
+        setDeposits(response.data)
+      }
+    }
+    void refresh()
+    const interval = window.setInterval(refresh, 5_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [address])
+
+  useEffect(() => {
+    if (!address || selectedAsset !== 'USDC' || !VERIFIED_DEPOSIT_CONFIG?.usdcAddress) {
       setUsdcWalletBalance(null)
       return
     }
@@ -177,56 +204,50 @@ export default function DepositPage() {
     setStepLabel(null)
 
     try {
-      if (selectedAsset === 'ETH') {
-        await switchToSepolia()
-        const txHash = await depositETH(amount)
-        const res = await deposit(address, selectedAsset, amount)
-        setSubmitting(false)
-
-        if (!res.ok || !res.data) {
-          setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
-          return
+      if (ON_CHAIN_ASSETS.has(selectedAsset)) {
+        setStepLabel('Checking authoritative deposit tracking...')
+        const tracking = await getDeposits(address)
+        if (!tracking.ok || !tracking.data) {
+          throw new Error(
+            'Verified deposit tracking is unavailable. No transaction was submitted.',
+          )
         }
-        const updated = res.data.balances
-        setBalances(updated)
-        const newBal = updated.find(
-          (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
-        )
+        setDeposits(tracking.data)
+      }
+      if (selectedAsset === 'ETH') {
+        setStepLabel('Confirm the verified deposit in your wallet...')
+        const txHash = await depositETH(amount)
+        setStepLabel('Waiting for the Base transaction to confirm...')
+        await waitForTransactionReceipt(txHash)
+        setSubmitting(false)
+        setStepLabel(null)
         setSuccess({
           amount,
           asset: selectedAsset,
-          newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
+          creditType: 'verified',
           txHash,
         })
       } else if (selectedAsset === 'USDC') {
-        await switchToSepolia()
-        const amountWei = Math.round(parseFloat(amount) * 1_000_000).toString()
+        const amountWei = parseUnits(amount, 6).toString()
         const allowance = await checkUSDCAllowance(address)
 
         if (allowance < BigInt(amountWei)) {
           setStepLabel('Step 1 of 2: Approving USDC...')
-          await approveUSDC(amount)
+          const approvalHash = await approveUSDC(amount)
+          await waitForTransactionReceipt(approvalHash)
           setStepLabel('Approval confirmed. Proceeding to deposit...')
         }
 
         setStepLabel('Step 2 of 2: Depositing USDC...')
-        const txHash = await depositToken(SEPOLIA_USDC, amountWei)
-
-        const res = await deposit(address, selectedAsset, amount)
+        const txHash = await depositToken(amountWei)
+        setStepLabel('Waiting for the Base transaction to confirm...')
+        await waitForTransactionReceipt(txHash)
         setSubmitting(false)
         setStepLabel(null)
-
-        if (!res.ok || !res.data) {
-          setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
-          return
-        }
-        const updated = res.data.balances
-        setBalances(updated)
-        const newBal = updated.find((b) => b.asset.toUpperCase() === 'USDC')
         setSuccess({
           amount,
           asset: selectedAsset,
-          newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
+          creditType: 'verified',
           txHash,
         })
       } else {
@@ -246,6 +267,7 @@ export default function DepositPage() {
         setSuccess({
           amount,
           asset: selectedAsset,
+          creditType: 'demo',
           newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
         })
       }
@@ -263,6 +285,16 @@ export default function DepositPage() {
   const shortAddress = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : ''
+  const selectedVerifiedDepositReady = Boolean(
+    VERIFIED_DEPOSIT_CONFIG
+      && (selectedAsset === 'ETH'
+        || (selectedAsset === 'USDC' && VERIFIED_DEPOSIT_CONFIG.usdcAddress)),
+  )
+  const submittedDeposit = success?.txHash
+    ? deposits.find(
+        (item) => item.transaction_hash.toLowerCase() === success.txHash?.toLowerCase(),
+      )
+    : undefined
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
@@ -280,7 +312,9 @@ export default function DepositPage() {
           }}
         >
           <p className="text-[0.8rem] text-ink leading-relaxed">
-            Testnet demo only. Deposits use Sepolia and engine balances are unverified demo credits, not production custody.
+            Verified deposits are credited only after the Base indexer observes and finalizes the
+            configured custody-vault event. Sending a transaction never creates an immediate demo
+            credit.
           </p>
         </div>
 
@@ -306,31 +340,41 @@ export default function DepositPage() {
               />
             </svg>
             <p className="text-xl font-semibold text-ink mb-2">
-              Deposit successful
+              {success.creditType === 'verified' ? 'Deposit submitted' : 'Demo credit created'}
             </p>
             <p className="text-sm text-brown mb-5">
-              {success.txHash
-                ? `Sepolia transaction submitted. Your ${success.amount} ${success.asset} testnet demo balance was credited.`
+              {success.creditType === 'verified'
+                ? `The Base transaction confirmed. Authoritative status: ${submittedDeposit?.state ?? 'awaiting indexer discovery'}. No demo balance was created.`
                 : `Your ${success.amount} ${success.asset} unverified demo balance was credited.`}
             </p>
-            <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
-              NEW BALANCE
-            </p>
-            <p
-              className="text-lg font-mono text-ink mb-5"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {success.newBalance} {success.asset}
-            </p>
-            {success.txHash && (
+            {success.creditType === 'verified' ? (
+              <>
+                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
+                  AMOUNT
+                </p>
+                <p className="text-lg font-mono text-ink mb-5" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {success.amount} {success.asset}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
+                  NEW DEMO BALANCE
+                </p>
+                <p className="text-lg font-mono text-ink mb-5" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {success.newBalance} {success.asset}
+                </p>
+              </>
+            )}
+            {success.txHash && VERIFIED_DEPOSIT_CONFIG && (
               <a
-                href={`https://sepolia.etherscan.io/tx/${success.txHash}`}
+                href={`${VERIFIED_DEPOSIT_CONFIG.explorerUrl}/tx/${success.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[0.7rem] font-medium uppercase tracking-[0.12em] mb-7"
                 style={{ color: '#00D2D2' }}
               >
-                VIEW ON ETHERSCAN ↗
+                VIEW ON BLOCK EXPLORER ↗
               </a>
             )}
             {!success.txHash && <div className="mb-7" />}
@@ -339,7 +383,7 @@ export default function DepositPage() {
               className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150"
               style={{ background: '#00D2D2', borderRadius: 0 }}
             >
-              START TRADING
+              VIEW MARKETS
             </Link>
           </div>
         ) : (
@@ -407,14 +451,16 @@ export default function DepositPage() {
             <div className="mb-5">
               {ON_CHAIN_ASSETS.has(selectedAsset) ? (
                 <p className="text-[0.72rem] font-medium" style={{ color: '#00D2D2' }}>
-                  ● Ethereum Sepolia — on-chain settlement
+                  {selectedVerifiedDepositReady
+                    ? `● ${VERIFIED_DEPOSIT_CONFIG?.chainName} verified custody deposit`
+                    : '● Verified deposits unavailable until the Base vault is configured'}
                 </p>
               ) : (
                 <p className="text-[0.72rem] font-medium text-brown">
                   ● Trust-based beta deposit
                 </p>
               )}
-              {selectedAsset === 'USDC' && (
+              {selectedAsset === 'USDC' && selectedVerifiedDepositReady && (
                 <div className="mt-2">
                   <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-1">
                     WALLET USDC BALANCE
@@ -438,7 +484,7 @@ export default function DepositPage() {
                       textDecoration: 'none',
                     }}
                   >
-                    Get Sepolia USDC from Circle faucet →
+                    Get testnet USDC from Circle faucet →
                   </a>
                 </div>
               )}
@@ -501,7 +547,11 @@ export default function DepositPage() {
 
             <button
               type="submit"
-              disabled={submitting || !amount}
+              disabled={
+                submitting
+                || !amount
+                || (ON_CHAIN_ASSETS.has(selectedAsset) && !selectedVerifiedDepositReady)
+              }
               className="w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 disabled:opacity-50"
               style={{ background: '#00D2D2', borderRadius: 0 }}
             >
@@ -509,6 +559,37 @@ export default function DepositPage() {
               DEPOSIT {amount || '0'} {selectedAsset}
             </button>
           </form>
+        )}
+
+        {VERIFIED_DEPOSIT_CONFIG && deposits.length > 0 && (
+          <section className="mt-6 bg-canvas border border-border p-5" aria-label="Verified deposit activity">
+            <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-4">
+              VERIFIED DEPOSIT ACTIVITY
+            </p>
+            <div className="space-y-3">
+              {deposits.map((item) => (
+                <a
+                  key={item.id}
+                  href={`${VERIFIED_DEPOSIT_CONFIG.explorerUrl}/tx/${item.transaction_hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between gap-4 border-t border-border pt-3"
+                >
+                  <span>
+                    <span className="block text-sm text-ink" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {item.amount} {item.asset}
+                    </span>
+                    <span className="block text-[0.65rem] text-brown mt-1" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {item.transaction_hash.slice(0, 10)}…{item.transaction_hash.slice(-8)}
+                    </span>
+                  </span>
+                  <span className="text-[0.65rem] uppercase tracking-[0.1em]" style={{ color: '#00A090' }}>
+                    {item.state}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
         )}
       </div>
     </div>

@@ -198,6 +198,28 @@ pub struct DepositBody {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepositStatusResponse {
+    pub id: String,
+    pub asset: String,
+    pub amount: String,
+    pub amount_atomic: String,
+    pub state: String,
+    pub chain_id: i64,
+    pub block_number: i64,
+    pub block_hash: String,
+    pub transaction_hash: String,
+    pub transaction_index: i32,
+    pub log_index: i32,
+    pub vault_address: String,
+    pub vault_deposit_id: String,
+    pub asset_address: Option<String>,
+    pub observed_at: String,
+    pub credited_at: Option<String>,
+    pub reversed_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookLevel {
     pub price: String,
     pub quantity: String,

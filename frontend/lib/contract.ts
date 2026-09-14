@@ -1,7 +1,67 @@
+import { parseUnits } from 'viem'
+
 const CONTRACT_ADDRESS = '0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686'
 const SEPOLIA_CHAIN_ID = 11155111
 const ETH_ASSET = '0x0000000000000000000000000000000000000000'
 export const SEPOLIA_USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+
+const DEPOSIT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_DEPOSIT_CHAIN_ID ?? '84532')
+const DEPOSIT_VAULT_ADDRESS = process.env.NEXT_PUBLIC_DEPOSIT_VAULT_ADDRESS ?? ''
+const DEPOSIT_USDC_ADDRESS = process.env.NEXT_PUBLIC_DEPOSIT_USDC_ADDRESS ?? ''
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+export interface VerifiedDepositConfig {
+  chainId: 8453 | 84532
+  chainName: 'Base' | 'Base Sepolia'
+  chainIdHex: string
+  vaultAddress: string
+  usdcAddress: string | null
+  rpcUrl: string
+  explorerUrl: string
+}
+
+function isAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(value) && value.toLowerCase() !== ZERO_ADDRESS
+}
+
+export function getVerifiedDepositConfig(): VerifiedDepositConfig | null {
+  return resolveVerifiedDepositConfig(
+    DEPOSIT_CHAIN_ID,
+    DEPOSIT_VAULT_ADDRESS,
+    DEPOSIT_USDC_ADDRESS,
+  )
+}
+
+export function resolveVerifiedDepositConfig(
+  chainId: number,
+  vaultAddress: string,
+  usdcAddress: string,
+): VerifiedDepositConfig | null {
+  if ((chainId !== 8453 && chainId !== 84532) || !isAddress(vaultAddress)) {
+    return null
+  }
+  const isMainnet = chainId === 8453
+  return {
+    chainId,
+    chainName: isMainnet ? 'Base' : 'Base Sepolia',
+    chainIdHex: `0x${chainId.toString(16)}`,
+    vaultAddress,
+    usdcAddress: isAddress(usdcAddress) ? usdcAddress : null,
+    rpcUrl: isMainnet ? 'https://mainnet.base.org' : 'https://sepolia.base.org',
+    explorerUrl: isMainnet ? 'https://basescan.org' : 'https://sepolia.basescan.org',
+  }
+}
+
+function requireVerifiedDepositConfig(asset?: 'ETH' | 'USDC'): VerifiedDepositConfig {
+  const config = getVerifiedDepositConfig()
+  if (!config) {
+    throw new Error('Verified deposits are not configured for this deployment.')
+  }
+  if (asset === 'USDC' && !config.usdcAddress) {
+    throw new Error('Verified USDC deposits are not configured for this deployment.')
+  }
+  return config
+}
 
 function encodeDepositETH(): string {
   return '0xf9a06f72'
@@ -41,21 +101,48 @@ export async function switchToSepolia(): Promise<void> {
   }
 }
 
-export async function depositETH(amountEth: string): Promise<string> {
+export async function switchToVerifiedDepositChain(): Promise<void> {
+  const config = requireVerifiedDepositConfig()
   const ethereum = (window as any).ethereum
-  await switchToSepolia()
+  if (!ethereum) throw new Error('No browser wallet detected.')
+  try {
+    await ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: config.chainIdHex }],
+    })
+  } catch (err: any) {
+    if (err.code !== 4902) throw err
+    await ethereum.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: config.chainIdHex,
+          chainName: config.chainName,
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          rpcUrls: [config.rpcUrl],
+          blockExplorerUrls: [config.explorerUrl],
+        },
+      ],
+    })
+  }
+}
+
+export async function depositETH(amountEth: string): Promise<string> {
+  const config = requireVerifiedDepositConfig('ETH')
+  const ethereum = (window as any).ethereum
+  await switchToVerifiedDepositChain()
 
   const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
   if (!accounts.length) throw new Error('No connected account')
 
-  const weiHex = '0x' + BigInt(Math.round(parseFloat(amountEth) * 1e18)).toString(16)
+  const weiHex = `0x${parseUnits(amountEth, 18).toString(16)}`
 
   const txHash: string = await ethereum.request({
     method: 'eth_sendTransaction',
     params: [
       {
         from: accounts[0],
-        to: CONTRACT_ADDRESS,
+        to: config.vaultAddress,
         data: encodeDepositETH(),
         value: weiHex,
       },
@@ -132,63 +219,93 @@ export async function requestWithdrawalSignature(
 }
 
 export async function getUSDCBalance(address: string): Promise<string> {
+  const config = requireVerifiedDepositConfig('USDC')
   const ethereum = (window as any).ethereum
+  const currentChainId: string = await ethereum.request({ method: 'eth_chainId' })
+  if (currentChainId.toLowerCase() !== config.chainIdHex) {
+    throw new Error(`Switch to ${config.chainName} to view the USDC balance.`)
+  }
   const paddedAddr = address.toLowerCase().replace('0x', '').padStart(64, '0')
   const result: string = await ethereum.request({
     method: 'eth_call',
-    params: [{ to: SEPOLIA_USDC, data: '0x70a08231' + paddedAddr }, 'latest'],
+    params: [{ to: config.usdcAddress, data: '0x70a08231' + paddedAddr }, 'latest'],
   })
   if (!result || result === '0x') return '0'
   return (Number(BigInt(result)) / 1e6).toString()
 }
 
 export async function approveUSDC(amount: string): Promise<string> {
-  await switchToSepolia()
+  const config = requireVerifiedDepositConfig('USDC')
+  await switchToVerifiedDepositChain()
   const ethereum = (window as any).ethereum
   const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
   if (!accounts.length) throw new Error('No connected account')
 
-  const amountWei = BigInt(Math.round(parseFloat(amount) * 1_000_000))
-  const paddedSpender = CONTRACT_ADDRESS.toLowerCase().replace('0x', '').padStart(64, '0')
+  const amountWei = parseUnits(amount, 6)
+  const paddedSpender = config.vaultAddress.toLowerCase().replace('0x', '').padStart(64, '0')
   const paddedAmount = amountWei.toString(16).padStart(64, '0')
   const data = '0x095ea7b3' + paddedSpender + paddedAmount
 
   const txHash: string = await ethereum.request({
     method: 'eth_sendTransaction',
-    params: [{ from: accounts[0], to: SEPOLIA_USDC, data }],
+    params: [{ from: accounts[0], to: config.usdcAddress, data }],
   })
   return txHash
 }
 
-export async function depositToken(assetAddress: string, amountWei: string): Promise<string> {
-  await switchToSepolia()
+export async function depositToken(amountWei: string): Promise<string> {
+  const config = requireVerifiedDepositConfig('USDC')
+  await switchToVerifiedDepositChain()
   const ethereum = (window as any).ethereum
   const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
   if (!accounts.length) throw new Error('No connected account')
 
-  const paddedAsset = assetAddress.toLowerCase().replace('0x', '').padStart(64, '0')
+  const paddedAsset = config.usdcAddress!.toLowerCase().replace('0x', '').padStart(64, '0')
   const paddedAmount = BigInt(amountWei).toString(16).padStart(64, '0')
   const data = '0x338b5dea' + paddedAsset + paddedAmount
 
   const txHash: string = await ethereum.request({
     method: 'eth_sendTransaction',
-    params: [{ from: accounts[0], to: CONTRACT_ADDRESS, data, value: '0x0' }],
+    params: [{ from: accounts[0], to: config.vaultAddress, data, value: '0x0' }],
   })
   return txHash
 }
 
 export async function checkUSDCAllowance(ownerAddress: string): Promise<bigint> {
+  const config = requireVerifiedDepositConfig('USDC')
+  await switchToVerifiedDepositChain()
   const ethereum = (window as any).ethereum
   const paddedOwner = ownerAddress.toLowerCase().replace('0x', '').padStart(64, '0')
-  const paddedSpender = CONTRACT_ADDRESS.toLowerCase().replace('0x', '').padStart(64, '0')
+  const paddedSpender = config.vaultAddress.toLowerCase().replace('0x', '').padStart(64, '0')
   const data = '0xdd62ed3e' + paddedOwner + paddedSpender
 
   const result: string = await ethereum.request({
     method: 'eth_call',
-    params: [{ to: SEPOLIA_USDC, data }, 'latest'],
+    params: [{ to: config.usdcAddress, data }, 'latest'],
   })
   if (!result || result === '0x') return 0n
   return BigInt(result)
+}
+
+export async function waitForTransactionReceipt(
+  transactionHash: string,
+  timeoutMs = 180_000,
+): Promise<void> {
+  const ethereum = (window as any).ethereum
+  if (!ethereum) throw new Error('No browser wallet detected.')
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const receipt = await ethereum.request({
+      method: 'eth_getTransactionReceipt',
+      params: [transactionHash],
+    }) as { status?: string } | null
+    if (receipt) {
+      if (receipt.status === '0x0') throw new Error('The deposit transaction reverted.')
+      return
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 2_000))
+  }
+  throw new Error('The deposit transaction is still pending. Check your wallet or block explorer.')
 }
 
 export async function getOnChainBalance(userAddress: string): Promise<string> {

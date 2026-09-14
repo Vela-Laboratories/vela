@@ -42,4 +42,4 @@ The legacy Sepolia deployment emits the older three-field event and is intention
 
 ## Remaining launch work
 
-Base Sepolia contract deployment, managed indexer hosting, protected provider/database configuration, customer deposit-status API, frontend transaction discovery, custody reconciliation, and operational alerting remain Milestone 3 blockers.
+The ledger-backed customer deposit-status API and frontend transaction discovery are implemented. Base Sepolia contract deployment, managed indexer hosting, protected provider/database configuration, custody reconciliation, and operational alerting remain Milestone 3 blockers. The frontend therefore keeps verified submission disabled until an explicitly configured Base vault and asset address match the indexer registry.

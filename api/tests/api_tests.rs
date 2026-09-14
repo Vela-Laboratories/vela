@@ -1,5 +1,6 @@
 use api::AppState;
 use axum_test::TestServer;
+use bigdecimal::BigDecimal;
 use engine::MatchingEngine;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use types::{
     AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
     Request, PRICE_SCALE, QUANTITY_SCALE,
 };
+use uuid::Uuid;
 
 fn make_wal() -> Arc<api::wal::Wal> {
     let dir = std::env::temp_dir().join(format!(
@@ -185,6 +187,120 @@ async fn test_ledger_backed_api_ignores_cache_and_rejects_demo_credit(pool: sqlx
         .as_str()
         .unwrap_or_default()
         .contains("PostgreSQL ledger is authoritative"));
+}
+
+#[tokio::test]
+async fn test_deposit_status_fails_closed_without_authoritative_ledger() {
+    let server = test_server(engine_with_market());
+    let response = server
+        .get(&format!("/account/{}/deposits", user_addr()))
+        .await;
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json();
+    assert_eq!(body["ok"], false);
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("authoritative deposit status"));
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn test_deposit_status_is_customer_scoped_and_filterable(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool));
+    let asset_id = Uuid::new_v4();
+    ledger
+        .create_asset(&ledger::NewAsset {
+            id: asset_id,
+            code: "USDC".to_owned(),
+            decimals: 6,
+            chain_id: Some(84532),
+            contract_address: Some("0x1111111111111111111111111111111111111111".to_owned()),
+        })
+        .await
+        .unwrap();
+    let account_id = Uuid::new_v4();
+    ledger
+        .create_account(&ledger::NewAccount {
+            id: account_id,
+            asset_id,
+            owner_type: "customer".to_owned(),
+            owner_reference: user_addr(),
+            account_type: "customer_available".to_owned(),
+            allow_negative: false,
+        })
+        .await
+        .unwrap();
+    let transaction_hash = format!("0x{}", "22".repeat(32));
+    let deposit_id = Uuid::new_v4();
+    ledger
+        .observe_deposit(&ledger::ObserveDeposit {
+            deposit_id,
+            customer_reference: user_addr(),
+            destination_account_id: account_id,
+            asset_id,
+            amount: BigDecimal::from(1_500_000_i64),
+            event: ledger::DepositChainEvent {
+                chain_id: 84532,
+                block_number: 1234,
+                block_hash: format!("0x{}", "11".repeat(32)),
+                transaction_hash: transaction_hash.clone(),
+                transaction_index: 2,
+                log_index: 3,
+                vault_address: "0x3333333333333333333333333333333333333333".to_owned(),
+                vault_deposit_id: format!("0x{}", "44".repeat(32)),
+                sender_address: user_addr(),
+                asset_address: Some("0x1111111111111111111111111111111111111111".to_owned()),
+                actual_amount: BigDecimal::from(1_500_000_i64),
+            },
+        })
+        .await
+        .unwrap();
+
+    let state = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::TestnetDemo,
+        Some(ledger),
+    )
+    .await
+    .unwrap();
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    let response = server
+        .get(&format!("/account/{}/deposits", user_addr()))
+        .await;
+    response.assert_status_ok();
+    let body: Value = response.json();
+    let deposits = body["data"].as_array().unwrap();
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(deposits[0]["id"], deposit_id.to_string());
+    assert_eq!(deposits[0]["asset"], "USDC");
+    assert_eq!(deposits[0]["amount"], "1.5");
+    assert_eq!(deposits[0]["amount_atomic"], "1500000");
+    assert_eq!(deposits[0]["state"], "observed");
+    assert_eq!(deposits[0]["transaction_hash"], transaction_hash);
+
+    let absent_hash = format!("0x{}", "99".repeat(32));
+    let response = server
+        .get(&format!(
+            "/account/{}/deposits?transaction_hash={absent_hash}",
+            user_addr()
+        ))
+        .await;
+    response.assert_status_ok();
+    let body: Value = response.json();
+    assert!(body["data"].as_array().unwrap().is_empty());
+
+    let invalid = server
+        .get(&format!(
+            "/account/{}/deposits?transaction_hash=not-a-hash",
+            user_addr()
+        ))
+        .await;
+    invalid.assert_status(axum::http::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

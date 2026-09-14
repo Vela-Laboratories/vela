@@ -7,8 +7,9 @@
 // until we have a projectId and a decision on relay hosting.
 //
 // Chain set matches the API's `VELA_CHAIN_ID`:
-//   - sepolia (11155111) — public beta today.
-//   - mainnet  (1)        — mainnet deploy target.
+//   - Base Sepolia (84532) for verified-deposit testing.
+//   - Base (8453) for the eventual consumer deployment.
+//   - Ethereum Sepolia and mainnet for the legacy research surfaces.
 //
 // The transport falls back to public RPC when NEXT_PUBLIC_ALCHEMY_API_URL
 // isn't set, but production deploys should point it at an Alchemy /
@@ -16,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { createConfig, http, injected } from 'wagmi'
-import { mainnet, sepolia } from 'wagmi/chains'
+import { base, baseSepolia, mainnet, sepolia } from 'wagmi/chains'
 // `injected` is re-exported from wagmi's top-level module (originating
 // in @wagmi/core), which avoids the Safe / Coinbase / MetaMask-SDK
 // barrel in `wagmi/connectors` and its optional peer deps.
@@ -24,9 +25,11 @@ import { mainnet, sepolia } from 'wagmi/chains'
 const alchemyUrl = process.env.NEXT_PUBLIC_ALCHEMY_API_URL
 
 export const wagmiConfig = createConfig({
-  chains: [sepolia, mainnet],
+  chains: [baseSepolia, base, sepolia, mainnet],
   connectors: [injected()],
   transports: {
+    [baseSepolia.id]: http(),
+    [base.id]: http(),
     [sepolia.id]: alchemyUrl ? http(alchemyUrl) : http(),
     [mainnet.id]: http(),
   },
@@ -34,4 +37,4 @@ export const wagmiConfig = createConfig({
 })
 
 // Re-export so consumers don't need to depend on wagmi/chains directly.
-export { mainnet, sepolia }
+export { base, baseSepolia, mainnet, sepolia }

@@ -168,3 +168,6 @@ required infrastructure vars are unset.
 | `NEXT_PUBLIC_WS_URL` | Engine WebSocket endpoint. |
 | `NEXT_PUBLIC_CONTRACT_ADDRESS` | `VelaSettlement.sol` address for on-chain reads. |
 | `NEXT_PUBLIC_ALCHEMY_API_URL` | Alchemy RPC for client-side reads. |
+| `NEXT_PUBLIC_DEPOSIT_CHAIN_ID` | Verified-deposit network. Only Base (`8453`) and Base Sepolia (`84532`) are accepted; defaults to Base Sepolia. |
+| `NEXT_PUBLIC_DEPOSIT_VAULT_ADDRESS` | Public address of the exact vault deployment registered with the indexer. Verified ETH/USDC submission stays disabled when unset or malformed. |
+| `NEXT_PUBLIC_DEPOSIT_USDC_ADDRESS` | Public USDC token address registered as the ledger asset on the configured deposit network. USDC submission stays disabled when unset or malformed. |

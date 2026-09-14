@@ -191,9 +191,9 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Journal final deposit credits through the ledger atomically with credited state and immutable history.
 - [x] Add redundant RPC providers with distinct configured names and URL origins.
 - [x] Detect stale providers and provider disagreement before observation, credit, or checkpoint advancement.
-- [ ] Expose deposit progress and evidence to the customer API.
-- [ ] Update the frontend to submit or discover the real transaction hash.
-- [ ] Remove the invented transaction-hash path.
+- [x] Expose deposit progress and evidence to the customer API; the ledger-backed address route returns exact amounts, all guarded states, and canonical chain-event identity, with optional real transaction-hash filtering.
+- [x] Update the frontend to submit or discover the real transaction hash; configured Base wallet submissions are tracked through the authoritative status route and rendered with their block-explorer identity.
+- [x] Remove the invented transaction-hash path from the verified frontend flow; a confirmed wallet transaction never calls the separately contained demo-credit endpoint.
 
 ### M3 acceptance criteria
 
@@ -201,7 +201,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] The same canonical log cannot be recorded or credited twice at the ledger boundary.
 - [x] Reorganizations do not leave invalid finalized credits usable; the database blocks affected-asset credits, trading, and withdrawals before complete reversal or shortfall quarantine.
 - [x] Provider failure cannot silently produce a credit at the indexer boundary; timeout, stale head, chain mismatch, bytecode mismatch, log disagreement, and finalized disagreement all fail closed.
-- [ ] Customers can see pending and finalized deposit status.
+- [x] Customers can see observed, confirming, finalized, credited, rejected, orphaned, reversed, and quarantined deposit status from the authoritative ledger.
 - [ ] Custody and ledger amounts reconcile after every finalized deposit.
 
 ## Milestone 4: atomic withdrawal pipeline
@@ -311,7 +311,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Implement authenticated HTTP access to balances, orders, fills, portfolio data, and exports.
 - [ ] Complete session-key creation and revocation.
 - [ ] Support scoped, expiring session permissions.
-- [ ] Complete ETH and USDC deposit status interfaces.
+- [x] Complete ETH and USDC deposit status interfaces; both assets share the fail-closed Base configuration and ledger-backed activity view, while submission remains disabled until the compatible vault is deployed and configured.
 - [ ] Complete ETH and USDC withdrawal status interfaces.
 - [ ] Add transaction receipts and downloadable history.
 - [ ] Add fee previews and clear rejection messages.
@@ -479,6 +479,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Enforce halted-asset deposit-credit, trading, fee, rebate, withdrawal-reservation, and withdrawal-completion rejection at the PostgreSQL journal boundary while preserving safe releases and reversal.
     - Require evidence plus distinct initiator and approver identities to resolve a halt, and withhold resolution permission from the restricted runtime writer.
     - Verify complete reversal, partial-balance isolation, exact shortfall quarantine, idempotent retry, blocked financial operations, immutable halt evidence, audit-provider disagreement, and audit-checkpoint rewind prevention against PostgreSQL 16.
+22. [x] **EX-022: Authoritative customer deposit status and real transaction discovery**
+    - Add a bounded ledger query scoped case-insensitively to one customer reference, with optional canonical transaction-hash filtering and exact asset-decimal rendering.
+    - Expose every guarded deposit state plus canonical chain evidence through `GET /account/{address}/deposits`, and fail with `503` when the authoritative ledger is absent or unavailable.
+    - Remove the on-chain ETH/USDC frontend handoff to `POST /deposit`; wallet submission and confirmation create no balance until the indexer and ledger credit the canonical event.
+    - Add explicit Base and Base Sepolia public configuration, reject every other chain, and keep verified submission disabled until a valid vault and asset address are supplied.
+    - Poll and display ledger-backed deposit activity with the real transaction hash while preserving the separately labeled non-authoritative demo flow for other testnet assets.
+    - Verify customer scoping, transaction filtering, exact decimal amounts, fail-closed ledger absence, frontend configuration guards, generated API types, and the existing Rust and frontend suites.
 
 ## Parallel nonengineering work
 
