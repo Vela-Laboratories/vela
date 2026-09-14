@@ -242,6 +242,24 @@ pub struct RecordWithdrawalBroadcastAttempt {
     pub submitted_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RecordObservedWithdrawalReplacement {
+    pub attempt_id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub transaction_hash: String,
+    pub sender_address: String,
+    pub sender_nonce: u64,
+    pub calldata_hash: [u8; 32],
+    pub replacement_of: Uuid,
+    pub primary_provider: String,
+    pub primary_reference: String,
+    pub secondary_provider: String,
+    pub secondary_reference: String,
+    pub evidence: serde_json::Value,
+    pub submitted_at: DateTime<Utc>,
+    pub observed_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WithdrawalBroadcastAttempt {
     pub id: Uuid,
@@ -282,6 +300,22 @@ pub struct FinalizedWithdrawalExecution {
     pub block_timestamp: DateTime<Utc>,
     pub transaction_index: i32,
     pub log_index: i32,
+    pub confirmations: i64,
+    pub primary_provider: String,
+    pub secondary_provider: String,
+    pub confirmation_policy_version: String,
+    pub evidence: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct FinalizedWithdrawalRevert {
+    pub observation_id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub deployment_id: Uuid,
+    pub transaction_hash: String,
+    pub block_number: i64,
+    pub block_hash: String,
+    pub block_timestamp: DateTime<Utc>,
     pub confirmations: i64,
     pub primary_provider: String,
     pub secondary_provider: String,
@@ -1559,6 +1593,12 @@ impl Ledger {
         command: &RecordWithdrawalBroadcastAttempt,
     ) -> Result<WithdrawalBroadcastAttempt, LedgerError> {
         validate_broadcast_attempt(command)?;
+        if command.replacement_of.is_some() {
+            return Err(LedgerError::InvalidWithdrawal(
+                "replacement attempts require independently observed two-provider evidence"
+                    .to_owned(),
+            ));
+        }
         let mut tx = self.pool.begin().await?;
         set_serializable(&mut tx).await?;
         let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
@@ -1626,9 +1666,10 @@ impl Ledger {
                         .to_owned(),
                 ));
             }
-        } else if attempt_number > 1 && state != WithdrawalState::Dropped {
+        } else if attempt_number > 1 {
             return Err(LedgerError::InvalidWithdrawal(
-                "a new live broadcast attempt must identify the attempt it replaces".to_owned(),
+                "every subsequent broadcast attempt must identify the immediately preceding attempt and carry two-provider evidence"
+                    .to_owned(),
             ));
         }
 
@@ -1698,6 +1739,285 @@ impl Ledger {
         })?;
         tx.commit().await?;
         stored.try_into()
+    }
+
+    pub async fn record_observed_withdrawal_replacement(
+        &self,
+        command: &RecordObservedWithdrawalReplacement,
+    ) -> Result<WithdrawalBroadcastAttempt, LedgerError> {
+        validate_observed_replacement(command)?;
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
+        let evidence = json!({
+            "kind": "vela.withdrawal.observed_replacement.v1",
+            "withdrawal_id": command.withdrawal_id,
+            "attempt_id": command.attempt_id,
+            "replacement_of": command.replacement_of,
+            "transaction_hash": command.transaction_hash.to_ascii_lowercase(),
+            "sender_address": command.sender_address.to_ascii_lowercase(),
+            "sender_nonce": command.sender_nonce,
+            "vault_address": withdrawal.vault_address.to_ascii_lowercase(),
+            "calldata_hash": format!("0x{}", hex::encode(command.calldata_hash)),
+            "primary_provider": command.primary_provider,
+            "primary_reference": command.primary_reference,
+            "secondary_provider": command.secondary_provider,
+            "secondary_reference": command.secondary_reference,
+            "submitted_at": command.submitted_at,
+            "provider_evidence": command.evidence,
+        });
+        let evidence_hash = json_hash(&evidence)?;
+
+        if let Some(existing) = load_broadcast_attempt_by_identity(
+            &mut tx,
+            command.attempt_id,
+            &command.transaction_hash,
+        )
+        .await?
+        {
+            let stored_hash = load_replacement_evidence_hash(&mut tx, command.attempt_id).await?;
+            let existing: WithdrawalBroadcastAttempt = existing.try_into()?;
+            if existing.id != command.attempt_id
+                || existing.withdrawal_id != command.withdrawal_id
+                || existing.replacement_of != Some(command.replacement_of)
+                || !existing
+                    .transaction_hash
+                    .eq_ignore_ascii_case(&command.transaction_hash)
+                || !existing
+                    .sender_address
+                    .eq_ignore_ascii_case(&command.sender_address)
+                || existing.sender_nonce != command.sender_nonce
+                || existing.calldata_hash != command.calldata_hash
+                || stored_hash != Some(evidence_hash)
+            {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return Ok(existing);
+        }
+
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if !matches!(
+            state,
+            WithdrawalState::Broadcast | WithdrawalState::Replaced | WithdrawalState::Dropped
+        ) {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Replaced.as_str().to_owned(),
+            });
+        }
+        let authorization = load_authorization_by_withdrawal(&mut tx, command.withdrawal_id)
+            .await?
+            .ok_or(LedgerError::WithdrawalAuthorizationNotFound(
+                command.withdrawal_id,
+            ))?;
+        if command.submitted_at > authorization.expires_at {
+            return Err(LedgerError::InvalidWithdrawal(
+                "observed replacement was submitted after its on-chain deadline".to_owned(),
+            ));
+        }
+        let predecessor = sqlx::query_as::<_, (Uuid, i64, String, BigDecimal, String, Vec<u8>)>(
+            r#"
+            SELECT withdrawal_id, attempt_number, sender_address, sender_nonce,
+                   transaction_hash, calldata_hash
+            FROM ledger_withdrawal_broadcast_attempts WHERE id = $1
+            "#,
+        )
+        .bind(command.replacement_of)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| {
+            LedgerError::InvalidWithdrawal(
+                "replacement references an unknown broadcast attempt".to_owned(),
+            )
+        })?;
+        let latest_attempt = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM ledger_withdrawal_broadcast_attempts WHERE withdrawal_id = $1 ORDER BY attempt_number DESC LIMIT 1",
+        )
+        .bind(command.withdrawal_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if predecessor.0 != command.withdrawal_id
+            || latest_attempt != command.replacement_of
+            || !predecessor.2.eq_ignore_ascii_case(&command.sender_address)
+            || predecessor.3 != command.sender_nonce
+            || predecessor.5.as_slice() != command.calldata_hash
+        {
+            return Err(LedgerError::InvalidWithdrawal(
+                "replacement must preserve the latest attempt's sender, nonce, vault, and authorization calldata identity"
+                    .to_owned(),
+            ));
+        }
+        if predecessor
+            .4
+            .eq_ignore_ascii_case(&command.transaction_hash)
+        {
+            return Err(LedgerError::InvalidWithdrawal(
+                "replacement transaction hash must differ from its predecessor".to_owned(),
+            ));
+        }
+        let attempt_number = predecessor.1 + 1;
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_broadcast_attempts (
+                id, withdrawal_id, attempt_number, transaction_hash, sender_address,
+                sender_nonce, vault_address, calldata_hash, replacement_of,
+                provider_name, provider_reference, submitted_by, submitted_at
+            ) VALUES ($1, $2, $3, lower($4), lower($5), $6, lower($7), $8,
+                      $9, $10, $11, 'withdrawal-chain-observer', $12)
+            "#,
+        )
+        .bind(command.attempt_id)
+        .bind(command.withdrawal_id)
+        .bind(attempt_number)
+        .bind(&command.transaction_hash)
+        .bind(&command.sender_address)
+        .bind(BigDecimal::from(command.sender_nonce))
+        .bind(&withdrawal.vault_address)
+        .bind(command.calldata_hash.as_slice())
+        .bind(command.replacement_of)
+        .bind("two-provider-observation")
+        .bind(format!(
+            "{}:{}",
+            command.primary_reference, command.secondary_reference
+        ))
+        .bind(command.submitted_at)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_replacement_evidence (
+                attempt_id, predecessor_attempt_id, primary_provider,
+                secondary_provider, evidence, evidence_hash, observed_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "#,
+        )
+        .bind(command.attempt_id)
+        .bind(command.replacement_of)
+        .bind(&command.primary_provider)
+        .bind(&command.secondary_provider)
+        .bind(&evidence)
+        .bind(evidence_hash.as_slice())
+        .bind(command.observed_at)
+        .execute(&mut *tx)
+        .await?;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            Some(state),
+            WithdrawalState::Replaced,
+            "two providers independently verified an exact replacement transaction",
+            json!({
+                "attempt_id": command.attempt_id,
+                "replacement_of": command.replacement_of,
+                "transaction_hash": command.transaction_hash,
+                "replacement_evidence_hash": format!("0x{}", hex::encode(evidence_hash)),
+            }),
+            Some("withdrawal-chain-observer"),
+        )
+        .await?;
+        sqlx::query(
+            "UPDATE ledger_withdrawals SET state = 'replaced', transaction_hash = lower($2), updated_at = transaction_timestamp() WHERE id = $1",
+        )
+        .bind(command.withdrawal_id)
+        .bind(&command.transaction_hash)
+        .execute(&mut *tx)
+        .await?;
+        let stored = load_broadcast_attempt_by_identity(
+            &mut tx,
+            command.attempt_id,
+            &command.transaction_hash,
+        )
+        .await?
+        .ok_or_else(|| LedgerError::InvalidWithdrawal("replacement was not stored".to_owned()))?;
+        tx.commit().await?;
+        stored.try_into()
+    }
+
+    pub async fn record_finalized_withdrawal_revert(
+        &self,
+        command: &FinalizedWithdrawalRevert,
+    ) -> Result<WithdrawalRecord, LedgerError> {
+        validate_finalized_revert(command)?;
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
+        let attempt_id = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM ledger_withdrawal_broadcast_attempts WHERE withdrawal_id = $1 AND transaction_hash = lower($2)",
+        )
+        .bind(command.withdrawal_id)
+        .bind(&command.transaction_hash)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| LedgerError::InvalidWithdrawal(
+            "finalized revert does not identify a recorded broadcast attempt".to_owned(),
+        ))?;
+        let evidence = finalized_revert_evidence(&withdrawal, command);
+        let evidence_hash = json_hash(&evidence)?;
+        if let Some((observation_id, stored_hash)) =
+            load_existing_attempt_revert(&mut tx, attempt_id).await?
+        {
+            if observation_id != command.observation_id || stored_hash != evidence_hash {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return withdrawal.try_into();
+        }
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if !matches!(
+            state,
+            WithdrawalState::Broadcast | WithdrawalState::Replaced | WithdrawalState::Dropped
+        ) {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: state.as_str().to_owned(),
+            });
+        }
+        insert_chain_observation(
+            &mut tx,
+            command.observation_id,
+            command.withdrawal_id,
+            command.deployment_id,
+            "finalized_revert",
+            Some(&command.transaction_hash),
+            command.block_number,
+            &command.block_hash,
+            command.block_timestamp,
+            None,
+            None,
+            command.confirmations,
+            &command.primary_provider,
+            &command.secondary_provider,
+            &command.confirmation_policy_version,
+            &withdrawal,
+            &evidence,
+            &evidence_hash,
+            None,
+        )
+        .await?;
+        sqlx::query(
+            "INSERT INTO ledger_withdrawal_attempt_reverts (attempt_id, observation_id) VALUES ($1, $2)",
+        )
+        .bind(attempt_id)
+        .bind(command.observation_id)
+        .execute(&mut *tx)
+        .await?;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            Some(state),
+            state,
+            "two providers confirmed the exact broadcast attempt reverted at finalized depth",
+            json!({
+                "attempt_id": attempt_id,
+                "observation_id": command.observation_id,
+                "transaction_hash": command.transaction_hash,
+            }),
+            Some("withdrawal-chain-observer"),
+        )
+        .await?;
+        tx.commit().await?;
+        withdrawal.try_into()
     }
 
     pub async fn confirm_withdrawal_execution(
@@ -2001,6 +2321,12 @@ impl Ledger {
         if let Some(transaction_hash) = command.last_transaction_hash.as_deref() {
             require_broadcast_transaction(&mut tx, command.withdrawal_id, transaction_hash).await?;
         }
+        if !all_withdrawal_attempts_terminal(&mut tx, command.withdrawal_id).await? {
+            return Err(LedgerError::InvalidWithdrawal(
+                "finalized non-execution proof cannot release while a broadcast attempt is non-terminal"
+                    .to_owned(),
+            ));
+        }
         insert_chain_observation(
             &mut tx,
             command.observation_id,
@@ -2224,6 +2550,45 @@ async fn load_broadcast_attempt_by_identity(
     .await?)
 }
 
+async fn load_replacement_evidence_hash(
+    tx: &mut Transaction<'_, Postgres>,
+    attempt_id: Uuid,
+) -> Result<Option<[u8; 32]>, LedgerError> {
+    sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT evidence_hash FROM ledger_withdrawal_replacement_evidence WHERE attempt_id = $1",
+    )
+    .bind(attempt_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .map(|hash| fixed_bytes(hash, "withdrawal replacement evidence hash"))
+    .transpose()
+}
+
+async fn load_existing_attempt_revert(
+    tx: &mut Transaction<'_, Postgres>,
+    attempt_id: Uuid,
+) -> Result<Option<(Uuid, [u8; 32])>, LedgerError> {
+    let row = sqlx::query_as::<_, (Uuid, Vec<u8>)>(
+        r#"
+        SELECT revert.observation_id, observation.evidence_hash
+        FROM ledger_withdrawal_attempt_reverts revert
+        JOIN ledger_withdrawal_chain_observations observation
+          ON observation.id = revert.observation_id
+        WHERE revert.attempt_id = $1
+        "#,
+    )
+    .bind(attempt_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    row.map(|(id, hash)| {
+        Ok((
+            id,
+            fixed_bytes(hash, "withdrawal finalized revert evidence hash")?,
+        ))
+    })
+    .transpose()
+}
+
 async fn require_broadcast_transaction(
     tx: &mut Transaction<'_, Postgres>,
     withdrawal_id: Uuid,
@@ -2247,6 +2612,33 @@ async fn require_broadcast_transaction(
         ));
     }
     Ok(())
+}
+
+async fn all_withdrawal_attempts_terminal(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<bool, LedgerError> {
+    Ok(sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT NOT EXISTS (
+            SELECT 1 FROM ledger_withdrawal_broadcast_attempts attempt
+            WHERE attempt.withdrawal_id = $1
+              AND NOT EXISTS (
+                  SELECT 1 FROM ledger_withdrawal_broadcast_attempts replacement
+                  WHERE replacement.replacement_of = attempt.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM ledger_withdrawal_chain_observations observation
+                  WHERE observation.withdrawal_id = $1
+                    AND lower(observation.transaction_hash) = lower(attempt.transaction_hash)
+                    AND observation.observation_type IN ('dropped', 'finalized_revert')
+              )
+        )
+        "#,
+    )
+    .bind(withdrawal_id)
+    .fetch_one(&mut **tx)
+    .await?)
 }
 
 async fn load_existing_execution(
@@ -2664,6 +3056,32 @@ fn validate_broadcast_attempt(
     Ok(())
 }
 
+fn validate_observed_replacement(
+    command: &RecordObservedWithdrawalReplacement,
+) -> Result<(), LedgerError> {
+    if command.attempt_id == Uuid::nil()
+        || command.withdrawal_id == Uuid::nil()
+        || command.replacement_of == Uuid::nil()
+        || command.attempt_id == command.replacement_of
+        || !is_evm_hash(&command.transaction_hash)
+        || !is_evm_address(&command.sender_address)
+        || command.calldata_hash == [0; 32]
+        || !valid_two_provider_evidence(&command.primary_provider, &command.secondary_provider)
+        || !is_policy_reference(&command.primary_reference, 1000)
+        || !is_policy_reference(&command.secondary_reference, 1000)
+        || command.primary_reference.len() + command.secondary_reference.len() + 1 > 1000
+        || !command.evidence.is_object()
+        || command.submitted_at > command.observed_at
+        || command.observed_at > Utc::now()
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "replacement requires exact lineage and bounded evidence from two independent providers"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_same_broadcast_attempt(
     existing: &WithdrawalBroadcastAttempt,
     command: &RecordWithdrawalBroadcastAttempt,
@@ -2706,6 +3124,26 @@ fn validate_finalized_execution(command: &FinalizedWithdrawalExecution) -> Resul
     {
         return Err(LedgerError::InvalidWithdrawal(
             "finalized withdrawal execution requires exact block, log, policy, and independent provider evidence"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_finalized_revert(command: &FinalizedWithdrawalRevert) -> Result<(), LedgerError> {
+    if command.observation_id == Uuid::nil()
+        || command.withdrawal_id == Uuid::nil()
+        || command.deployment_id == Uuid::nil()
+        || !is_evm_hash(&command.transaction_hash)
+        || command.block_number < 0
+        || !is_evm_hash(&command.block_hash)
+        || command.confirmations <= 0
+        || !valid_two_provider_evidence(&command.primary_provider, &command.secondary_provider)
+        || !is_policy_reference(&command.confirmation_policy_version, 255)
+        || !command.evidence.is_object()
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "finalized withdrawal revert requires exact transaction, block, policy, and independent provider evidence"
                 .to_owned(),
         ));
     }
@@ -2762,6 +3200,32 @@ fn finalized_execution_evidence(
         "block_timestamp": command.block_timestamp,
         "transaction_index": command.transaction_index,
         "log_index": command.log_index,
+        "confirmations": command.confirmations,
+        "primary_provider": command.primary_provider,
+        "secondary_provider": command.secondary_provider,
+        "confirmation_policy_version": command.confirmation_policy_version,
+        "request_id": withdrawal.id,
+        "customer": withdrawal.customer_reference.to_ascii_lowercase(),
+        "destination": withdrawal.destination_address.to_ascii_lowercase(),
+        "asset": asset_address(withdrawal).to_ascii_lowercase(),
+        "amount": withdrawal.amount.normalized().to_plain_string(),
+        "nonce": withdrawal.nonce.as_ref().map(|value| value.normalized().to_plain_string()),
+        "provider_evidence": command.evidence,
+    })
+}
+
+fn finalized_revert_evidence(
+    withdrawal: &StoredWithdrawal,
+    command: &FinalizedWithdrawalRevert,
+) -> serde_json::Value {
+    json!({
+        "kind": "vela.withdrawal.finalized_revert.v1",
+        "withdrawal_id": withdrawal.id,
+        "deployment_id": command.deployment_id,
+        "transaction_hash": command.transaction_hash.to_ascii_lowercase(),
+        "block_number": command.block_number,
+        "block_hash": command.block_hash.to_ascii_lowercase(),
+        "block_timestamp": command.block_timestamp,
         "confirmations": command.confirmations,
         "primary_provider": command.primary_provider,
         "secondary_provider": command.secondary_provider,
@@ -3192,6 +3656,40 @@ fn is_evm_address_or_zero(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit())
 }
 
+fn is_withdrawal_nonce_race(error: &LedgerError) -> bool {
+    matches!(
+        error,
+        LedgerError::Database(sqlx::Error::Database(database_error))
+            if database_error.code().as_deref() == Some("23505")
+                && database_error.constraint() == Some("ledger_withdrawals_customer_nonce")
+    )
+}
+
+fn is_withdrawal_evidence_race(error: &LedgerError) -> bool {
+    matches!(
+        error,
+        LedgerError::Database(sqlx::Error::Database(database_error))
+            if database_error.code().as_deref() == Some("23505")
+                && matches!(
+                    database_error.constraint(),
+                    Some(
+                        "ledger_withdrawal_authorizations_withdrawal_id_key"
+                            | "ledger_withdrawal_authorizations_digest_key"
+                            | "ledger_withdrawal_signatures_withdrawal_id_key"
+                            | "ledger_withdrawal_signatures_authorization_id_key"
+                            | "ledger_withdrawal_policy_decisions_withdrawal_id_key"
+                    )
+                )
+    )
+}
+
+async fn set_serializable(tx: &mut Transaction<'_, Postgres>) -> Result<(), LedgerError> {
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3239,38 +3737,4 @@ mod tests {
             "e4e370d5cee128859be93c6c83d94a246f2fb7996d6fc9499ea81e0277fc89a0"
         );
     }
-}
-
-fn is_withdrawal_nonce_race(error: &LedgerError) -> bool {
-    matches!(
-        error,
-        LedgerError::Database(sqlx::Error::Database(database_error))
-            if database_error.code().as_deref() == Some("23505")
-                && database_error.constraint() == Some("ledger_withdrawals_customer_nonce")
-    )
-}
-
-fn is_withdrawal_evidence_race(error: &LedgerError) -> bool {
-    matches!(
-        error,
-        LedgerError::Database(sqlx::Error::Database(database_error))
-            if database_error.code().as_deref() == Some("23505")
-                && matches!(
-                    database_error.constraint(),
-                    Some(
-                        "ledger_withdrawal_authorizations_withdrawal_id_key"
-                            | "ledger_withdrawal_authorizations_digest_key"
-                            | "ledger_withdrawal_signatures_withdrawal_id_key"
-                            | "ledger_withdrawal_signatures_authorization_id_key"
-                            | "ledger_withdrawal_policy_decisions_withdrawal_id_key"
-                    )
-                )
-    )
-}
-
-async fn set_serializable(tx: &mut Transaction<'_, Postgres>) -> Result<(), LedgerError> {
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-        .execute(&mut **tx)
-        .await?;
-    Ok(())
 }

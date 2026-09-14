@@ -27,9 +27,11 @@ Do not treat a latest-head confirmation count as finality. The orchestration wor
 
 ## Broadcast attempts and replacement
 
-`Ledger::record_withdrawal_broadcast_attempt` stores provider acceptance of an exact executable transaction. Each immutable attempt records its transaction hash, sender, sender nonce, destination vault, calldata hash, provider reference, submitter, and submission time.
+`Ledger::record_withdrawal_broadcast_attempt` stores provider acceptance of the first exact executable transaction. Each immutable attempt records its transaction hash, sender, sender nonce, destination vault, calldata hash, provider reference, submitter, and submission time.
 
-The first accepted transaction moves the projection to `broadcast`. A replacement must identify the immediately preceding attempt and moves it to `replaced`. An identical retry returns the existing attempt; conflicting reuse fails. Recording an attempt is evidence storage only. This repository does not contain an enabled runtime broadcaster.
+The first accepted transaction moves the projection to `broadcast`. Replacements use the separate `Ledger::record_observed_withdrawal_replacement` boundary. A supplied replacement hash must be observed independently by both providers with the same sender, Ethereum account nonce, vault destination, and authorization calldata hash as the latest attempt. The replacement and its immutable two-provider evidence commit atomically; a deferred database constraint rejects any replacement row without that evidence. An identical retry returns the existing attempt and conflicting evidence fails. Recording an attempt is evidence storage only. This repository does not contain an enabled runtime broadcaster.
+
+Standard Ethereum JSON-RPC cannot discover an arbitrary pending same-nonce replacement from the predecessor hash. EX-028 therefore exposes a typed ingestion boundary for a trusted relay, transaction hash feed, or separately operated finalized-block scanner to supply the candidate hash. The worker verifies the candidate rather than trusting the source. This is not a claim of general mempool discovery, and continuous automatic replacement discovery remains deployment work.
 
 `Ledger::record_dropped_withdrawal_attempt` accepts two-provider evidence only for the currently tracked transaction, persists that observation immutably, and moves `broadcast` or `replaced` to `dropped`. An older replaced transaction cannot mark a newer live attempt dropped. A dropped observation never releases funds; the authorization remains executable until its deadline and must follow the permanent non-execution procedure below.
 
@@ -54,6 +56,8 @@ Finalized execution must be recorded even while a withdrawal halt is active. The
 
 A pending, dropped, or reverted transaction is ambiguous while its authorization can still execute. Never release its reservation merely because one transaction is missing or failed.
 
+EX-028 persists an exact finalized status-0 receipt as `finalized_revert`, tied one-to-one to the recorded attempt and protected by the immutable evidence triggers. Both providers must agree on the exact transaction facts, canonical receipt block, finalized checkpoint, and confirmation policy. A revert makes that attempt terminal, but does not itself change balances or release the reservation.
+
 `Ledger::release_expired_withdrawal` may restore funds only after the V2 authorization deadline and only from finalized, two-provider evidence proving all of the following:
 
 - the request ID is unused;
@@ -69,7 +73,7 @@ The ledger stores that evidence, journals the exact amount from `customer_withdr
 - Externally audit the V2 custody contract and freeze the reviewed commit.
 - Deploy and register a V2 testnet contract with pinned runtime bytecode.
 - Configure two independent RPC providers and an authenticated, leased observer worker.
-- Implement and operate a controlled broadcaster or a reliable customer-relay discovery mechanism.
+- Implement and operate a controlled broadcaster or a reliable source of replacement hashes for the verified ingestion boundary.
 - Add continuous replacement, dropped-transaction, and historical-finality re-auditing.
 - Reconcile finalized custody movement against ledger liabilities before reopening affected operations.
 - Run end-to-end ETH and USDC tests against the deployed contract before considering real funds.
@@ -108,15 +112,16 @@ and approver hash. Matching execution evidence calls the existing atomic ledger
 completion method.
 
 Two-provider `not found` evidence may mark only the current attempt dropped. It
-never releases funds. A finalized revert is not misclassified as dropped; the
-current schema has no immutable revert observation type, so EX-027 retains that
-reservation for a future exact revert-evidence migration or reviewed replacement
-broadcast. Release is considered only when the agreed finalized
+never releases funds. EX-028 records a finalized revert as immutable terminal
+evidence for the exact attempt, while retaining the reservation for as long as
+the signed authorization could still execute. Release is considered only when the agreed finalized
 block timestamp is after the authorization deadline and both providers prove
 the request ID and customer nonce unused, no matching event from the registered
 deployment start block, and the database proves every attempt terminal. A
 reverted receipt remains ambiguous under the still-valid authorization and is
-not released early.
+not released early. The database independently checks the recorded attempt
+lineage is terminal before accepting the final release, rather than trusting the
+worker's boolean alone.
 
 This remains testnet-only. Before running it, externally review the HTTP RPC
 adapter, contract deployment, registry evidence, provider independence, RPC log

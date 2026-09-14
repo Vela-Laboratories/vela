@@ -219,7 +219,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Bind signing authorization to chain, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID in an immutable Keccak-256 envelope.
 - [x] Replace the authoritative withdrawal path's environment-held signing key with a provider-neutral HSM or MPC adapter boundary that is disabled by default; its deterministic signer is test-only.
 - [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states; the source-only V2 boundary now persists broadcast, replacement, finalized confirmation, and finalized expiry failure, but no runtime worker drives the complete lifecycle.
-- [ ] Observe transaction replacement and dropped transactions; the opt-in EX-027 worker continuously verifies recorded current attempts and can mark two-provider `not found` evidence dropped, but replacement discovery and finalized-revert terminal evidence remain open.
+- [ ] Observe transaction replacement and dropped transactions; the opt-in worker continuously verifies current attempts, records exact finalized reverts, and verifies supplied replacement hashes against two providers, but a controlled relay, trusted hash feed, or separately operated scanner must still supply replacement candidates.
 - [x] Restore reservations exactly once after permanent failure, and only after finalized two-provider evidence proves the V2 authorization expired with its request ID and nonce unused, no execution event, and all attempts terminal.
 - [ ] Implement ETH and USDC withdrawals through the same state machine; the V2 contract source supports native and ERC20 transfers, but deployed end-to-end integration is not complete.
 - [x] Add per-user, per-asset, and platform withdrawal limits in atomic asset units, with customer count and amount velocity windows.
@@ -524,6 +524,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Mark only the current attempt dropped from matching two-provider `not found` evidence; release only after an agreed finalized post-deadline block proves the request and nonce unused, no matching event since deployment, and every attempt terminal.
     - Fail closed on provider disagreement, malformed evidence, insufficient depth, or finalized reverts; reverted transactions remain reserved until a future exact revert-evidence migration or reviewed replacement path exists.
     - Keep the worker unconfigured and stopped by default. No RPC credentials, deployment changes, private keys, transaction broadcast, or funds are introduced by this chapter.
+28. [x] **EX-028: Finalized-revert evidence and verified replacement lineage**
+    - Persist exact finalized status-zero receipts as immutable, one-to-one attempt evidence after two independent providers agree on the transaction, canonical inclusion block, finalized checkpoint, and confirmation policy.
+    - Treat a finalized revert as terminal for that attempt without releasing its reservation while the signed authorization remains executable; post-expiry release still requires finalized unused request and nonce, no-event, and database-derived all-attempts-terminal proof.
+    - Add a typed replacement-hash ingestion boundary that verifies a supplied candidate with both providers against the latest attempt's sender, Ethereum account nonce, vault, and authorization calldata hash before atomically recording its immutable predecessor lineage.
+    - Require every attempt after the first to carry immediate-predecessor and two-provider replacement evidence, enforce the invariant with a deferred database constraint, and fail migration if unverifiable legacy replacement rows already exist.
+    - Keep the capability honest: standard JSON-RPC cannot enumerate arbitrary pending same-nonce replacements from the predecessor hash, so automatic mempool discovery remains open until a reviewed relay, trusted hash feed, or separately operated scanner supplies candidates.
+    - Keep the worker opt-in and the broadcaster disabled. No RPC credentials, deployment, signing keys, transaction submission, or funds are introduced by this chapter.
 
 ## Parallel nonengineering work
 

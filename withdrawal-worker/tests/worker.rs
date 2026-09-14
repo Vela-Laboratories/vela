@@ -64,6 +64,8 @@ struct State {
     executions: HashSet<Uuid>,
     drops: usize,
     releases: usize,
+    reverts: HashSet<Uuid>,
+    replacements: HashSet<Uuid>,
     lease: Option<Uuid>,
     checkpoints: usize,
 }
@@ -142,6 +144,31 @@ impl WorkerStore for FakeStore {
         self.state.lock().drops += 1;
         Ok(())
     }
+    async fn record_revert(
+        &self,
+        _: &Deployment,
+        c: &Candidate,
+        _: &ProviderObservation,
+        _: &ProviderObservation,
+    ) -> Result<(), WorkerError> {
+        self.state.lock().reverts.insert(c.attempt_id);
+        Ok(())
+    }
+    async fn record_replacement(
+        &self,
+        _: &Deployment,
+        _: &Candidate,
+        replacement: &Candidate,
+        _: chrono::DateTime<Utc>,
+        _: &ProviderObservation,
+        _: &ProviderObservation,
+    ) -> Result<(), WorkerError> {
+        self.state
+            .lock()
+            .replacements
+            .insert(replacement.attempt_id);
+        Ok(())
+    }
     async fn release_permanent_failure(
         &self,
         _: &Deployment,
@@ -190,6 +217,7 @@ fn hash(byte: u8) -> String {
 fn candidate(expiry_offset: i64) -> Candidate {
     Candidate {
         withdrawal_id: Uuid::new_v4(),
+        attempt_id: Uuid::new_v4(),
         transaction_hash: hash(0x55),
         expires_at: Utc::now() + ChronoDuration::seconds(expiry_offset),
         customer: CUSTOMER.into(),
@@ -200,6 +228,7 @@ fn candidate(expiry_offset: i64) -> Candidate {
         policy_hash: hash(0x66),
         approver_hash: hash(0x77),
         sender: CUSTOMER.into(),
+        sender_nonce: "42".into(),
         calldata_hash: hash(0x88),
         updated_at: Utc::now(),
         current_attempt_terminal: false,
@@ -237,6 +266,7 @@ fn tx(c: &Candidate) -> TransactionFacts {
     TransactionFacts {
         hash: c.transaction_hash.clone(),
         sender: c.sender.clone(),
+        sender_nonce: c.sender_nonce.clone(),
         destination: VAULT.into(),
         calldata_hash: c.calldata_hash.clone(),
     }
@@ -391,14 +421,112 @@ async fn finalized_revert_is_not_misclassified_or_released() {
     let (a, b) = pair(
         &c,
         TransactionStatus::FinalizedRevert(tx(&c), finalized.clone()),
+        false,
+        finalized,
+        code,
+    );
+    let (w, state) = worker(c, a, b, true).await;
+    assert_eq!(w.tick().await.unwrap(), vec![Outcome::Reverted]);
+    assert_eq!(state.lock().drops, 0);
+    assert_eq!(state.lock().releases, 0);
+    assert_eq!(state.lock().reverts.len(), 1);
+}
+
+#[tokio::test]
+async fn finalized_revert_releases_only_after_expiry_and_complete_unused_proof() {
+    let c = candidate(-3600);
+    let code = vec![13];
+    let finalized = block(0);
+    let (a, b) = pair(
+        &c,
+        TransactionStatus::FinalizedRevert(tx(&c), finalized.clone()),
         true,
         finalized,
         code,
     );
     let (w, state) = worker(c, a, b, true).await;
-    assert_eq!(w.tick().await.unwrap(), vec![Outcome::Pending]);
-    assert_eq!(state.lock().drops, 0);
-    assert_eq!(state.lock().releases, 0);
+    assert_eq!(w.tick().await.unwrap(), vec![Outcome::Released]);
+    assert_eq!(state.lock().reverts.len(), 1);
+    assert_eq!(state.lock().releases, 1);
+}
+
+#[tokio::test]
+async fn supplied_replacement_is_verified_by_both_providers_before_registration() {
+    let c = candidate(600);
+    let replacement_hash = hash(0x99);
+    let code = vec![14];
+    let mut replacement_tx = tx(&c);
+    replacement_tx.hash = replacement_hash.clone();
+    let (a, b) = pair(
+        &c,
+        TransactionStatus::Pending(replacement_tx),
+        false,
+        block(0),
+        code,
+    );
+    let (w, state) = worker(c.clone(), a, b, false).await;
+    let submitted_at = Utc::now();
+    assert_eq!(
+        w.ingest_replacement(&c, &replacement_hash, submitted_at)
+            .await
+            .unwrap(),
+        Outcome::ReplacementRecorded
+    );
+    assert_eq!(
+        w.ingest_replacement(&c, &replacement_hash, submitted_at)
+            .await
+            .unwrap(),
+        Outcome::ReplacementRecorded
+    );
+    assert_eq!(state.lock().replacements.len(), 1);
+}
+
+#[tokio::test]
+async fn replacement_provider_disagreement_fails_closed() {
+    let c = candidate(600);
+    let replacement_hash = hash(0x98);
+    let code = vec![15];
+    let mut replacement_tx = tx(&c);
+    replacement_tx.hash = replacement_hash.clone();
+    let (a, mut b) = pair(
+        &c,
+        TransactionStatus::Pending(replacement_tx),
+        false,
+        block(0),
+        code,
+    );
+    b.observation.status = TransactionStatus::NotFound;
+    let (w, state) = worker(c.clone(), a, b, false).await;
+    assert!(matches!(
+        w.ingest_replacement(&c, &replacement_hash, Utc::now())
+            .await,
+        Err(WorkerError::Safety(_))
+    ));
+    assert!(state.lock().replacements.is_empty());
+}
+
+#[tokio::test]
+async fn replacement_with_wrong_sender_nonce_fails_closed() {
+    let c = candidate(600);
+    let replacement_hash = hash(0x97);
+    let code = vec![16];
+    let mut replacement_tx = tx(&c);
+    replacement_tx.hash = replacement_hash.clone();
+    replacement_tx.sender_nonce = "43".to_owned();
+    let (a, b) = pair(
+        &c,
+        TransactionStatus::Pending(replacement_tx),
+        false,
+        block(0),
+        code,
+    );
+    let (w, state) = worker(c.clone(), a, b, false).await;
+    assert!(matches!(
+        w.ingest_replacement(&c, &replacement_hash, Utc::now())
+            .await,
+        Err(WorkerError::Safety(_))
+    ));
+    assert!(state.lock().replacements.is_empty());
 }
 
 #[tokio::test]

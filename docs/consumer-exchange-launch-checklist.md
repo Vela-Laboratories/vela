@@ -151,7 +151,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Bind custody authorization to chain ID, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID.
 - [x] Mark signatures as issued in immutable PostgreSQL evidence and prevent duplicate issuance per withdrawal and authorization.
 - [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts; EX-027 can observe already-recorded attempts when explicitly configured, but production broadcasting and customer-relay discovery remain disabled.
-- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions; the opt-in worker handles pending, finalized execution, and current-attempt drops, but replacement discovery and exact finalized-revert evidence remain open.
+- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions; the opt-in worker now persists exact finalized reverts and verifies supplied replacement hashes, but automatic replacement discovery and a production relay or hash feed remain open.
 - [x] Restore reserved funds exactly once after a permanent V2 expiry, only when finalized two-provider evidence proves the request ID and nonce unused, no execution event, and every attempt terminal.
 - [ ] Prevent an on-chain withdrawal from succeeding without the corresponding ledger debit.
 - [x] Prevent a completion debit before finalized matching chain execution and restore the reservation after finalized V2 expiry non-execution proof; ambiguous transactions remain reserved.
@@ -589,7 +589,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Test ledger and contract reconciliation.
 - [ ] Test trade settlement across two users and two assets.
 - [x] Test PostgreSQL withdrawal reservation and finalized completion, including exact balances, idempotent replay, and completion during a halt; deployed RPC and frontend end-to-end coverage remains open.
-- [ ] Test dropped and replaced withdrawal transactions.
+- [x] Test dropped and replaced withdrawal transactions at the PostgreSQL and worker boundaries, including immutable two-provider lineage, provider disagreement, wrong Ethereum nonce, replay, and terminal-attempt release safety; deployed RPC end-to-end testing remains open.
 - [ ] Test emergency exit after trading.
 - [ ] Test concurrent ordinary and emergency withdrawals.
 - [ ] Test contract pause behavior.

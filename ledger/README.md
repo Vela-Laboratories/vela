@@ -95,6 +95,14 @@ See [the withdrawal policy runbook](../docs/operations/withdrawal-policy.md)
 for atomic-unit limit publication, provider disposition semantics, and global
 halt handling.
 
+Finalized withdrawal reverts and replacement lineage are immutable ledger
+evidence. A replacement hash supplied by a reviewed relay or scanner must be
+verified by two independent RPC providers against the latest attempt's sender,
+Ethereum nonce, vault, and calldata hash before it can be registered. A revert
+makes an attempt terminal but never releases reserved funds by itself; release
+still requires post-deadline two-provider proof that the request and customer
+nonce are unused, no execution event exists, and every attempt is terminal.
+
 ## Migration rules
 
 - Migrations in `migrations/` are append-only after they have reached a shared environment.

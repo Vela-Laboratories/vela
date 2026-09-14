@@ -3,10 +3,11 @@ use chrono::Utc;
 use ledger::{
     ActivateGlobalWithdrawalHalt, ApproveWithdrawal, ComplianceDisposition,
     EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
-    JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset, PostTransaction,
-    RecordDroppedWithdrawalAttempt, RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature,
-    ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
-    WithdrawalPolicyDisposition, WithdrawalState,
+    FinalizedWithdrawalRevert, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
+    PostTransaction, RecordDroppedWithdrawalAttempt, RecordObservedWithdrawalReplacement,
+    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, ReserveWithdrawal,
+    ResolveGlobalWithdrawalHalt, WithdrawalAuthorization, WithdrawalPolicyDisposition,
+    WithdrawalState,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -905,6 +906,30 @@ fn broadcast_attempt(
     }
 }
 
+fn observed_replacement(
+    withdrawal_id: Uuid,
+    attempt_id: Uuid,
+    transaction_byte: &str,
+    replacement_of: Uuid,
+) -> RecordObservedWithdrawalReplacement {
+    RecordObservedWithdrawalReplacement {
+        attempt_id,
+        withdrawal_id,
+        transaction_hash: format!("0x{}", transaction_byte.repeat(32)),
+        sender_address: CUSTOMER.to_owned(),
+        sender_nonce: 7,
+        calldata_hash: [9; 32],
+        replacement_of,
+        primary_provider: "rpc-primary".to_owned(),
+        primary_reference: format!("primary:{attempt_id}"),
+        secondary_provider: "rpc-secondary".to_owned(),
+        secondary_reference: format!("secondary:{attempt_id}"),
+        evidence: json!({"primary":"exact_transaction", "secondary":"exact_transaction"}),
+        submitted_at: Utc::now(),
+        observed_at: Utc::now(),
+    }
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn broadcast_attempts_are_immutable_replay_safe_and_replacement_ordered(pool: PgPool) {
     let fixture = Fixture::new(pool, 1_000_000).await;
@@ -925,30 +950,66 @@ async fn broadcast_attempts_are_immutable_replay_safe_and_replacement_ordered(po
     assert_eq!(stored, replay);
     assert_eq!(stored.attempt_number, 1);
 
-    let mut wrong_nonce = broadcast_attempt(
+    let mut bypass = fixture.ledger.pool().begin().await.unwrap();
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_withdrawal_broadcast_attempts (
+            id, withdrawal_id, attempt_number, transaction_hash, sender_address,
+            sender_nonce, vault_address, calldata_hash, replacement_of,
+            provider_name, provider_reference, submitted_by, submitted_at
+        ) VALUES ($1, $2, 2, $3, $4, 7, $5, $6, $7,
+                  'bypass', 'bypass', 'bypass', transaction_timestamp())
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(reservation.withdrawal_id)
+    .bind(format!("0x{}", "53".repeat(32)))
+    .bind(CUSTOMER)
+    .bind(VAULT)
+    .bind([9_u8; 32].as_slice())
+    .bind(first.attempt_id)
+    .execute(&mut *bypass)
+    .await
+    .unwrap();
+    assert!(bypass.commit().await.is_err());
+
+    let mut wrong_nonce = observed_replacement(
         reservation.withdrawal_id,
         Uuid::new_v4(),
         "54",
-        Some(first.attempt_id),
+        first.attempt_id,
     );
     wrong_nonce.sender_nonce = 8;
     assert!(fixture
         .ledger
-        .record_withdrawal_broadcast_attempt(&wrong_nonce)
+        .record_observed_withdrawal_replacement(&wrong_nonce)
         .await
         .is_err());
 
-    let replacement = broadcast_attempt(
+    let replacement_command = observed_replacement(
         reservation.withdrawal_id,
         Uuid::new_v4(),
         "55",
-        Some(first.attempt_id),
+        first.attempt_id,
     );
     let replacement = fixture
         .ledger
-        .record_withdrawal_broadcast_attempt(&replacement)
+        .record_observed_withdrawal_replacement(&replacement_command)
         .await
         .unwrap();
+    let replacement_replay = fixture
+        .ledger
+        .record_observed_withdrawal_replacement(&replacement_command)
+        .await
+        .unwrap();
+    assert_eq!(replacement, replacement_replay);
+    let mut conflicting_replay = replacement_command.clone();
+    conflicting_replay.secondary_reference = "secondary:conflict".to_owned();
+    assert!(fixture
+        .ledger
+        .record_observed_withdrawal_replacement(&conflicting_replay)
+        .await
+        .is_err());
     assert_eq!(replacement.attempt_number, 2);
     assert_eq!(replacement.replacement_of, Some(first.attempt_id));
     let dropped = fixture
@@ -965,10 +1026,15 @@ async fn broadcast_attempts_are_immutable_replay_safe_and_replacement_ordered(po
         .await
         .unwrap();
     assert_eq!(dropped.state, WithdrawalState::Dropped);
-    let retry = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "aa", None);
+    let retry = observed_replacement(
+        reservation.withdrawal_id,
+        Uuid::new_v4(),
+        "aa",
+        replacement.id,
+    );
     let retry = fixture
         .ledger
-        .record_withdrawal_broadcast_attempt(&retry)
+        .record_observed_withdrawal_replacement(&retry)
         .await
         .unwrap();
     assert_eq!(retry.attempt_number, 3);
@@ -992,12 +1058,19 @@ async fn broadcast_attempts_are_immutable_replay_safe_and_replacement_ordered(po
             .await
             .unwrap()[0]
             .state,
-        WithdrawalState::Broadcast
+        WithdrawalState::Replaced
     );
     assert!(sqlx::query(
         "UPDATE ledger_withdrawal_broadcast_attempts SET provider_reference = 'tampered' WHERE id = $1",
     )
     .bind(first.attempt_id)
+    .execute(fixture.ledger.pool())
+    .await
+    .is_err());
+    assert!(sqlx::query(
+        "DELETE FROM ledger_withdrawal_replacement_evidence WHERE attempt_id = $1",
+    )
+    .bind(replacement.id)
     .execute(fixture.ledger.pool())
     .await
     .is_err());
@@ -1069,6 +1142,68 @@ async fn finalized_execution_completes_reserved_funds_even_during_a_halt(pool: P
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn finalized_revert_is_immutable_terminal_evidence_without_releasing_funds(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (reservation, _, deployment_id) = fixture
+        .sign_withdrawal(104, 250_000, "withdrawal-policy.revert", 600)
+        .await;
+    let attempt = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "67", None);
+    fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&attempt)
+        .await
+        .unwrap();
+    let command = FinalizedWithdrawalRevert {
+        observation_id: Uuid::new_v4(),
+        withdrawal_id: reservation.withdrawal_id,
+        deployment_id,
+        transaction_hash: attempt.transaction_hash.clone(),
+        block_number: 1234,
+        block_hash: format!("0x{}", "78".repeat(32)),
+        block_timestamp: Utc::now(),
+        confirmations: 2,
+        primary_provider: "rpc-primary".to_owned(),
+        secondary_provider: "rpc-secondary".to_owned(),
+        confirmation_policy_version: "confirmation.test-v1".to_owned(),
+        evidence: json!({"primary_receipt_status":"0x0", "secondary_receipt_status":"0x0"}),
+    };
+    let recorded = fixture
+        .ledger
+        .record_finalized_withdrawal_revert(&command)
+        .await
+        .unwrap();
+    let replay = fixture
+        .ledger
+        .record_finalized_withdrawal_revert(&command)
+        .await
+        .unwrap();
+    assert_eq!(recorded, replay);
+    assert_eq!(recorded.state, WithdrawalState::Broadcast);
+    assert_eq!(
+        fixture.ledger.balance(fixture.available_id).await.unwrap(),
+        BigDecimal::from(750_000)
+    );
+    assert_eq!(
+        fixture.ledger.balance(fixture.reserved_id).await.unwrap(),
+        BigDecimal::from(250_000)
+    );
+    let mut conflict = command;
+    conflict.block_hash = format!("0x{}", "79".repeat(32));
+    assert!(fixture
+        .ledger
+        .record_finalized_withdrawal_revert(&conflict)
+        .await
+        .is_err());
+    assert!(
+        sqlx::query("DELETE FROM ledger_withdrawal_attempt_reverts WHERE attempt_id = $1",)
+            .bind(attempt.attempt_id)
+            .execute(fixture.ledger.pool())
+            .await
+            .is_err()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn reservation_releases_only_after_finalized_two_provider_non_execution(pool: PgPool) {
     let fixture = Fixture::new(pool, 1_000_000).await;
     let (reservation, authorization, deployment_id) = fixture
@@ -1085,7 +1220,7 @@ async fn reservation_releases_only_after_finalized_two_provider_non_execution(po
         release_transaction_id: Uuid::new_v4(),
         withdrawal_id: reservation.withdrawal_id,
         deployment_id,
-        last_transaction_hash: Some(attempt.transaction_hash),
+        last_transaction_hash: Some(attempt.transaction_hash.clone()),
         block_number: 1235,
         block_hash: format!("0x{}", "99".repeat(32)),
         block_timestamp: authorization.expires_at + chrono::Duration::seconds(1),
@@ -1099,6 +1234,24 @@ async fn reservation_releases_only_after_finalized_two_provider_non_execution(po
         all_attempts_terminal: true,
         evidence: json!({ "request_id": "unused", "nonce": "unused" }),
     };
+    assert!(fixture
+        .ledger
+        .release_expired_withdrawal(&proof)
+        .await
+        .is_err());
+    fixture
+        .ledger
+        .record_dropped_withdrawal_attempt(&RecordDroppedWithdrawalAttempt {
+            observation_id: Uuid::new_v4(),
+            withdrawal_id: reservation.withdrawal_id,
+            deployment_id,
+            transaction_hash: attempt.transaction_hash.clone(),
+            primary_provider: "rpc-primary".to_owned(),
+            secondary_provider: "rpc-secondary".to_owned(),
+            evidence: json!({"primary":"not_found", "secondary":"not_found"}),
+        })
+        .await
+        .unwrap();
     proof.secondary_provider = "RPC-PRIMARY".to_owned();
     assert!(fixture
         .ledger

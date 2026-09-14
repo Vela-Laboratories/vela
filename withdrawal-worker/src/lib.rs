@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ledger::{
-    FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution, Ledger,
-    RecordDroppedWithdrawalAttempt,
+    FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution, FinalizedWithdrawalRevert,
+    Ledger, RecordDroppedWithdrawalAttempt, RecordObservedWithdrawalReplacement,
 };
 use reqwest::Url;
 use serde_json::{json, Value};
@@ -193,6 +193,7 @@ pub struct Deployment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
     pub withdrawal_id: Uuid,
+    pub attempt_id: Uuid,
     pub transaction_hash: String,
     pub expires_at: DateTime<Utc>,
     pub customer: String,
@@ -203,6 +204,7 @@ pub struct Candidate {
     pub policy_hash: String,
     pub approver_hash: String,
     pub sender: String,
+    pub sender_nonce: String,
     pub calldata_hash: String,
     pub updated_at: DateTime<Utc>,
     pub current_attempt_terminal: bool,
@@ -219,6 +221,7 @@ pub struct FinalizedBlock {
 pub struct TransactionFacts {
     pub hash: String,
     pub sender: String,
+    pub sender_nonce: String,
     pub destination: String,
     pub calldata_hash: String,
 }
@@ -302,6 +305,22 @@ pub trait WorkerStore: Send + Sync {
         observation: &ProviderObservation,
         secondary: &ProviderObservation,
     ) -> Result<(), WorkerError>;
+    async fn record_revert(
+        &self,
+        deployment: &Deployment,
+        candidate: &Candidate,
+        observation: &ProviderObservation,
+        secondary: &ProviderObservation,
+    ) -> Result<(), WorkerError>;
+    async fn record_replacement(
+        &self,
+        deployment: &Deployment,
+        current: &Candidate,
+        replacement: &Candidate,
+        submitted_at: DateTime<Utc>,
+        observation: &ProviderObservation,
+        secondary: &ProviderObservation,
+    ) -> Result<(), WorkerError>;
     async fn release_permanent_failure(
         &self,
         deployment: &Deployment,
@@ -323,6 +342,8 @@ pub enum Outcome {
     Pending,
     Executed,
     Dropped,
+    Reverted,
+    ReplacementRecorded,
     Released,
 }
 
@@ -449,14 +470,80 @@ where
                 }
             }
             TransactionStatus::FinalizedRevert(_, _) => {
-                // A reverted transaction is still observed and is not the same fact
-                // as a dropped transaction. Migration 0008 has no immutable revert
-                // evidence type, so this foundation conservatively retains the
-                // reservation instead of misclassifying or releasing it.
-                Ok(Outcome::Pending)
+                self.store
+                    .record_revert(&self.deployment, candidate, &primary, &secondary)
+                    .await?;
+                if primary.finalized.timestamp < candidate.expires_at {
+                    return Ok(Outcome::Reverted);
+                }
+                if primary.request_id_unused
+                    && primary.withdrawal_nonce_unused
+                    && primary.no_execution_event
+                    && self
+                        .store
+                        .all_attempts_terminal(candidate.withdrawal_id)
+                        .await?
+                {
+                    self.store
+                        .release_permanent_failure(
+                            &self.deployment,
+                            candidate,
+                            &primary,
+                            &secondary,
+                        )
+                        .await?;
+                    Ok(Outcome::Released)
+                } else {
+                    Ok(Outcome::Reverted)
+                }
             }
             TransactionStatus::Pending(_) => Ok(Outcome::Pending),
         }
+    }
+
+    /// Register a replacement hash supplied by a trusted relay or finalized-block scanner.
+    /// Standard JSON-RPC cannot discover an arbitrary pending same-nonce replacement by the
+    /// predecessor hash, so this boundary verifies a supplied hash against both providers.
+    pub async fn ingest_replacement(
+        &self,
+        current: &Candidate,
+        replacement_hash: &str,
+        submitted_at: DateTime<Utc>,
+    ) -> Result<Outcome, WorkerError> {
+        if !is_hash(replacement_hash)
+            || replacement_hash.eq_ignore_ascii_case(&current.transaction_hash)
+        {
+            return Err(WorkerError::Safety(
+                "replacement candidate requires a distinct canonical transaction hash".to_owned(),
+            ));
+        }
+        let mut replacement = current.clone();
+        replacement.attempt_id = replacement_id(current, replacement_hash);
+        replacement.transaction_hash = replacement_hash.to_ascii_lowercase();
+        replacement.current_attempt_terminal = false;
+        let (primary, secondary) = tokio::join!(
+            self.primary.observe(&self.deployment, &replacement),
+            self.secondary.observe(&self.deployment, &replacement)
+        );
+        let primary = primary?;
+        let secondary = secondary?;
+        ensure_agreement(&primary, &secondary, &replacement, &self.deployment)?;
+        if matches!(primary.status, TransactionStatus::NotFound) {
+            return Err(WorkerError::Safety(
+                "both providers must observe the supplied replacement transaction".to_owned(),
+            ));
+        }
+        self.store
+            .record_replacement(
+                &self.deployment,
+                current,
+                &replacement,
+                submitted_at,
+                &primary,
+                &secondary,
+            )
+            .await?;
+        Ok(Outcome::ReplacementRecorded)
     }
 
     pub async fn shutdown(&self) -> Result<(), WorkerError> {
@@ -563,6 +650,7 @@ fn ensure_agreement(
         | TransactionStatus::FinalizedExecution(tx, _) => {
             if !eq_hex(&tx.hash, &candidate.transaction_hash)
                 || !eq_hex(&tx.sender, &candidate.sender)
+                || tx.sender_nonce != candidate.sender_nonce
                 || !eq_hex(&tx.destination, &deployment.vault_address)
                 || !eq_hex(&tx.calldata_hash, &candidate.calldata_hash)
             {
@@ -596,6 +684,24 @@ fn ensure_agreement(
 
 fn eq_hex(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
+}
+
+fn is_hash(value: &str) -> bool {
+    value.len() == 66
+        && value.starts_with("0x")
+        && value[2..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn replacement_id(candidate: &Candidate, replacement_hash: &str) -> Uuid {
+    Uuid::new_v5(
+        &candidate.withdrawal_id,
+        format!(
+            "replacement:{}:{}",
+            candidate.transaction_hash.to_ascii_lowercase(),
+            replacement_hash.to_ascii_lowercase()
+        )
+        .as_bytes(),
+    )
 }
 
 #[derive(Clone)]
@@ -633,6 +739,7 @@ struct DeploymentRow {
 #[derive(FromRow)]
 struct CandidateRow {
     withdrawal_id: Uuid,
+    attempt_id: Uuid,
     transaction_hash: String,
     expires_at: DateTime<Utc>,
     customer: String,
@@ -643,6 +750,7 @@ struct CandidateRow {
     policy_hash: Vec<u8>,
     approver_hash: Vec<u8>,
     sender: String,
+    sender_nonce: String,
     calldata_hash: Vec<u8>,
     updated_at: DateTime<Utc>,
     current_attempt_terminal: bool,
@@ -717,6 +825,85 @@ impl WorkerStore for PgWorkerStore {
         Ok(())
     }
 
+    async fn record_revert(
+        &self,
+        deployment: &Deployment,
+        candidate: &Candidate,
+        observation: &ProviderObservation,
+        secondary: &ProviderObservation,
+    ) -> Result<(), WorkerError> {
+        let TransactionStatus::FinalizedRevert(_, inclusion) = &observation.status else {
+            return Err(WorkerError::Safety("revert evidence required".to_owned()));
+        };
+        let confirmations = observation
+            .finalized
+            .number
+            .saturating_sub(inclusion.number)
+            + 1;
+        Ledger::from_pool(self.pool.clone())
+            .record_finalized_withdrawal_revert(&FinalizedWithdrawalRevert {
+                observation_id: evidence_id(candidate, "revert"),
+                withdrawal_id: candidate.withdrawal_id,
+                deployment_id: deployment.id,
+                transaction_hash: candidate.transaction_hash.clone(),
+                block_number: i64::try_from(inclusion.number)
+                    .map_err(|_| WorkerError::Safety("block overflow".to_owned()))?,
+                block_hash: inclusion.hash.clone(),
+                block_timestamp: inclusion.timestamp,
+                confirmations: i64::try_from(confirmations)
+                    .map_err(|_| WorkerError::Safety("confirmation overflow".to_owned()))?,
+                primary_provider: observation.provider_name.clone(),
+                secondary_provider: secondary.provider_name.clone(),
+                confirmation_policy_version: deployment.policy_version.clone(),
+                evidence: evidence_json(observation, secondary),
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn record_replacement(
+        &self,
+        _deployment: &Deployment,
+        current: &Candidate,
+        replacement: &Candidate,
+        submitted_at: DateTime<Utc>,
+        observation: &ProviderObservation,
+        secondary: &ProviderObservation,
+    ) -> Result<(), WorkerError> {
+        let sender_nonce = current
+            .sender_nonce
+            .parse::<u64>()
+            .map_err(|_| WorkerError::Safety("sender nonce exceeds supported range".to_owned()))?;
+        let calldata_hash: [u8; 32] = hex::decode(
+            current
+                .calldata_hash
+                .strip_prefix("0x")
+                .ok_or_else(|| WorkerError::Safety("calldata hash is malformed".to_owned()))?,
+        )
+        .map_err(|_| WorkerError::Safety("calldata hash is malformed".to_owned()))?
+        .try_into()
+        .map_err(|_| WorkerError::Safety("calldata hash is malformed".to_owned()))?;
+        Ledger::from_pool(self.pool.clone())
+            .record_observed_withdrawal_replacement(&RecordObservedWithdrawalReplacement {
+                attempt_id: replacement.attempt_id,
+                withdrawal_id: current.withdrawal_id,
+                transaction_hash: replacement.transaction_hash.clone(),
+                sender_address: current.sender.clone(),
+                sender_nonce,
+                calldata_hash,
+                replacement_of: current.attempt_id,
+                primary_provider: observation.provider_name.clone(),
+                primary_reference: observation.provider_reference.clone(),
+                secondary_provider: secondary.provider_name.clone(),
+                secondary_reference: secondary.provider_reference.clone(),
+                evidence: evidence_json(observation, secondary),
+                submitted_at,
+                observed_at: Utc::now(),
+            })
+            .await?;
+        Ok(())
+    }
+
     async fn release_lease(&self, deployment_id: Uuid, owner: Uuid) -> Result<(), WorkerError> {
         sqlx::query("UPDATE ledger_withdrawal_worker_checkpoints SET lease_owner = NULL, lease_expires_at = NULL, updated_at = transaction_timestamp() WHERE deployment_id = $1 AND lease_owner = $2")
             .bind(deployment_id).bind(owner).execute(&self.pool).await?;
@@ -730,13 +917,20 @@ impl WorkerStore for PgWorkerStore {
         limit: u32,
     ) -> Result<Vec<Candidate>, WorkerError> {
         let select = r#"
-            SELECT withdrawal.id AS withdrawal_id, attempt.transaction_hash,
+            SELECT withdrawal.id AS withdrawal_id, attempt.id AS attempt_id, attempt.transaction_hash,
                    authorization.expires_at, withdrawal.customer_reference AS customer,
                    withdrawal.destination_address AS destination,
                    authorization.asset_address AS asset, authorization.amount::TEXT AS amount,
                    authorization.nonce::TEXT AS nonce, attempt.sender_address AS sender,
+                   attempt.sender_nonce::TEXT AS sender_nonce,
                    authorization.policy_hash, authorization.approver_hash, attempt.calldata_hash,
-                   withdrawal.updated_at, withdrawal.state = 'dropped' AS current_attempt_terminal
+                   withdrawal.updated_at,
+                   EXISTS (
+                       SELECT 1 FROM ledger_withdrawal_chain_observations terminal
+                       WHERE terminal.withdrawal_id = withdrawal.id
+                         AND lower(terminal.transaction_hash) = lower(attempt.transaction_hash)
+                         AND terminal.observation_type IN ('dropped', 'finalized_revert')
+                   ) AS current_attempt_terminal
             FROM ledger_withdrawals withdrawal
             JOIN ledger_withdrawal_authorizations authorization ON authorization.withdrawal_id = withdrawal.id
             JOIN LATERAL (
@@ -783,6 +977,7 @@ impl WorkerStore for PgWorkerStore {
                 }
                 Ok(Candidate {
                     withdrawal_id: r.withdrawal_id,
+                    attempt_id: r.attempt_id,
                     transaction_hash: r.transaction_hash,
                     expires_at: r.expires_at,
                     customer: r.customer,
@@ -793,6 +988,7 @@ impl WorkerStore for PgWorkerStore {
                     policy_hash: format!("0x{}", hex::encode(r.policy_hash)),
                     approver_hash: format!("0x{}", hex::encode(r.approver_hash)),
                     sender: r.sender,
+                    sender_nonce: r.sender_nonce,
                     calldata_hash: format!("0x{}", hex::encode(r.calldata_hash)),
                     updated_at: r.updated_at,
                     current_attempt_terminal: r.current_attempt_terminal,
@@ -803,7 +999,7 @@ impl WorkerStore for PgWorkerStore {
 
     async fn all_attempts_terminal(&self, withdrawal_id: Uuid) -> Result<bool, WorkerError> {
         let value = sqlx::query_scalar::<_, bool>(
-            r#"SELECT EXISTS (SELECT 1 FROM ledger_withdrawals WHERE id = $1 AND state = 'dropped')
+            r#"SELECT EXISTS (SELECT 1 FROM ledger_withdrawal_broadcast_attempts WHERE withdrawal_id = $1)
                AND NOT EXISTS (
                    SELECT 1 FROM ledger_withdrawal_broadcast_attempts attempt
                    WHERE attempt.withdrawal_id = $1
@@ -814,7 +1010,7 @@ impl WorkerStore for PgWorkerStore {
                      AND NOT EXISTS (
                          SELECT 1 FROM ledger_withdrawal_chain_observations observation
                          WHERE observation.withdrawal_id = $1
-                           AND observation.observation_type = 'dropped'
+                           AND observation.observation_type IN ('dropped', 'finalized_revert')
                            AND lower(observation.transaction_hash) = lower(attempt.transaction_hash)
                      )
                )"#,
@@ -952,14 +1148,57 @@ fn evidence_json(observation: &ProviderObservation, secondary: &ProviderObservat
     json!({
         "primary_provider": observation.provider_name,
         "primary_reference": observation.provider_reference,
+        "primary_status": status_evidence(&observation.status),
         "secondary_provider": secondary.provider_name,
         "secondary_reference": secondary.provider_reference,
+        "secondary_status": status_evidence(&secondary.status),
         "finalized_block": observation.finalized.number,
         "finalized_hash": observation.finalized.hash,
         "request_id_unused": observation.request_id_unused,
         "withdrawal_nonce_unused": observation.withdrawal_nonce_unused,
         "no_execution_event": observation.no_execution_event,
     })
+}
+
+fn status_evidence(status: &TransactionStatus) -> Value {
+    let transaction = |facts: &TransactionFacts| {
+        json!({
+            "hash": facts.hash,
+            "sender": facts.sender,
+            "sender_nonce": facts.sender_nonce,
+            "destination": facts.destination,
+            "calldata_hash": facts.calldata_hash,
+        })
+    };
+    match status {
+        TransactionStatus::NotFound => json!({"kind":"not_found"}),
+        TransactionStatus::Pending(facts) => {
+            json!({"kind":"pending", "transaction":transaction(facts)})
+        }
+        TransactionStatus::FinalizedRevert(facts, block) => json!({
+            "kind":"finalized_revert",
+            "receipt_status":0,
+            "transaction":transaction(facts),
+            "inclusion_block":{"number":block.number,"hash":block.hash,"timestamp":block.timestamp},
+        }),
+        TransactionStatus::FinalizedExecution(facts, log) => json!({
+            "kind":"finalized_execution",
+            "receipt_status":1,
+            "transaction":transaction(facts),
+            "inclusion_block":{"number":log.block.number,"hash":log.block.hash,"timestamp":log.block.timestamp},
+            "transaction_index":log.transaction_index,
+            "log_index":log.log_index,
+            "request_id":log.request_id,
+            "customer":log.customer,
+            "destination":log.destination,
+            "asset":log.asset,
+            "amount":log.amount,
+            "nonce":log.nonce,
+            "deadline":log.deadline,
+            "policy_hash":log.policy_hash,
+            "approver_hash":log.approver_hash,
+        }),
+    }
 }
 
 /// Broadcast boundary. Production defaults to this implementation and therefore
@@ -1136,6 +1375,7 @@ impl HttpRpc {
         let facts = TransactionFacts {
             hash: normalized_hash(field(&value, "hash", self)?, self)?,
             sender: normalized_address(field(&value, "from", self)?, self)?,
+            sender_nonce: parse_hex_u64(field(&value, "nonce", self)?, self)?.to_string(),
             destination: normalized_address(field(&value, "to", self)?, self)?,
             calldata_hash: format!("0x{}", hex::encode(Keccak256::digest(calldata))),
         };
