@@ -78,8 +78,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Journal every matcher-produced fee when the authoritative ledger is configured.
 - [x] Journal every matcher-produced rebate when the authoritative ledger is configured.
 - [x] Journal every withdrawal reservation atomically before acknowledging it; identical retries return the original journal transaction and concurrent reservations cannot overspend.
-- [ ] Journal every completed withdrawal.
-- [ ] Journal every failed or reversed withdrawal.
+- [x] Journal every completed withdrawal atomically with matching finalized V2 execution evidence; the implementation remains source- and test-only.
+- [ ] Journal every failed or reversed withdrawal; finalized V2 expiry now journals an exactly-once release, but other failure and reversal paths remain open.
 - [x] Journal every administrative adjustment through the typed dual-control correction path.
 - [x] Require balanced debits and credits for every journal transaction at the PostgreSQL commit boundary.
 - [ ] Make ledger writes durable before acknowledging every financial operation; matcher operations now satisfy this, but deposits and withdrawals remain open.
@@ -150,19 +150,19 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Store the withdrawal request before producing a custody signature.
 - [x] Bind custody authorization to chain ID, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID.
 - [x] Mark signatures as issued in immutable PostgreSQL evidence and prevent duplicate issuance per withdrawal and authorization.
-- [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts.
-- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions.
-- [ ] Restore reserved funds if a withdrawal fails permanently.
+- [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts; provider-neutral attempt and observation boundaries exist but are disabled and have no runtime provider or worker.
+- [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions; durable attempts, replacement lineage, finalized confirmation, and expiry failure exist, but the complete runtime lifecycle does not.
+- [x] Restore reserved funds exactly once after a permanent V2 expiry, only when finalized two-provider evidence proves the request ID and nonce unused, no execution event, and every attempt terminal.
 - [ ] Prevent an on-chain withdrawal from succeeding without the corresponding ledger debit.
-- [ ] Prevent a ledger debit from becoming permanent if the chain transfer never succeeds.
+- [x] Prevent a completion debit before finalized matching chain execution and restore the reservation after finalized V2 expiry non-execution proof; ambiguous transactions remain reserved.
 - [ ] Implement complete ERC-20 withdrawal support.
 - [ ] Remove the manual "processed within 24 hours" ERC-20 workflow.
-- [ ] Add configurable withdrawal confirmation requirements.
+- [x] Add immutable per-deployment withdrawal confirmation policies requiring finalized evidence, two distinct providers, and a configurable positive confirmation minimum.
 - [x] Add versioned per-user, per-asset, and platform-wide withdrawal limits in atomic asset units.
 - [ ] Add cooling-off periods for suspicious account changes.
 - [ ] Add large-withdrawal review thresholds.
 - [ ] Add a withdrawal allowlist option.
-- [x] Add a durable global withdrawal kill switch that blocks reservation, approval, completion, and signing while allowing safe releases; require three-party evidence to resolve it.
+- [x] Add a durable global withdrawal kill switch that blocks new reservation, approval, and signing while allowing safe releases and mandatory journaling of already-finalized custody execution; require three-party evidence to resolve it.
 - [ ] Add clear customer-visible withdrawal status and failure recovery.
 
 ## Remove test and synthetic behavior from production
@@ -588,7 +588,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Test deposit reorganization handling, including provider disagreement, historical event invalidation, complete pending isolation, spent-funds quarantine, operation halts, retry idempotency, and audit-checkpoint rewind rejection.
 - [ ] Test ledger and contract reconciliation.
 - [ ] Test trade settlement across two users and two assets.
-- [ ] Test withdrawal reservation and completion.
+- [x] Test PostgreSQL withdrawal reservation and finalized completion, including exact balances, idempotent replay, and completion during a halt; deployed RPC and frontend end-to-end coverage remains open.
 - [ ] Test dropped and replaced withdrawal transactions.
 - [ ] Test emergency exit after trading.
 - [ ] Test concurrent ordinary and emergency withdrawals.

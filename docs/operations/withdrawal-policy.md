@@ -2,7 +2,7 @@
 
 ## Scope
 
-EX-025 provides free, provider-neutral controls in PostgreSQL. It does not configure a sanctions, KYT, or blockchain-analytics vendor and it does not enable custody signing or transaction broadcast. A missing policy or a compliance disposition of `reject`, `review`, or `unavailable` cannot produce an authorization.
+EX-025 provides free, provider-neutral controls in PostgreSQL. It does not configure a sanctions, KYT, or blockchain-analytics vendor and it does not enable custody signing or transaction broadcast. A missing policy or a compliance disposition of `reject`, `review`, or `unavailable` cannot produce an authorization. EX-026 adds a separate source- and test-only V2 execution evidence boundary; see [Withdrawal execution observer operations](withdrawal-observer.md).
 
 Policy values are exact asset base units. For example, one USDC is `1000000` and one ETH is `1000000000000000000`. Do not copy limits between assets without converting units and completing a risk review.
 
@@ -57,7 +57,7 @@ The provider response itself should remain in the provider's access-controlled e
 
 ## Emergency halt
 
-Call `Ledger::activate_global_withdrawal_halt` from an authenticated operations surface with an incident reference and operator identity. Activation is immediate and blocks new reservations and completion journal entries plus approval, signing, and signature storage. Pre-signing cancellation releases remain available.
+Call `Ledger::activate_global_withdrawal_halt` from an authenticated operations surface with an incident reference and operator identity. Activation is immediate and blocks new reservations, approval, signing, and signature storage. Safe pre-signing cancellation and finalized expiry releases remain available. If two providers prove an exact finalized execution that already moved custody, record its completion even while halted; suppressing that journal would leave the ledger inconsistent with chain state.
 
 Resolution uses `Ledger::resolve_global_withdrawal_halt`. PostgreSQL requires three different identities across activation, resolution initiation, and final resolution. Retain the incident and remediation evidence outside the database and store only stable references and non-sensitive summary evidence in the command.
 

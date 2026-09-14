@@ -12,12 +12,26 @@ contract MockERC20 is ERC20 {
 }
 
 contract VelaSettlementTest is Test {
+    event WithdrawalExecuted(
+        bytes16 indexed requestId,
+        address indexed user,
+        address indexed destination,
+        address asset,
+        uint256 amount,
+        uint256 nonce,
+        uint256 deadline,
+        bytes32 policyHash,
+        bytes32 approverHash
+    );
+
     VelaSettlement settlement;
     MockERC20 token;
 
     uint256 operatorKey = 0xA11CE;
     address operator;
     address user = address(0xBEEF);
+    address destination = address(0xD357);
+    address relayer = address(0xAE1A7);
 
     function setUp() public {
         operator = vm.addr(operatorKey);
@@ -28,22 +42,39 @@ contract VelaSettlementTest is Test {
         token.transfer(user, 1000e18);
     }
 
-    function _operatorSigFor(VelaSettlement target, address _user, address asset, uint256 amount, uint256 nonce)
+    function _withdrawal(address asset, uint256 amount, uint256 nonce)
+        internal
+        view
+        returns (VelaSettlement.Withdrawal memory w)
+    {
+        w = VelaSettlement.Withdrawal({
+            requestId: bytes16(keccak256(abi.encode("request", nonce))),
+            user: user,
+            destination: destination,
+            asset: asset,
+            amount: amount,
+            nonce: nonce,
+            deadline: block.timestamp + 1 hours,
+            policyHash: keccak256("withdrawal-policy-v1"),
+            approverHash: keccak256("approver-evidence-v1")
+        });
+    }
+
+    function _digest(VelaSettlement target, VelaSettlement.Withdrawal memory w) internal view returns (bytes32) {
+        return target.withdrawalDigest(w);
+    }
+
+    function _signature(VelaSettlement target, VelaSettlement.Withdrawal memory w)
         internal
         view
         returns (bytes memory)
     {
-        bytes32 hash = target.withdrawHash(_user, asset, amount, nonce);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, hash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, _digest(target, w));
         return abi.encodePacked(r, s, v);
     }
 
-    function _operatorSig(address _user, address asset, uint256 amount, uint256 nonce)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return _operatorSigFor(settlement, _user, asset, amount, nonce);
+    function _execute(VelaSettlement target, VelaSettlement.Withdrawal memory w, bytes memory signature) internal {
+        target.executeWithdrawal(w, signature);
     }
 
     function test_depositETH() public {
@@ -111,134 +142,269 @@ contract VelaSettlementTest is Test {
         settlement.executeEmergencyExit(address(0));
     }
 
-    function test_withdrawWithValidSignature() public {
+    function test_executeWithdrawalCanBeRelayedAndPaysSignedDestination() public {
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        bytes memory signature = _signature(settlement, w);
 
-        bytes memory sig = _operatorSig(user, address(0), 0.5 ether, 1);
-
-        uint256 balBefore = user.balance;
-        vm.prank(user);
-        settlement.withdraw(address(0), 0.5 ether, 1, sig);
+        vm.expectEmit(true, true, true, true, address(settlement));
+        emit WithdrawalExecuted(
+            w.requestId, w.user, w.destination, w.asset, w.amount, w.nonce, w.deadline, w.policyHash, w.approverHash
+        );
+        vm.prank(relayer);
+        _execute(settlement, w, signature);
 
         assertEq(settlement.getBalance(user, address(0)), 0.5 ether);
-        assertEq(user.balance, balBefore + 0.5 ether);
+        assertEq(destination.balance, 0.5 ether);
+        assertEq(relayer.balance, 0);
+        assertTrue(settlement.usedWithdrawalRequestIds(w.requestId));
         assertTrue(settlement.usedWithdrawNonces(user, 1));
     }
 
-    function test_withdrawRevertsInvalidSignature() public {
+    function test_executeWithdrawalAcceptsCustodyRecoveryIdZeroOrOne() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 101);
+        bytes memory signature = _signature(settlement, w);
+        signature[64] = bytes1(uint8(signature[64]) - 27);
+
+        vm.prank(relayer);
+        _execute(settlement, w, signature);
+
+        assertEq(destination.balance, 0.5 ether);
+        assertTrue(settlement.usedWithdrawalRequestIds(w.requestId));
+    }
+
+    function test_executeWithdrawalTransfersErc20ToSignedDestination() public {
+        vm.startPrank(user);
+        token.approve(address(settlement), 10e18);
+        settlement.depositToken(address(token), 10e18);
+        vm.stopPrank();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(token), 4e18, 2);
+
+        vm.prank(relayer);
+        _execute(settlement, w, _signature(settlement, w));
+
+        assertEq(settlement.getBalance(user, address(token)), 6e18);
+        assertEq(token.balanceOf(destination), 4e18);
+        assertEq(token.balanceOf(relayer), 0);
+    }
+
+    function test_executeWithdrawalRevertsInvalidSignature() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xBAD, _digest(settlement, w));
+
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, w, abi.encodePacked(r, s, v));
+    }
+
+    function test_legacyWithdrawSelectorIsDisabled() public {
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
 
-        uint256 wrongKey = 0xBAD;
-        bytes32 hash = settlement.withdrawHash(user, address(0), 0.5 ether, 1);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, hash);
-        bytes memory badSig = abi.encodePacked(r, s, v);
-
         vm.prank(user);
-        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
-        settlement.withdraw(address(0), 0.5 ether, 1, badSig);
+        (bool ok,) = address(settlement)
+            .call(
+                abi.encodeWithSignature("withdraw(address,uint256,uint256,bytes)", address(0), 0.5 ether, 1, bytes(""))
+            );
+
+        assertFalse(ok);
+        assertEq(settlement.getBalance(user, address(0)), 1 ether);
     }
 
-    function test_withdrawRevertsInsufficientBalance() public {
+    function test_executeWithdrawalRevertsInsufficientBalance() public {
         vm.prank(user);
         settlement.depositETH{ value: 0.1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 1 ether, 1);
+        bytes memory signature = _signature(settlement, w);
 
-        bytes memory sig = _operatorSig(user, address(0), 1 ether, 1);
-
-        vm.prank(user);
         vm.expectRevert(VelaSettlement.InsufficientBalance.selector);
-        settlement.withdraw(address(0), 1 ether, 1, sig);
+        _execute(settlement, w, signature);
     }
 
-    // ------------------------------------------------------------------
-    // Nonce-replay protection (P0 regression fixed 2026-08-31)
-    // ------------------------------------------------------------------
-
-    /// Two withdrawals of the same amount and nonce must not both succeed,
-    /// even if the user has redeposited enough to cover the second call.
-    function test_replayAfterRedepositIsRejected() public {
+    function test_requestIdReplayIsRejectedEvenWithDifferentNonce() public {
         vm.prank(user);
-        settlement.depositETH{ value: 1 ether }();
+        settlement.depositETH{ value: 2 ether }();
+        VelaSettlement.Withdrawal memory first = _withdrawal(address(0), 0.5 ether, 1);
+        _execute(settlement, first, _signature(settlement, first));
 
-        bytes memory sig = _operatorSig(user, address(0), 0.5 ether, 1);
+        VelaSettlement.Withdrawal memory replay = _withdrawal(address(0), 0.5 ether, 2);
+        replay.requestId = first.requestId;
+        bytes memory replaySignature = _signature(settlement, replay);
+        vm.expectRevert(VelaSettlement.WithdrawalRequestAlreadyUsed.selector);
+        _execute(settlement, replay, replaySignature);
+    }
 
+    function test_userNonceReplayIsRejectedEvenWithDifferentRequestId() public {
         vm.prank(user);
-        settlement.withdraw(address(0), 0.5 ether, 1, sig);
+        settlement.depositETH{ value: 2 ether }();
+        VelaSettlement.Withdrawal memory first = _withdrawal(address(0), 0.5 ether, 7);
+        _execute(settlement, first, _signature(settlement, first));
 
-        // User redeposits enough to make the balance check pass a second time.
-        vm.prank(user);
-        settlement.depositETH{ value: 0.5 ether }();
-
-        vm.prank(user);
+        VelaSettlement.Withdrawal memory replay = _withdrawal(address(0), 0.5 ether, 7);
+        replay.requestId = bytes16(keccak256("different request"));
+        bytes memory replaySignature = _signature(settlement, replay);
         vm.expectRevert(VelaSettlement.NonceAlreadyUsed.selector);
-        settlement.withdraw(address(0), 0.5 ether, 1, sig);
+        _execute(settlement, replay, replaySignature);
     }
 
-    /// A signature valid on one deployment must not be accepted by a
-    /// second deployment of the same contract on the same chain.
-    function test_crossContractReplayIsRejected() public {
+    function test_sameNonceIsIndependentAcrossUsers() public {
+        address otherUser = address(0xCAFE);
+        vm.deal(otherUser, 1 ether);
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
+        vm.prank(otherUser);
+        settlement.depositETH{ value: 1 ether }();
 
+        VelaSettlement.Withdrawal memory first = _withdrawal(address(0), 0.25 ether, 9);
+        _execute(settlement, first, _signature(settlement, first));
+        VelaSettlement.Withdrawal memory second = _withdrawal(address(0), 0.25 ether, 9);
+        second.requestId = bytes16(keccak256("other-user-request"));
+        second.user = otherUser;
+        _execute(settlement, second, _signature(settlement, second));
+
+        assertTrue(settlement.usedWithdrawNonces(user, 9));
+        assertTrue(settlement.usedWithdrawNonces(otherUser, 9));
+    }
+
+    function test_expiredWithdrawalIsRejectedWithoutConsumingReplayGuards() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        bytes memory signature = _signature(settlement, w);
+        vm.warp(w.deadline + 1);
+
+        vm.expectRevert(VelaSettlement.WithdrawalExpired.selector);
+        _execute(settlement, w, signature);
+        assertFalse(settlement.usedWithdrawalRequestIds(w.requestId));
+        assertFalse(settlement.usedWithdrawNonces(user, w.nonce));
+    }
+
+    function test_withdrawalIsValidAtExactDeadline() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        bytes memory signature = _signature(settlement, w);
+        vm.warp(w.deadline);
+
+        _execute(settlement, w, signature);
+        assertEq(destination.balance, 0.5 ether);
+    }
+
+    function test_zeroRequestIdAndDestinationAreRejected() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        w.requestId = bytes16(0);
+        bytes memory zeroRequestSignature = _signature(settlement, w);
+        vm.expectRevert(VelaSettlement.InvalidWithdrawalRequestId.selector);
+        _execute(settlement, w, zeroRequestSignature);
+
+        w.requestId = bytes16(keccak256("valid"));
+        w.destination = address(0);
+        bytes memory zeroDestinationSignature = _signature(settlement, w);
+        vm.expectRevert(VelaSettlement.ZeroAddress.selector);
+        _execute(settlement, w, zeroDestinationSignature);
+    }
+
+    function test_signedDestinationPolicyAndApproverCannotBeSubstituted() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 2 ether }();
+        VelaSettlement.Withdrawal memory signed = _withdrawal(address(0), 0.5 ether, 1);
+        bytes memory signature = _signature(settlement, signed);
+
+        VelaSettlement.Withdrawal memory changed = signed;
+        changed.destination = address(0xBAD1);
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, changed, signature);
+
+        changed = signed;
+        changed.policyHash = keccak256("different-policy");
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, changed, signature);
+
+        changed = signed;
+        changed.approverHash = keccak256("different-approver");
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, changed, signature);
+    }
+
+    function test_crossContractReplayIsRejectedByDomain() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
         VelaSettlement other = new VelaSettlement(operator);
-        vm.deal(user, user.balance + 1 ether);
         vm.prank(user);
         other.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 42);
+        bytes memory signature = _signature(settlement, w);
 
-        bytes memory sigForA = _operatorSigFor(settlement, user, address(0), 0.5 ether, 42);
-
-        vm.prank(user);
         vm.expectRevert(VelaSettlement.InvalidSignature.selector);
-        other.withdraw(address(0), 0.5 ether, 42, sigForA);
+        _execute(other, w, signature);
     }
 
-    /// A high-`s` signature (malleability variant) must be rejected.
-    /// OZ ECDSA reverts with a specific error inside `ECDSA.recover`.
+    function test_crossChainReplayIsRejectedByDomain() public {
+        vm.prank(user);
+        settlement.depositETH{ value: 1 ether }();
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 42);
+        bytes memory signature = _signature(settlement, w);
+        vm.chainId(block.chainid + 1);
+
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, w, signature);
+    }
+
+    function test_eip712DomainAndTypeHashAreStable() public view {
+        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            settlement.eip712Domain();
+        assertEq(fields, hex"0f");
+        assertEq(name, "VelaSettlement");
+        assertEq(version, "2");
+        assertEq(chainId, block.chainid);
+        assertEq(verifyingContract, address(settlement));
+        assertEq(
+            settlement.WITHDRAWAL_TYPEHASH(),
+            keccak256(
+                "Withdrawal(bytes16 requestId,address user,address destination,address asset,uint256 amount,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes32 approverHash)"
+            )
+        );
+    }
+
+    /// @dev Cross-language test vector for broadcaster/signing implementations.
+    function test_withdrawalDigestFixedVector() public {
+        vm.chainId(84_532);
+        address fixedDeployment = address(bytes20(hex"111122223333444455556666777788889999aaaa"));
+        deployCodeTo("VelaSettlement.sol:VelaSettlement", abi.encode(operator), fixedDeployment);
+        VelaSettlement fixedSettlement = VelaSettlement(payable(fixedDeployment));
+        VelaSettlement.Withdrawal memory w = VelaSettlement.Withdrawal({
+            requestId: hex"00112233445566778899aabbccddeeff",
+            user: address(0xBEEF),
+            destination: address(0xD357),
+            asset: address(0),
+            amount: 0.5 ether,
+            nonce: 42,
+            deadline: 2_000_000_000,
+            policyHash: keccak256("policy-vector"),
+            approverHash: keccak256("approver-vector")
+        });
+
+        assertEq(
+            fixedSettlement.withdrawalDigest(w), 0xe4e370d5cee128859be93c6c83d94a246f2fb7996d6fc9499ea81e0277fc89a0
+        );
+    }
+
     function test_signatureMalleabilityRejected() public {
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
-
-        bytes32 hash = settlement.withdrawHash(user, address(0), 0.5 ether, 1);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, hash);
-
-        // Flip s to its high-half counterpart. secp256k1 group order n:
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, _digest(settlement, w));
         uint256 n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
         bytes32 highS = bytes32(n - uint256(s));
         uint8 flippedV = v == 27 ? 28 : 27;
-        bytes memory malleableSig = abi.encodePacked(r, highS, flippedV);
 
-        vm.prank(user);
-        vm.expectRevert(); // ECDSA.ECDSAInvalidSignatureS
-        settlement.withdraw(address(0), 0.5 ether, 1, malleableSig);
-    }
-
-    /// Fuzz: distinct nonces are independent — using nonce N does not
-    /// consume nonce M, and each replay is rejected on its own.
-    function testFuzz_nonceIndependence(uint96 a, uint96 b) public {
-        vm.assume(a != b);
-        vm.assume(a != 0 && b != 0);
-
-        vm.deal(user, 10 ether);
-        vm.prank(user);
-        settlement.depositETH{ value: 4 ether }();
-
-        bytes memory sigA = _operatorSig(user, address(0), 0.1 ether, a);
-        bytes memory sigB = _operatorSig(user, address(0), 0.1 ether, b);
-
-        vm.prank(user);
-        settlement.withdraw(address(0), 0.1 ether, a, sigA);
-        vm.prank(user);
-        settlement.withdraw(address(0), 0.1 ether, b, sigB);
-
-        assertTrue(settlement.usedWithdrawNonces(user, a));
-        assertTrue(settlement.usedWithdrawNonces(user, b));
-
-        vm.prank(user);
-        settlement.depositETH{ value: 0.2 ether }();
-
-        vm.prank(user);
-        vm.expectRevert(VelaSettlement.NonceAlreadyUsed.selector);
-        settlement.withdraw(address(0), 0.1 ether, a, sigA);
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        _execute(settlement, w, abi.encodePacked(r, highS, flippedV));
     }
 }

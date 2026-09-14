@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
@@ -36,12 +36,14 @@ interface IL2SequencerUptimeFeed {
 ///   `proposeOperator` → `acceptProposedOperator`, so a stolen owner
 ///   key cannot atomically hand the operator role to an attacker.
 /// - Optional Chainlink L2 sequencer-uptime check on the fund-moving
-///   paths (`withdraw`, `executeEmergencyExit`, `anchorStateRoot`).
+///   paths (`executeWithdrawal`, `executeEmergencyExit`, `anchorStateRoot`).
 ///   Zero address disables the check — L1 mainnet deployments skip it.
-contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
+contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     using SafeERC20 for IERC20;
-    using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
+
+    bytes32 public constant WITHDRAWAL_TYPEHASH = keccak256(
+        "Withdrawal(bytes16 requestId,address user,address destination,address asset,uint256 amount,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes32 approverHash)"
+    );
 
     address public operator;
     /// Address permitted to `pause()` without owner intervention.
@@ -71,12 +73,29 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
         uint256 emergencyUnlockAt;
     }
 
+    struct Withdrawal {
+        bytes16 requestId;
+        address user;
+        address destination;
+        address asset;
+        uint256 amount;
+        uint256 nonce;
+        uint256 deadline;
+        bytes32 policyHash;
+        bytes32 approverHash;
+    }
+
     // user => asset => Balance
     mapping(address => mapping(address => Balance)) public balances;
 
     // user => nonce => used
     // Prevents replay of a valid operator withdrawal signature.
     mapping(address => mapping(uint256 => bool)) public usedWithdrawNonces;
+
+    // requestId => used
+    // Request IDs are globally unique ledger identities and prevent the same
+    // authorization from being executed under a different user nonce.
+    mapping(bytes16 => bool) public usedWithdrawalRequestIds;
 
     /// Monotonic, deployment-scoped deposit nonce. The nonce is part of the
     /// emitted deposit ID so every custody credit has an identity that is
@@ -95,6 +114,9 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     error InsufficientBalance();
     error InvalidSignature();
     error NonceAlreadyUsed();
+    error WithdrawalRequestAlreadyUsed();
+    error InvalidWithdrawalRequestId();
+    error WithdrawalExpired();
     error NoBalance();
     error EmergencyExitNotInitiated();
     error TimelockActive();
@@ -108,7 +130,17 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     error ZeroAddress();
 
     event Deposited(bytes32 indexed depositId, address indexed user, address indexed asset, uint256 amount);
-    event Withdrawn(address indexed user, address indexed asset, uint256 amount, uint256 nonce);
+    event WithdrawalExecuted(
+        bytes16 indexed requestId,
+        address indexed user,
+        address indexed destination,
+        address asset,
+        uint256 amount,
+        uint256 nonce,
+        uint256 deadline,
+        bytes32 policyHash,
+        bytes32 approverHash
+    );
     event EmergencyExitInitiated(address indexed user, address indexed asset, uint256 unlockAt);
     event EmergencyExitExecuted(address indexed user, address indexed asset, uint256 amount);
     event StateRootAnchored(uint256 indexed anchorId, bytes32 stateRoot, uint256 timestamp, uint256 ordersProcessed);
@@ -117,7 +149,7 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     event GuardianRotated(address indexed previousGuardian, address indexed newGuardian);
     event SequencerFeedUpdated(address indexed feed);
 
-    constructor(address _operator) Ownable(msg.sender) {
+    constructor(address _operator) Ownable(msg.sender) EIP712("VelaSettlement", "2") {
         if (_operator == address(0)) revert ZeroAddress();
         operator = _operator;
         // Default the guardian to the deployer. Owner can rotate later
@@ -175,42 +207,97 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     // Operator-signed withdrawal
     // -----------------------------------------------------------------
 
-    /// @notice Hash the operator commits to for `withdraw`.
-    /// Includes `address(this)` and `block.chainid` for domain separation,
-    /// so signatures cannot be replayed against a different Vela deployment
-    /// or a different chain.
-    function withdrawHash(address user, address asset, uint256 amount, uint256 nonce) public view returns (bytes32) {
-        bytes32 inner = keccak256(abi.encodePacked(user, asset, amount, nonce, block.chainid, address(this)));
-        return inner.toEthSignedMessageHash();
+    /// @notice Return the EIP-712 digest the custody operator signs for a
+    /// withdrawal authorization. The domain binds the authorization to this
+    /// deployment and chain. Policy and approver evidence are committed to by
+    /// hash so a relayer cannot substitute either at execution time.
+    function withdrawalDigest(Withdrawal calldata withdrawal) public view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    WITHDRAWAL_TYPEHASH,
+                    withdrawal.requestId,
+                    withdrawal.user,
+                    withdrawal.destination,
+                    withdrawal.asset,
+                    withdrawal.amount,
+                    withdrawal.nonce,
+                    withdrawal.deadline,
+                    withdrawal.policyHash,
+                    withdrawal.approverHash
+                )
+            )
+        );
     }
 
-    function withdraw(address asset, uint256 amount, uint256 nonce, bytes calldata signature)
+    /// @notice Execute an operator-authorized withdrawal. Any account may
+    /// relay the signed authorization, but funds always leave the signed
+    /// user's balance and go to the signed destination.
+    function executeWithdrawal(Withdrawal calldata withdrawal, bytes calldata signature)
         external
         nonReentrant
         whenNotPaused
         sequencerUp
     {
-        if (amount == 0) revert ZeroAmount();
-        if (balances[msg.sender][asset].amount < amount) revert InsufficientBalance();
-        if (usedWithdrawNonces[msg.sender][nonce]) revert NonceAlreadyUsed();
+        if (withdrawal.amount == 0) revert ZeroAmount();
+        if (withdrawal.requestId == bytes16(0)) revert InvalidWithdrawalRequestId();
+        if (withdrawal.destination == address(0)) revert ZeroAddress();
+        if (block.timestamp > withdrawal.deadline) revert WithdrawalExpired();
+        if (balances[withdrawal.user][withdrawal.asset].amount < withdrawal.amount) revert InsufficientBalance();
+        if (usedWithdrawalRequestIds[withdrawal.requestId]) revert WithdrawalRequestAlreadyUsed();
+        if (usedWithdrawNonces[withdrawal.user][withdrawal.nonce]) revert NonceAlreadyUsed();
 
-        bytes32 hash = withdrawHash(msg.sender, asset, amount, nonce);
-        // ECDSA.recover reverts on malleable (high-s) or malformed signatures.
-        address signer = hash.recover(signature);
-        if (signer != operator) revert InvalidSignature();
+        bytes32 digest = withdrawalDigest(withdrawal);
+        (address signer, ECDSA.RecoverError recoverError) = _recoverWithdrawalSigner(digest, signature);
+        if (recoverError != ECDSA.RecoverError.NoError || signer != operator) revert InvalidSignature();
 
         // Effects: consume nonce and debit balance before external interaction.
-        usedWithdrawNonces[msg.sender][nonce] = true;
-        balances[msg.sender][asset].amount -= amount;
+        usedWithdrawalRequestIds[withdrawal.requestId] = true;
+        usedWithdrawNonces[withdrawal.user][withdrawal.nonce] = true;
+        balances[withdrawal.user][withdrawal.asset].amount -= withdrawal.amount;
 
-        if (asset == ETH) {
-            (bool ok,) = msg.sender.call{ value: amount }("");
+        if (withdrawal.asset == ETH) {
+            (bool ok,) = withdrawal.destination.call{ value: withdrawal.amount }("");
             if (!ok) revert EthTransferFailed();
         } else {
-            IERC20(asset).safeTransfer(msg.sender, amount);
+            IERC20(withdrawal.asset).safeTransfer(withdrawal.destination, withdrawal.amount);
         }
 
-        emit Withdrawn(msg.sender, asset, amount, nonce);
+        emit WithdrawalExecuted(
+            withdrawal.requestId,
+            withdrawal.user,
+            withdrawal.destination,
+            withdrawal.asset,
+            withdrawal.amount,
+            withdrawal.nonce,
+            withdrawal.deadline,
+            withdrawal.policyHash,
+            withdrawal.approverHash
+        );
+    }
+
+    /// @dev Custody stores recoverable secp256k1 signatures with a 0/1
+    /// recovery ID. Normalize that representation to Ethereum's 27/28 form,
+    /// while continuing to accept standard 65-byte and EIP-2098 signatures.
+    function _recoverWithdrawalSigner(bytes32 digest, bytes calldata signature)
+        private
+        pure
+        returns (address signer, ECDSA.RecoverError recoverError)
+    {
+        if (signature.length == 65) {
+            bytes32 r;
+            bytes32 s;
+            uint8 v;
+            assembly ("memory-safe") {
+                r := calldataload(signature.offset)
+                s := calldataload(add(signature.offset, 0x20))
+                v := byte(0, calldataload(add(signature.offset, 0x40)))
+            }
+            if (v < 27) v += 27;
+            (signer, recoverError,) = ECDSA.tryRecover(digest, v, r, s);
+            return (signer, recoverError);
+        }
+        (signer, recoverError,) = ECDSA.tryRecoverCalldata(digest, signature);
     }
 
     // -----------------------------------------------------------------

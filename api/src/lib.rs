@@ -59,6 +59,7 @@ pub mod types;
 pub mod vaults;
 pub mod verifiable_intent;
 pub mod wal;
+pub mod withdrawal_chain_observer;
 pub mod ws;
 
 use crate::committee_handler::PendingEncryptedOrders;

@@ -74,8 +74,14 @@ REVOKE INSERT, UPDATE, DELETE ON _sqlx_migrations FROM vela_ledger_writer;
 REVOKE INSERT, UPDATE, DELETE ON ledger_chain_deployments FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_asset_halts FROM vela_ledger_writer;
 REVOKE INSERT, UPDATE, DELETE ON ledger_withdrawal_policy_limits FROM vela_ledger_writer;
+REVOKE INSERT, UPDATE, DELETE ON ledger_withdrawal_contract_capabilities FROM vela_ledger_writer;
+REVOKE INSERT, UPDATE, DELETE ON ledger_withdrawal_confirmation_policies FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_policy_decisions FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_global_withdrawal_halts FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_withdrawal_broadcast_attempts FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_withdrawal_chain_observations FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_withdrawal_executions FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_withdrawal_failure_releases FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;

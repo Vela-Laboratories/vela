@@ -2,8 +2,10 @@ use bigdecimal::BigDecimal;
 use chrono::Utc;
 use ledger::{
     ActivateGlobalWithdrawalHalt, ApproveWithdrawal, ComplianceDisposition,
-    EvaluateWithdrawalPolicy, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
-    PostTransaction, RecordWithdrawalSignature, ReserveWithdrawal, ResolveGlobalWithdrawalHalt,
+    EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
+    JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset, PostTransaction,
+    RecordDroppedWithdrawalAttempt, RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature,
+    ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
     WithdrawalPolicyDisposition, WithdrawalState,
 };
 use serde_json::json;
@@ -19,6 +21,7 @@ struct Fixture {
     asset_id: Uuid,
     available_id: Uuid,
     reserved_id: Uuid,
+    custody_withdrawn_id: Uuid,
 }
 
 impl Fixture {
@@ -38,6 +41,7 @@ impl Fixture {
         let available_id = Uuid::new_v4();
         let reserved_id = Uuid::new_v4();
         let operations_id = Uuid::new_v4();
+        let custody_withdrawn_id = Uuid::new_v4();
         for account in [
             NewAccount {
                 id: available_id,
@@ -62,6 +66,14 @@ impl Fixture {
                 owner_reference: VAULT.to_owned(),
                 account_type: "custody_vault".to_owned(),
                 allow_negative: true,
+            },
+            NewAccount {
+                id: custody_withdrawn_id,
+                asset_id,
+                owner_type: "custody".to_owned(),
+                owner_reference: VAULT.to_owned(),
+                account_type: "custody_withdrawn".to_owned(),
+                allow_negative: false,
             },
             NewAccount {
                 id: operations_id,
@@ -100,6 +112,7 @@ impl Fixture {
             asset_id,
             available_id,
             reserved_id,
+            custody_withdrawn_id,
         }
     }
 
@@ -123,7 +136,55 @@ impl Fixture {
         customer_amount: i64,
         customer_count: i64,
         platform_amount: i64,
-    ) {
+    ) -> Uuid {
+        let deployment_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_chain_deployments (
+                id, chain_id, network, vault_address, deployment_version,
+                runtime_code_hash, deposit_event_signature, deposit_event_topic,
+                finality_policy, start_block
+            ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v2',
+                      $3, 'Deposited(bytes32,address,address,uint256)', $4,
+                      'rpc_finalized_two_provider', 0)
+            "#,
+        )
+        .bind(deployment_id)
+        .bind(VAULT)
+        .bind(format!("0x{}", "11".repeat(32)))
+        .bind(format!("0x{}", "22".repeat(32)))
+        .execute(self.ledger.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_contract_capabilities (
+                deployment_id, authorization_version, execution_event_signature,
+                execution_event_topic, configured_by, evidence
+            ) VALUES ($1, 'eip712_v2',
+                      'WithdrawalExecuted(bytes16,address,address,address,uint256,uint256,uint256,bytes32,bytes32)',
+                      $2, 'risk:configurer', '{"ticket":"EX-026-test"}')
+            "#,
+        )
+        .bind(deployment_id)
+        .bind(format!("0x{}", "33".repeat(32)))
+        .execute(self.ledger.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_confirmation_policies (
+                deployment_id, policy_version, min_confirmations, require_finalized,
+                required_provider_count, effective_at, configured_by, evidence
+            ) VALUES ($1, 'confirmation.test-v1', 2, true, 2,
+                      transaction_timestamp() - interval '1 second',
+                      'risk:configurer', '{"ticket":"EX-026-test"}')
+            "#,
+        )
+        .bind(deployment_id)
+        .execute(self.ledger.pool())
+        .await
+        .unwrap();
         sqlx::query(
             r#"
             INSERT INTO ledger_withdrawal_policy_limits (
@@ -145,6 +206,7 @@ impl Fixture {
         .execute(self.ledger.pool())
         .await
         .unwrap();
+        deployment_id
     }
 
     fn evaluation(
@@ -160,6 +222,63 @@ impl Fixture {
             compliance_reference: format!("screening:{withdrawal_id}"),
             compliance_disposition: disposition,
         }
+    }
+
+    async fn sign_withdrawal(
+        &self,
+        nonce: u64,
+        amount: i64,
+        policy_version: &str,
+        lifetime_seconds: i64,
+    ) -> (ReserveWithdrawal, WithdrawalAuthorization, Uuid) {
+        let deployment_id = self
+            .configure_policy(policy_version, amount * 2, amount * 3, 10, amount * 10)
+            .await;
+        let reservation = self.reservation(nonce, amount);
+        self.ledger.reserve_withdrawal(&reservation).await.unwrap();
+        self.ledger
+            .evaluate_withdrawal_policy(
+                &self.evaluation(reservation.withdrawal_id, ComplianceDisposition::Clear),
+            )
+            .await
+            .unwrap();
+        let approved_at = Utc::now();
+        let authorization = self
+            .ledger
+            .authorize_withdrawal(&ApproveWithdrawal {
+                authorization_id: Uuid::new_v4(),
+                withdrawal_id: reservation.withdrawal_id,
+                policy_version: policy_version.to_owned(),
+                approved_by: "policy:test".to_owned(),
+                approved_at,
+                expires_at: chrono::DateTime::from_timestamp(
+                    approved_at.timestamp() + lifetime_seconds,
+                    0,
+                )
+                .unwrap(),
+            })
+            .await
+            .unwrap();
+        self.ledger
+            .begin_withdrawal_signing(reservation.withdrawal_id, authorization.id)
+            .await
+            .unwrap();
+        let mut signature = [7_u8; 65];
+        signature[64] = 1;
+        self.ledger
+            .record_withdrawal_signature(&RecordWithdrawalSignature {
+                signature_id: Uuid::new_v4(),
+                withdrawal_id: reservation.withdrawal_id,
+                authorization_id: authorization.id,
+                authorization_digest: authorization.digest,
+                signer_key_id: "test-only-key".to_owned(),
+                signer_public_key: vec![2; 33],
+                signature,
+                signed_at: Utc::now(),
+            })
+            .await
+            .unwrap();
+        (reservation, authorization, deployment_id)
     }
 }
 
@@ -763,4 +882,248 @@ async fn policy_rotation_invalidates_an_unsigned_authorization(pool: PgPool) {
         .begin_withdrawal_signing(reservation.withdrawal_id, authorization.id)
         .await
         .is_err());
+}
+
+fn broadcast_attempt(
+    withdrawal_id: Uuid,
+    attempt_id: Uuid,
+    transaction_byte: &str,
+    replacement_of: Option<Uuid>,
+) -> RecordWithdrawalBroadcastAttempt {
+    RecordWithdrawalBroadcastAttempt {
+        attempt_id,
+        withdrawal_id,
+        transaction_hash: format!("0x{}", transaction_byte.repeat(32)),
+        sender_address: CUSTOMER.to_owned(),
+        sender_nonce: 7,
+        calldata_hash: [9; 32],
+        replacement_of,
+        provider_name: "rpc-primary".to_owned(),
+        provider_reference: format!("submission:{attempt_id}"),
+        submitted_by: "withdrawal-broadcaster".to_owned(),
+        submitted_at: Utc::now(),
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn broadcast_attempts_are_immutable_replay_safe_and_replacement_ordered(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (reservation, _, deployment_id) = fixture
+        .sign_withdrawal(101, 200_000, "withdrawal-policy.broadcast", 600)
+        .await;
+    let first = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "44", None);
+    let stored = fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&first)
+        .await
+        .unwrap();
+    let replay = fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&first)
+        .await
+        .unwrap();
+    assert_eq!(stored, replay);
+    assert_eq!(stored.attempt_number, 1);
+
+    let mut wrong_nonce = broadcast_attempt(
+        reservation.withdrawal_id,
+        Uuid::new_v4(),
+        "54",
+        Some(first.attempt_id),
+    );
+    wrong_nonce.sender_nonce = 8;
+    assert!(fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&wrong_nonce)
+        .await
+        .is_err());
+
+    let replacement = broadcast_attempt(
+        reservation.withdrawal_id,
+        Uuid::new_v4(),
+        "55",
+        Some(first.attempt_id),
+    );
+    let replacement = fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&replacement)
+        .await
+        .unwrap();
+    assert_eq!(replacement.attempt_number, 2);
+    assert_eq!(replacement.replacement_of, Some(first.attempt_id));
+    let dropped = fixture
+        .ledger
+        .record_dropped_withdrawal_attempt(&RecordDroppedWithdrawalAttempt {
+            observation_id: Uuid::new_v4(),
+            withdrawal_id: reservation.withdrawal_id,
+            deployment_id,
+            transaction_hash: replacement.transaction_hash.clone(),
+            primary_provider: "rpc-primary".to_owned(),
+            secondary_provider: "rpc-secondary".to_owned(),
+            evidence: json!({ "primary": "not_found", "secondary": "not_found" }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(dropped.state, WithdrawalState::Dropped);
+    let retry = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "aa", None);
+    let retry = fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&retry)
+        .await
+        .unwrap();
+    assert_eq!(retry.attempt_number, 3);
+    assert!(fixture
+        .ledger
+        .record_dropped_withdrawal_attempt(&RecordDroppedWithdrawalAttempt {
+            observation_id: Uuid::new_v4(),
+            withdrawal_id: reservation.withdrawal_id,
+            deployment_id,
+            transaction_hash: replacement.transaction_hash.clone(),
+            primary_provider: "rpc-primary".to_owned(),
+            secondary_provider: "rpc-secondary".to_owned(),
+            evidence: json!({ "stale": true }),
+        })
+        .await
+        .is_err());
+    assert_eq!(
+        fixture
+            .ledger
+            .customer_withdrawals(CUSTOMER, 1)
+            .await
+            .unwrap()[0]
+            .state,
+        WithdrawalState::Broadcast
+    );
+    assert!(sqlx::query(
+        "UPDATE ledger_withdrawal_broadcast_attempts SET provider_reference = 'tampered' WHERE id = $1",
+    )
+    .bind(first.attempt_id)
+    .execute(fixture.ledger.pool())
+    .await
+    .is_err());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn finalized_execution_completes_reserved_funds_even_during_a_halt(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (reservation, _, deployment_id) = fixture
+        .sign_withdrawal(102, 300_000, "withdrawal-policy.execution", 600)
+        .await;
+    let attempt = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "66", None);
+    fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&attempt)
+        .await
+        .unwrap();
+    fixture
+        .ledger
+        .activate_global_withdrawal_halt(&ActivateGlobalWithdrawalHalt {
+            halt_id: Uuid::new_v4(),
+            reason: "execution must still reconcile".to_owned(),
+            evidence: json!({ "incident": "INC-026" }),
+            activated_by: "operator:alice".to_owned(),
+        })
+        .await
+        .unwrap();
+    let command = FinalizedWithdrawalExecution {
+        observation_id: Uuid::new_v4(),
+        completion_transaction_id: Uuid::new_v4(),
+        withdrawal_id: reservation.withdrawal_id,
+        deployment_id,
+        transaction_hash: attempt.transaction_hash,
+        block_number: 1234,
+        block_hash: format!("0x{}", "77".repeat(32)),
+        block_timestamp: Utc::now(),
+        transaction_index: 2,
+        log_index: 3,
+        confirmations: 2,
+        primary_provider: "rpc-primary".to_owned(),
+        secondary_provider: "rpc-secondary".to_owned(),
+        confirmation_policy_version: "confirmation.test-v1".to_owned(),
+        evidence: json!({ "receipt": "exact-event" }),
+    };
+    let confirmed = fixture
+        .ledger
+        .confirm_withdrawal_execution(&command)
+        .await
+        .unwrap();
+    let replay = fixture
+        .ledger
+        .confirm_withdrawal_execution(&command)
+        .await
+        .unwrap();
+    assert_eq!(confirmed.state, WithdrawalState::Confirmed);
+    assert_eq!(confirmed, replay);
+    assert_eq!(
+        fixture.ledger.balance(fixture.reserved_id).await.unwrap(),
+        BigDecimal::from(0)
+    );
+    assert_eq!(
+        fixture
+            .ledger
+            .balance(fixture.custody_withdrawn_id)
+            .await
+            .unwrap(),
+        BigDecimal::from(300_000)
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn reservation_releases_only_after_finalized_two_provider_non_execution(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (reservation, authorization, deployment_id) = fixture
+        .sign_withdrawal(103, 400_000, "withdrawal-policy.expiry", 30)
+        .await;
+    let attempt = broadcast_attempt(reservation.withdrawal_id, Uuid::new_v4(), "88", None);
+    fixture
+        .ledger
+        .record_withdrawal_broadcast_attempt(&attempt)
+        .await
+        .unwrap();
+    let mut proof = FinalizedWithdrawalNonExecution {
+        observation_id: Uuid::new_v4(),
+        release_transaction_id: Uuid::new_v4(),
+        withdrawal_id: reservation.withdrawal_id,
+        deployment_id,
+        last_transaction_hash: Some(attempt.transaction_hash),
+        block_number: 1235,
+        block_hash: format!("0x{}", "99".repeat(32)),
+        block_timestamp: authorization.expires_at + chrono::Duration::seconds(1),
+        confirmations: 2,
+        primary_provider: "rpc-primary".to_owned(),
+        secondary_provider: "rpc-secondary".to_owned(),
+        confirmation_policy_version: "confirmation.test-v1".to_owned(),
+        request_id_unused: true,
+        withdrawal_nonce_unused: true,
+        no_execution_event: true,
+        all_attempts_terminal: true,
+        evidence: json!({ "request_id": "unused", "nonce": "unused" }),
+    };
+    proof.secondary_provider = "RPC-PRIMARY".to_owned();
+    assert!(fixture
+        .ledger
+        .release_expired_withdrawal(&proof)
+        .await
+        .is_err());
+    proof.secondary_provider = "rpc-secondary".to_owned();
+    let released = fixture
+        .ledger
+        .release_expired_withdrawal(&proof)
+        .await
+        .unwrap();
+    let replay = fixture
+        .ledger
+        .release_expired_withdrawal(&proof)
+        .await
+        .unwrap();
+    assert_eq!(released.state, WithdrawalState::BroadcastFailed);
+    assert_eq!(released, replay);
+    assert_eq!(
+        fixture.ledger.balance(fixture.available_id).await.unwrap(),
+        BigDecimal::from(1_000_000)
+    );
+    assert_eq!(
+        fixture.ledger.balance(fixture.reserved_id).await.unwrap(),
+        BigDecimal::from(0)
+    );
 }

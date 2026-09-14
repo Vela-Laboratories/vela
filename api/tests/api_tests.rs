@@ -151,7 +151,7 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     let body: Value = response.json();
     assert_eq!(body["ok"], true);
     assert_eq!(body["ledger"], "ready");
-    assert_eq!(body["ledger_schema_version"], 7);
+    assert_eq!(body["ledger_schema_version"], 8);
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

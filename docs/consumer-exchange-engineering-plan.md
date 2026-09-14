@@ -218,12 +218,12 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Persist the withdrawal before requesting a custody signature; the legacy signer fails closed whenever the authoritative ledger is configured.
 - [x] Bind signing authorization to chain, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID in an immutable Keccak-256 envelope.
 - [x] Replace the authoritative withdrawal path's environment-held signing key with a provider-neutral HSM or MPC adapter boundary that is disabled by default; its deterministic signer is test-only.
-- [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states.
-- [ ] Observe transaction replacement and dropped transactions.
-- [ ] Restore reservations exactly once after permanent failure.
-- [ ] Implement ETH and USDC withdrawals through the same state machine.
+- [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states; the source-only V2 boundary now persists broadcast, replacement, finalized confirmation, and finalized expiry failure, but no runtime worker drives the complete lifecycle.
+- [ ] Observe transaction replacement and dropped transactions; immutable replacement lineage and a disabled-by-default provider adapter exist, but continuous dropped-transaction observation is not running.
+- [x] Restore reservations exactly once after permanent failure, and only after finalized two-provider evidence proves the V2 authorization expired with its request ID and nonce unused, no execution event, and all attempts terminal.
+- [ ] Implement ETH and USDC withdrawals through the same state machine; the V2 contract source supports native and ERC20 transfers, but deployed end-to-end integration is not complete.
 - [x] Add per-user, per-asset, and platform withdrawal limits in atomic asset units, with customer count and amount velocity windows.
-- [x] Add a durable global withdrawal halt that blocks reservation, approval, and signing, with three-party resolution evidence.
+- [x] Add a durable global withdrawal halt that blocks new reservation, approval, and signing, with three-party resolution evidence, while permitting safe release and mandatory reconciliation of already-finalized execution.
 - [x] Add risk and compliance policy hooks without hardcoding a specific vendor; unavailable or review dispositions fail closed and no external screening provider is configured yet.
 - [x] Expose actionable withdrawal reservation status to the frontend, including a signed pre-signing cancellation that releases funds exactly once.
 
@@ -231,7 +231,7 @@ The implementation and tests must preserve these invariants at all times:
 
 - [ ] Custody cannot release funds without a matching durable reservation.
 - [ ] A failed withdrawal cannot permanently destroy customer funds.
-- [ ] Replayed requests and signatures cannot withdraw twice.
+- [x] Replayed V2 requests and signatures cannot withdraw twice at the contract and ledger evidence boundaries; no deployment or real-funds claim is implied.
 - [x] Concurrent withdrawals cannot exceed available balance; serializable reservation tests prove exactly one competing debit succeeds.
 - [ ] Confirmed withdrawals reconcile across custody and ledger.
 - [ ] ETH and USDC pass identical end-to-end state-machine tests.
@@ -476,7 +476,7 @@ Work should begin in this order. Each item should land as a small, independently
     - Add a separately guarded cyclic checkpoint that continuously re-audits previously processed finalized ranges against identical normalized logs from both RPC providers.
     - Detect missing, changed, or newly appeared historical deposit events behind the monotonic forward checkpoint, and require provider agreement before any financial recovery command.
     - Atomically activate an append-only asset-wide halt before moving a contradicted credit from customer available into customer pending; mark complete isolation `reversed` and any spent-funds shortfall `quarantined` with exact evidence.
-    - Enforce halted-asset deposit-credit, trading, fee, rebate, withdrawal-reservation, and withdrawal-completion rejection at the PostgreSQL journal boundary while preserving safe releases and reversal.
+    - Enforce halted-asset deposit-credit, trading, fee, rebate, and new withdrawal-reservation rejection at the PostgreSQL journal boundary while preserving safe releases, reversal, and mandatory journaling of any already-finalized custody execution.
     - Require evidence plus distinct initiator and approver identities to resolve a halt, and withhold resolution permission from the restricted runtime writer.
     - Verify complete reversal, partial-balance isolation, exact shortfall quarantine, idempotent retry, blocked financial operations, immutable halt evidence, audit-provider disagreement, and audit-checkpoint rewind prevention against PostgreSQL 16.
 22. [x] **EX-022: Authoritative customer deposit status and real transaction discovery**
@@ -505,9 +505,17 @@ Work should begin in this order. Each item should land as a small, independently
     - Evaluate each reserved withdrawal in a serializable transaction, including the current reservation in velocity totals, and persist the limits, observations, provider disposition, reason codes, and SHA-256 evidence hash.
     - Require the active policy version, an approved decision, and the same evaluator identity before PostgreSQL accepts a contract-bound custody authorization.
     - Add a provider-neutral compliance disposition contract in which `reject` is denied and `review` or `unavailable` requires review; no external sanctions or blockchain-analytics provider is implied or configured.
-    - Add a global kill switch that blocks new withdrawal reservations, completion, approval, signing, and signature storage, while preserving safe cancellation releases.
+    - Add a global kill switch that blocks new withdrawal reservations, approval, signing, and signature storage, while preserving safe releases and mandatory journaling of any already-finalized custody execution.
     - Make halt activation replay-safe and require immutable evidence plus three distinct operator identities across activation, resolution initiation, and final resolution.
     - Verify per-withdrawal, customer amount/count, platform velocity, compliance-unavailable, authorization-bypass, replay, and global halt behavior against PostgreSQL 16.
+26. [x] **EX-026: V2 relay, execution finality, and permanent-failure accounting boundary**
+    - Replace the legacy caller-bound contract authorization in source with a permissionlessly relayed EIP-712 V2 payload binding request ID, customer, destination, asset, amount, nonce, deadline, policy hash, approver hash, chain, and deployment.
+    - Consume request IDs and per-customer nonces before transferring ETH or ERC20, emit the complete signed execution identity, and verify relay, replay, expiry, domain separation, evidence binding, and a fixed cross-language digest vector in Foundry.
+    - Register immutable V2 contract capabilities and versioned two-provider finalized confirmation policies before PostgreSQL accepts an executable authorization.
+    - Persist immutable broadcast attempts and immediate-predecessor replacement lineage, while keeping the provider-neutral chain observer disabled by default and its deterministic provider test-only.
+    - Atomically store finalized matching execution evidence, journal `customer_withdrawal_reserved` to `custody_withdrawn`, and transition to `confirmed` exactly once.
+    - Release an expired reservation exactly once only after finalized proof that the request ID and nonce remain unused, no execution event exists, and every attempt is terminal; ambiguous transactions remain reserved.
+    - Keep the entire chapter source- and test-only: no contract deployment, runtime broadcaster or observer worker, real RPC provider, production signer, or funds are enabled.
 
 ## Parallel nonengineering work
 
