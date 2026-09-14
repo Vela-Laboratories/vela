@@ -53,27 +53,27 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Disable the current unauthenticated `POST /deposit` crediting path.
 - [ ] Stop accepting a user-provided address, asset, and amount as sufficient evidence of a deposit.
 - [ ] Stop generating synthetic transaction hashes for deposits.
-- [ ] Require the real chain ID and transaction hash for every direct deposit.
-- [ ] Verify that the transaction was sent to the correct settlement contract.
-- [ ] Verify that the correct deposit event was emitted.
-- [ ] Verify the depositor address.
-- [ ] Verify the asset address.
-- [ ] Verify the actual amount received.
-- [ ] Wait for an asset-specific number of confirmations before final credit.
+- [x] Require the real chain ID and transaction hash for every authoritative deposit observation; the testnet-only synthetic demo endpoint remains separately contained.
+- [x] Verify that the transaction log came from the immutable-registry settlement contract.
+- [x] Verify that the pinned `Deposited(bytes32,address,address,uint256)` event was emitted.
+- [x] Verify the indexed depositor/beneficiary address for the current self-deposit contract flow.
+- [x] Verify the indexed asset address against the ledger asset registry.
+- [x] Verify the actual amount received; ERC20 custody now measures and emits the vault balance delta.
+- [x] Wait for the asset-and-chain finality policy before final credit; Base ETH and USDC require two-provider agreement at the highest common `finalized` height.
 - [ ] Handle chain reorganizations.
 - [ ] Reverse or quarantine deposits invalidated by a reorganization.
 - [x] Make finalized deposit crediting idempotent at the ledger boundary.
 - [x] Prevent the same canonical transaction log from being recorded or credited twice at the ledger boundary.
 - [x] Store chain ID, vault, block number, block hash, transaction hash, transaction index, and log index for every authoritative deposit observation.
 - [ ] Complete observed, confirming, finalized, credited, rejected, orphaned, quarantined, and reversed deposit workflows; typed states and guarded pre-credit transitions exist, while post-credit reversal remains open.
-- [ ] Build a dedicated deposit indexer.
-- [ ] Use redundant RPC providers.
-- [ ] Add RPC disagreement and stale-head detection.
+- [x] Build a dedicated deposit indexer with restart-safe PostgreSQL checkpointing and a single-worker lease.
+- [x] Use redundant RPC providers with distinct configured names and origins.
+- [x] Add RPC disagreement, wrong-chain, stale-head, provider-lag, finalized-regression, and pinned-bytecode detection that halts credits.
 - [x] Decide which ledger is authoritative.
 - [x] Make PostgreSQL balance projections authoritative for customer REST and WebSocket reads; matching-engine balances are only a replayed execution cache when the ledger is configured.
 - [x] Fail closed on every known legacy API route that directly mutates matching-engine balances while the authoritative ledger is configured.
 - [ ] Complete integration of the double-entry financial ledger; matcher reservations, releases, trades, fees, rebates, and referral payouts use it when configured, while deposits, withdrawals, recovery, and reconciliation remain open.
-- [ ] Journal every deposit.
+- [x] Journal every authoritative finalized deposit atomically with its credited state; unverified demo credits remain testnet-only and non-authoritative.
 - [x] Journal every matcher-produced trade when the authoritative ledger is configured.
 - [x] Journal every matcher-produced fee when the authoritative ledger is configured.
 - [x] Journal every matcher-produced rebate when the authoritative ledger is configured.

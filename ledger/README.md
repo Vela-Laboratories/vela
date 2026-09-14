@@ -70,6 +70,10 @@ current limitations.
 See [the ledger database runbook](../docs/operations/ledger-database.md) for
 setup, migration, access, and recovery procedures.
 
+See [the Base deposit indexer runbook](../docs/operations/base-deposit-indexer.md)
+for immutable deployment registration, redundant RPC requirements, finalized
+event ingestion, and halt response.
+
 ## Migration rules
 
 - Migrations in `migrations/` are append-only after they have reached a shared environment.

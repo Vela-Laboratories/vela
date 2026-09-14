@@ -12,6 +12,7 @@ members = [
     "perp",
     "fix",
     "ledger",
+    "indexer",
 ]
 resolver = "2"
 
@@ -51,7 +52,7 @@ ahash = { version = "0.8", features = ["serde"] }
 bigdecimal = { version = "0.4", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "bigdecimal", "json", "migrate", "macros"] }
-uuid = { version = "1", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4", "v5"] }
 
 # Workspace-level clippy config. `cargo clippy --workspace -- -D warnings`
 # still catches real bugs; these allows only cover categories that either

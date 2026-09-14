@@ -19,24 +19,29 @@ COPY perp/Cargo.toml          perp/Cargo.toml
 COPY fix/Cargo.toml           fix/Cargo.toml
 COPY ledger/Cargo.toml        ledger/Cargo.toml
 COPY ledger/migrations        ledger/migrations
+COPY indexer/Cargo.toml       indexer/Cargo.toml
 COPY benches/Cargo.toml       benches/Cargo.toml
-RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin benches/benches \
+RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin indexer/src/bin benches/benches \
     && echo 'fn main() {}' > api/src/main.rs \
     && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
     && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
     && echo 'fn main() {}' > ledger/src/bin/bootstrap.rs \
+    && echo '' > indexer/src/lib.rs \
+    && echo 'fn main() {}' > indexer/src/main.rs \
+    && echo 'fn main() {}' > indexer/src/bin/register.rs \
     && echo 'fn main() {}' > engine/benches/matching_engine_bench.rs \
     && echo 'fn main() {}' > benches/benches/matching.rs \
     && echo 'fn main() {}' > benches/benches/e2e_http.rs \
     && echo 'fn main() {}' > benches/benches/sustained_throughput.rs \
     && cargo build --release --bin api \
-    && rm -rf api engine state types committer committee tee zkvm perp fix ledger benches
+    && rm -rf api engine state types committer committee tee zkvm perp fix ledger indexer benches
 
 # Now copy the real source and build for real.
 COPY . .
-RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src \
+RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src \
       -type f -exec touch {} + \
-    && cargo build --release --bin api --bin ledger-migrate --bin ledger-bootstrap
+    && cargo build --release --bin api --bin ledger-migrate --bin ledger-bootstrap \
+      --bin deposit-indexer --bin deposit-indexer-register
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -52,6 +57,8 @@ RUN apt-get update \
 COPY --from=builder /app/target/release/api /usr/local/bin/api
 COPY --from=builder /app/target/release/ledger-migrate /usr/local/bin/ledger-migrate
 COPY --from=builder /app/target/release/ledger-bootstrap /usr/local/bin/ledger-bootstrap
+COPY --from=builder /app/target/release/deposit-indexer /usr/local/bin/deposit-indexer
+COPY --from=builder /app/target/release/deposit-indexer-register /usr/local/bin/deposit-indexer-register
 
 USER vela
 WORKDIR /app

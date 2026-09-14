@@ -47,9 +47,37 @@ contract VelaSettlementTest is Test {
     }
 
     function test_depositETH() public {
+        vm.recordLogs();
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
         assertEq(settlement.getBalance(user, address(0)), 1 ether);
+        assertEq(settlement.depositNonce(), 1);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1);
+        assertEq(logs[0].topics.length, 4);
+        assertEq(logs[0].topics[0], keccak256("Deposited(bytes32,address,address,uint256)"));
+        assertEq(logs[0].topics[1], keccak256(abi.encode(block.chainid, address(settlement), user, address(0), 0)));
+        assertEq(address(uint160(uint256(logs[0].topics[2]))), user);
+        assertEq(address(uint160(uint256(logs[0].topics[3]))), address(0));
+        assertEq(abi.decode(logs[0].data, (uint256)), 1 ether);
+    }
+
+    function test_depositIdsAreUniqueAcrossDepositsAndDeployments() public {
+        vm.recordLogs();
+        vm.startPrank(user);
+        settlement.depositETH{ value: 1 ether }();
+        settlement.depositETH{ value: 1 ether }();
+        vm.stopPrank();
+        Vm.Log[] memory firstLogs = vm.getRecordedLogs();
+        assertNotEq(firstLogs[0].topics[1], firstLogs[1].topics[1]);
+
+        VelaSettlement other = new VelaSettlement(operator);
+        vm.recordLogs();
+        vm.prank(user);
+        other.depositETH{ value: 1 ether }();
+        Vm.Log[] memory otherLogs = vm.getRecordedLogs();
+        assertNotEq(firstLogs[0].topics[1], otherLogs[0].topics[1]);
     }
 
     function test_initiateAndExecuteEmergencyExit() public {

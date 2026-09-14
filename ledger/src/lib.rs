@@ -91,6 +91,15 @@ pub struct NewAsset {
     pub contract_address: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainAsset {
+    pub id: Uuid,
+    pub code: String,
+    pub decimals: i16,
+    pub chain_id: i64,
+    pub contract_address: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAccount {
     pub id: Uuid,
@@ -243,7 +252,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 2;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 3;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {
@@ -382,6 +391,53 @@ impl Ledger {
             return Err(LedgerError::AssetConfigurationConflict(asset.code.clone()));
         }
         Ok(())
+    }
+
+    pub async fn resolve_chain_asset(
+        &self,
+        chain_id: i64,
+        contract_address: Option<&str>,
+    ) -> Result<ChainAsset, LedgerError> {
+        if chain_id <= 0
+            || contract_address.is_some_and(|address| {
+                address.len() != 42
+                    || !address.starts_with("0x")
+                    || !address.as_bytes()[2..]
+                        .iter()
+                        .all(|byte| byte.is_ascii_hexdigit())
+            })
+        {
+            return Err(LedgerError::InvalidDeposit(
+                "chain asset lookup is malformed".to_owned(),
+            ));
+        }
+        let normalized = contract_address.map(str::to_ascii_lowercase);
+        let row = sqlx::query_as::<_, (Uuid, String, i16, i64, Option<String>)>(
+            r#"
+            SELECT id, code, decimals, chain_id, contract_address
+            FROM ledger_assets
+            WHERE chain_id = $1
+              AND COALESCE(lower(contract_address), '0x0000000000000000000000000000000000000000')
+                  = COALESCE($2, '0x0000000000000000000000000000000000000000')
+            "#,
+        )
+        .bind(chain_id)
+        .bind(normalized)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            LedgerError::MissingAsset(format!(
+                "chain {chain_id} contract {}",
+                contract_address.unwrap_or("native")
+            ))
+        })?;
+        Ok(ChainAsset {
+            id: row.0,
+            code: row.1,
+            decimals: row.2,
+            chain_id: row.3,
+            contract_address: row.4,
+        })
     }
 
     pub async fn create_account(&self, account: &NewAccount) -> Result<(), LedgerError> {

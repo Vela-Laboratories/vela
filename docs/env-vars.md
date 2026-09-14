@@ -34,10 +34,31 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 | `DATABASE_MIGRATOR_URL` | — | Privileged URL used only by the controlled `ledger-migrate` and `ledger-bootstrap` commands. The API does not read it. |
 | `VELA_USDC_ADDRESS` | — | Native USDC contract used only by `ledger-bootstrap`; required when bootstrapping a ledger environment. |
 | `VELA_CUSTODY_VAULT_ADDRESS` | — | Allowlisted omnibus custody-vault address used by `ledger-bootstrap` to provision per-asset custody counter-accounts. |
+| `VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION` | — | Immutable version label registered for the deployed custody bytecode. |
+| `VELA_CUSTODY_VAULT_CODE_HASH` | — | Keccak-256 hash of the deployed runtime bytecode, registered before indexing. |
+| `VELA_CUSTODY_VAULT_START_BLOCK` | — | Exact deployment block. The indexer will never scan before this block. |
 | `VELA_DATABASE_MAX_CONNECTIONS` | `10` | Bounded SQLx writer pool size. Must be greater than zero. |
 | `VELA_DATABASE_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pooled connection. Must be greater than zero. |
 | `VELA_DATABASE_STATEMENT_TIMEOUT_MS` | `2000` | PostgreSQL statement timeout applied to each API connection. Must be greater than zero. |
 | `VELA_DATABASE_SERIALIZABLE_RETRIES` | `3` | Maximum retries after PostgreSQL serialization failures or deadlocks. |
+
+## Base deposit indexer
+
+The indexer accepts only the pinned `Deposited(bytes32,address,address,uint256)` event emitted by the current `VelaSettlement` source. It uses the PostgreSQL writer credential at runtime and the migrator credential only for deployment registration. RPC URLs are secrets and must name two independently operated providers with different origins.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `VELA_INDEXER_DEPLOYMENT_ID` | — | **REQUIRED.** Stable UUID for the immutable deployment registry row. |
+| `VELA_INDEXER_NETWORK` | — | Registration-only network name: `base` for chain 8453 or `base-sepolia` for chain 84532. |
+| `VELA_BASE_RPC_PRIMARY_NAME` / `VELA_BASE_RPC_SECONDARY_NAME` | — | **REQUIRED.** Distinct nonsecret provider labels stored with finality evidence. |
+| `VELA_BASE_RPC_PRIMARY_URL` / `VELA_BASE_RPC_SECONDARY_URL` | — | **REQUIRED.** Secret HTTPS RPC endpoints from independent origins. Never expose these to the frontend. |
+| `VELA_INDEXER_RPC_TIMEOUT_MS` | `5000` | Per-request timeout. |
+| `VELA_INDEXER_POLL_MS` | `2000` | Healthy polling interval. |
+| `VELA_INDEXER_RETRY_MAX_MS` | `30000` | Maximum exponential backoff after a safety halt or provider failure. |
+| `VELA_INDEXER_MAX_HEAD_AGE_SECONDS` | `120` | Maximum wall-clock age for each provider's latest block. |
+| `VELA_INDEXER_MAX_PROVIDER_BLOCK_LAG` | `3` | Maximum difference between provider latest-block heights. |
+| `VELA_INDEXER_BATCH_SIZE` | `500` | Maximum finalized block range per scan. |
+| `VELA_INDEXER_LEASE_SECONDS` | `30` | PostgreSQL single-worker lease duration. |
 
 ## Chain & contract
 

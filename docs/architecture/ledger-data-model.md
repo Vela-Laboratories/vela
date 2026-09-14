@@ -4,7 +4,7 @@
 
 PostgreSQL is Vela's authoritative financial system of record. The matching engine proposes deterministic effects; the ledger validates and commits ownership changes before any success response or public event. All asset amounts are signed integer base units stored as PostgreSQL `NUMERIC`, never floating point.
 
-The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
+The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. Migration `0003_chain_indexer.sql` adds the immutable deployment registry, single-worker lease, monotonic finalized checkpoint, and halt evidence for the Base indexer. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
 
 ## Accounts
 

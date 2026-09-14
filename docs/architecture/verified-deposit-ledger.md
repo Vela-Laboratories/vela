@@ -2,7 +2,7 @@
 
 ## Scope
 
-This chapter establishes the durable half of the Base deposit pipeline. It does not claim that a production chain indexer exists. A future indexer is the only intended caller of these ledger commands and must still validate the deployed vault bytecode, event signature, provider health, and deployment registry.
+The durable ledger commands are now connected to a dedicated Base indexer. The process validates the immutable deployment registry, runtime bytecode hash, exact event ABI, provider health, and two independent RPC views before it calls these commands. It is implemented and locally verified, but it is not a production deployment: the updated vault still needs audit and Base Sepolia deployment, and protected database/RPC configuration still needs provisioning.
 
 ## Observation identity
 
@@ -30,6 +30,12 @@ A pre-credit reorganization moves the deposit to `orphaned` and cannot produce a
 
 The idempotency key is derived from canonical chain-event identity and its request hash binds the deposit, destination account, custody account, amount, and key. Retrying returns the original journal transaction without applying a second credit. The controlled bootstrap provisions per-asset custody accounts for the configured vault.
 
+## Indexer boundary
+
+Migration 0003 adds an append-only deployment registry, a single-worker lease, a monotonic restart checkpoint, and immutable halt evidence. The indexer scans only through the providers' highest common finalized height. It rejects stale latest heads, excessive provider lag, wrong chain IDs, finalized hash disagreement or regression, runtime bytecode mismatch, malformed or duplicate logs, out-of-range results, unregistered assets, and ledger rejection. Checkpoints advance only after every event in the range reaches an idempotent terminal credit result.
+
+The legacy Sepolia deployment emits the older three-field event and is intentionally incompatible. Only a newly deployed contract with `Deposited(bytes32,address,address,uint256)` can be registered.
+
 ## Remaining launch work
 
-The dedicated Base indexer, versioned deployment registry, ABI/topic validation, redundant RPC clients, stale-head detection, confirmation policy, customer deposit-status API, frontend transaction discovery, credited-event reversal, custody reconciliation, and operational alerting remain Milestone 3 blockers.
+Base Sepolia contract deployment, managed indexer hosting, protected provider/database configuration, customer deposit-status API, frontend transaction discovery, credited-event reversal, custody reconciliation, and operational alerting remain Milestone 3 blockers.

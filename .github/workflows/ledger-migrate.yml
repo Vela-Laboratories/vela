@@ -28,6 +28,10 @@ jobs:
         env:
           DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
         run: cargo run --locked --release -p ledger --bin ledger-migrate
+      - name: Reapply least-privilege database grants
+        env:
+          DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
+        run: psql "$DATABASE_MIGRATOR_URL" -v ON_ERROR_STOP=1 -f ledger/sql/roles.sql
       - name: Bootstrap ETH/USDC ledger accounts
         env:
           DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
@@ -35,3 +39,14 @@ jobs:
           VELA_USDC_ADDRESS: ${{ vars.VELA_USDC_ADDRESS }}
           VELA_CUSTODY_VAULT_ADDRESS: ${{ vars.VELA_CUSTODY_VAULT_ADDRESS }}
         run: cargo run --locked --release -p ledger --bin ledger-bootstrap
+      - name: Register immutable custody deployment
+        env:
+          DATABASE_MIGRATOR_URL: ${{ secrets.DATABASE_MIGRATOR_URL }}
+          VELA_INDEXER_DEPLOYMENT_ID: ${{ vars.VELA_INDEXER_DEPLOYMENT_ID }}
+          VELA_INDEXER_NETWORK: ${{ vars.VELA_INDEXER_NETWORK }}
+          VELA_CHAIN_ID: ${{ vars.VELA_CHAIN_ID }}
+          VELA_CUSTODY_VAULT_ADDRESS: ${{ vars.VELA_CUSTODY_VAULT_ADDRESS }}
+          VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION: ${{ vars.VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION }}
+          VELA_CUSTODY_VAULT_CODE_HASH: ${{ vars.VELA_CUSTODY_VAULT_CODE_HASH }}
+          VELA_CUSTODY_VAULT_START_BLOCK: ${{ vars.VELA_CUSTODY_VAULT_START_BLOCK }}
+        run: cargo run --locked --release -p indexer --bin deposit-indexer-register

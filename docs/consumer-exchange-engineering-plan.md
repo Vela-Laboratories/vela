@@ -180,17 +180,17 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M3 tasks
 
-- [ ] Build a dedicated chain indexer for the selected launch chain.
-- [ ] Observe the correct contract and deposit event signature.
+- [x] Build a dedicated chain indexer for the selected launch chain; the provider-agnostic Base service is implemented and locally verified, while managed hosting remains open.
+- [x] Observe the correct contract and deposit event signature; the source now emits and the indexer strictly decodes `Deposited(bytes32,address,address,uint256)`. The legacy Sepolia deployment is intentionally incompatible and must not be registered.
 - [x] Record chain ID, contract, block number, block hash, transaction hash, transaction index, and log index in the durable observation command.
-- [ ] Verify depositor, beneficiary, asset, and actual received amount.
+- [x] Verify depositor, beneficiary, asset, and actual received amount; the current self-deposit ABI binds depositor and beneficiary to the indexed user, allowlists the ledger asset, and emits the measured ERC20 balance delta.
 - [ ] Complete pending, confirming, finalized, failed, quarantined, and reversed workflows; the typed model, database guards, confirming/finalized path, and pre-credit orphan handling are implemented, while credited reversal remains open.
-- [ ] Define confirmation thresholds per asset and chain.
+- [x] Define confirmation thresholds per asset and chain; launch-scope Base ETH and USDC both use the pinned `rpc_finalized_two_provider` policy, and latest-head confirmation counts are evidence only.
 - [ ] Detect and process chain reorganizations.
 - [x] Make canonical event identity unique and observation idempotent.
 - [x] Journal final deposit credits through the ledger atomically with credited state and immutable history.
-- [ ] Add redundant RPC providers.
-- [ ] Detect stale providers and provider disagreement.
+- [x] Add redundant RPC providers with distinct configured names and URL origins.
+- [x] Detect stale providers and provider disagreement before observation, credit, or checkpoint advancement.
 - [ ] Expose deposit progress and evidence to the customer API.
 - [ ] Update the frontend to submit or discover the real transaction hash.
 - [ ] Remove the invented transaction-hash path.
@@ -200,7 +200,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] No API request can credit funds without a verified chain event.
 - [x] The same canonical log cannot be recorded or credited twice at the ledger boundary.
 - [ ] Reorganizations do not leave invalid finalized credits.
-- [ ] Provider failure cannot silently produce a credit.
+- [x] Provider failure cannot silently produce a credit at the indexer boundary; timeout, stale head, chain mismatch, bytecode mismatch, log disagreement, and finalized disagreement all fail closed.
 - [ ] Customers can see pending and finalized deposit status.
 - [ ] Custody and ledger amounts reconcile after every finalized deposit.
 
@@ -465,6 +465,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Enforce canonical case-insensitive chain-event identity, immutable deposit facts, valid state transitions, and same-transaction history in PostgreSQL migration 0002.
     - Atomically post the custody/customer journal movement, balance projections, outbox event, credited state, and history under a chain-derived idempotency key.
     - Provision per-asset custody-vault counter-accounts and verify exact retries, conflicting evidence, provider disagreement, pre-finality rejection, reorg orphaning, transition bypass, atomic credit, and double-credit prevention against PostgreSQL 16.
+20. [x] **EX-020: Fail-closed Base deposit indexer and vault event boundary**
+    - Replace the ambiguous three-field vault event with a deployment-scoped indexed deposit ID and emit the measured ERC20 balance delta as the authoritative amount.
+    - Add an immutable Base deployment registry with pinned runtime bytecode hash, event ABI/topic, deployment block, and two-provider finalized policy.
+    - Add a dedicated indexer binary with distinct RPC-origin validation, request timeouts, stale-head and lag detection, highest-common-finalized hash agreement, bytecode verification, exact normalized log agreement, and strict ABI decoding.
+    - Route verified ETH/USDC events through deterministic observation, confirming, finality, and atomic ledger credit commands; reject unregistered assets and missing custody accounts.
+    - Add a PostgreSQL single-worker lease, monotonic restart checkpoint, immutable halt evidence, bounded retry/backoff, graceful shutdown, controlled deployment-registration command, and migration-workflow grants.
+    - Verify exact credit and checkpointing, restart idempotency, malformed and duplicate log rejection, provider disagreement, stale heads, wrong bytecode, lease exclusion, registry immutability, and checkpoint rewind prevention against PostgreSQL 16.
 
 ## Parallel nonengineering work
 

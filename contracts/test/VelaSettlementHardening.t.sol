@@ -140,21 +140,20 @@ contract VelaSettlementHardeningTest is Test {
     // ERC20 edge cases
     // ---------------------------------------------------------------
 
-    /// Fee-on-transfer tokens over-credit users if the contract naively
-    /// trusts the requested amount. VelaSettlement uses
-    /// `safeTransferFrom` and credits `amount` — meaning FoT tokens
-    /// leave the contract short by the fee. We surface that here so
-    /// operators know to allowlist non-FoT assets only.
-    function test_depositTokenOverCreditsFeeOnTransfer() public {
+    /// Credits and emits the amount the vault actually received, not the
+    /// caller-provided transfer amount.
+    function test_depositTokenUsesActualFeeOnTransferAmount() public {
+        vm.recordLogs();
         vm.startPrank(user);
         fot.approve(address(settlement), 100e18);
         settlement.depositToken(address(fot), 100e18);
         vm.stopPrank();
-        // Contract credited full amount, but actually received 99e18.
-        assertEq(settlement.getBalance(user, address(fot)), 100e18);
+        assertEq(settlement.getBalance(user, address(fot)), 99e18);
         assertEq(fot.balanceOf(address(settlement)), 99e18);
-        // Documented risk: the last withdrawal would fail
-        // safeTransfer. Guarded operationally by not listing FoT tokens.
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        Vm.Log memory deposited = logs[logs.length - 1];
+        assertEq(deposited.topics[0], keccak256("Deposited(bytes32,address,address,uint256)"));
+        assertEq(abi.decode(deposited.data, (uint256)), 99e18);
     }
 
     /// A reverting ERC20 must not corrupt state — the whole tx reverts.

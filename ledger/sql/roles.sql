@@ -71,10 +71,19 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO vela_ledger_reader;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO vela_ledger_writer;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vela_ledger_writer;
 REVOKE INSERT, UPDATE, DELETE ON _sqlx_migrations FROM vela_ledger_writer;
+REVOKE INSERT, UPDATE, DELETE ON ledger_chain_deployments FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
 GRANT UPDATE (state, credit_transaction_id, updated_at) ON ledger_deposits TO vela_ledger_writer;
+GRANT UPDATE (
+    next_block,
+    last_finalized_block_number,
+    last_finalized_block_hash,
+    lease_owner,
+    lease_expires_at,
+    updated_at
+) ON ledger_indexer_checkpoints TO vela_ledger_writer;
 GRANT UPDATE (
     state,
     reservation_transaction_id,

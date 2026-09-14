@@ -78,6 +78,12 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     // Prevents replay of a valid operator withdrawal signature.
     mapping(address => mapping(uint256 => bool)) public usedWithdrawNonces;
 
+    /// Monotonic, deployment-scoped deposit nonce. The nonce is part of the
+    /// emitted deposit ID so every custody credit has an identity that is
+    /// independent of transaction/log position and can be pinned by the
+    /// off-chain deployment registry.
+    uint256 public depositNonce;
+
     // ETH represented as address(0)
     address public constant ETH = address(0);
 
@@ -101,7 +107,7 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     error OperatorTimelockActive();
     error ZeroAddress();
 
-    event Deposited(address indexed user, address indexed asset, uint256 amount);
+    event Deposited(bytes32 indexed depositId, address indexed user, address indexed asset, uint256 amount);
     event Withdrawn(address indexed user, address indexed asset, uint256 amount, uint256 nonce);
     event EmergencyExitInitiated(address indexed user, address indexed asset, uint256 unlockAt);
     event EmergencyExitExecuted(address indexed user, address indexed asset, uint256 amount);
@@ -146,15 +152,23 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable {
     function depositETH() external payable nonReentrant whenNotPaused {
         if (msg.value == 0) revert ZeroAmount();
         balances[msg.sender][ETH].amount += msg.value;
-        emit Deposited(msg.sender, ETH, msg.value);
+        emit Deposited(_nextDepositId(msg.sender, ETH), msg.sender, ETH, msg.value);
     }
 
     function depositToken(address asset, uint256 amount) external nonReentrant whenNotPaused {
         if (amount == 0) revert ZeroAmount();
         if (asset == ETH) revert UseDepositETHForNative();
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-        balances[msg.sender][asset].amount += amount;
-        emit Deposited(msg.sender, asset, amount);
+        uint256 actualAmount = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        if (actualAmount == 0) revert ZeroAmount();
+        balances[msg.sender][asset].amount += actualAmount;
+        emit Deposited(_nextDepositId(msg.sender, asset), msg.sender, asset, actualAmount);
+    }
+
+    function _nextDepositId(address user, address asset) private returns (bytes32 depositId) {
+        uint256 nonce = depositNonce++;
+        return keccak256(abi.encode(block.chainid, address(this), user, asset, nonce));
     }
 
     // -----------------------------------------------------------------

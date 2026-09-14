@@ -65,7 +65,11 @@ cargo run --locked --release -p ledger --bin ledger-bootstrap
 
 Use the chain ID, native USDC contract, and allowlisted omnibus vault for the target environment. The command provisions ETH, USDC, `platform:vela` fee/rebate accounts, and negative-enabled custody-vault counter-accounts for both assets. It refuses to overwrite an existing asset definition or account policy with different configuration. Matcher commits may create missing customer available/locked accounts for these approved assets, but cannot introduce a new asset.
 
-The manually approved GitHub migration workflow runs migration and bootstrap in sequence. Configure `VELA_CHAIN_ID`, `VELA_USDC_ADDRESS`, and `VELA_CUSTODY_VAULT_ADDRESS` as environment variables and keep `DATABASE_MIGRATOR_URL` as an environment secret.
+The manually approved GitHub migration workflow runs migration, role grants,
+bootstrap, and immutable custody-deployment registration in sequence. Configure
+the variables listed in the
+[Base deposit indexer runbook](base-deposit-indexer.md) and keep
+`DATABASE_MIGRATOR_URL` as an environment secret.
 
 ## Database roles and secrets
 
@@ -138,6 +142,13 @@ writer insert/read access, denial of journal deletion, reader read-only access,
 and migrator DDL access. This is local evidence only; the managed database,
 offsite backup, point-in-time recovery, and disaster-recovery rehearsal remain
 open launch requirements.
+
+On 2026-09-13 migration 0003 was also rehearsed from an empty PostgreSQL 16
+database. The schema reached exact version 3, `roles.sql` reapplied cleanly,
+and a restricted writer could read the deployment registry and insert/update
+indexer checkpoints and halt evidence while an attempted deployment-registry
+insert was denied. This does not replace a managed-environment migration or
+restore rehearsal.
 
 ## Managed-environment completion gate
 
