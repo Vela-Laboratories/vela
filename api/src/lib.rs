@@ -29,6 +29,7 @@ pub mod backtest_attest;
 pub mod borrow_lend;
 pub mod committee_handler;
 pub mod credit;
+pub mod custody_signer;
 pub mod da;
 pub mod feeds;
 pub mod fix_adapter;

@@ -1,7 +1,8 @@
 use bigdecimal::BigDecimal;
+use chrono::Utc;
 use ledger::{
-    JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset, PostTransaction, ReserveWithdrawal,
-    WithdrawalState,
+    ApproveWithdrawal, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset, PostTransaction,
+    RecordWithdrawalSignature, ReserveWithdrawal, WithdrawalState,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -219,11 +220,176 @@ async fn database_requires_guarded_identity_and_state_history(pool: PgPool) {
             .await;
     assert!(identity_change.is_err());
 
-    let mut transaction = fixture.ledger.pool().begin().await.unwrap();
-    sqlx::query("UPDATE ledger_withdrawals SET state = 'approved' WHERE id = $1")
-        .bind(command.withdrawal_id)
-        .execute(&mut *transaction)
+    let direct_transition =
+        sqlx::query("UPDATE ledger_withdrawals SET state = 'approved' WHERE id = $1")
+            .bind(command.withdrawal_id)
+            .execute(fixture.ledger.pool())
+            .await;
+    assert!(direct_transition.is_err());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_safe(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let reservation = fixture.reservation(41, 250_000);
+    fixture
+        .ledger
+        .reserve_withdrawal(&reservation)
         .await
         .unwrap();
-    assert!(transaction.commit().await.is_err());
+
+    let approved_at = Utc::now();
+    let expires_at = chrono::DateTime::from_timestamp(approved_at.timestamp() + 600, 0).unwrap();
+    let approval = ApproveWithdrawal {
+        authorization_id: Uuid::new_v4(),
+        withdrawal_id: reservation.withdrawal_id,
+        policy_version: "withdrawal-policy.v1".to_owned(),
+        approved_by: "policy:test".to_owned(),
+        approved_at,
+        expires_at,
+    };
+    let (authorization, replay) = tokio::join!(
+        fixture.ledger.authorize_withdrawal(&approval),
+        fixture.ledger.authorize_withdrawal(&approval)
+    );
+    let authorization = authorization.unwrap();
+    let replay = replay.unwrap();
+    assert_eq!(authorization, replay);
+    let reservation_replay = fixture
+        .ledger
+        .reserve_withdrawal(&reservation)
+        .await
+        .unwrap();
+    assert_eq!(
+        reservation_replay.withdrawal.state,
+        WithdrawalState::Approved
+    );
+    for expected in [
+        reservation.withdrawal_id.to_string(),
+        "chain_id=84532".to_owned(),
+        format!("vault={VAULT}"),
+        format!("customer={CUSTOMER}"),
+        "asset=USDC".to_owned(),
+        "asset_address=0x3333333333333333333333333333333333333333".to_owned(),
+        "amount_atomic=250000".to_owned(),
+        "nonce=41".to_owned(),
+    ] {
+        assert!(authorization.canonical_payload.contains(&expected));
+    }
+
+    let begun = fixture
+        .ledger
+        .begin_withdrawal_signing(reservation.withdrawal_id, authorization.id)
+        .await
+        .unwrap();
+    assert_eq!(begun.digest, authorization.digest);
+    let mut signature = [7_u8; 65];
+    signature[64] = 1;
+    let signed_at = Utc::now();
+    let record = RecordWithdrawalSignature {
+        signature_id: Uuid::new_v4(),
+        withdrawal_id: reservation.withdrawal_id,
+        authorization_id: authorization.id,
+        authorization_digest: authorization.digest,
+        signer_key_id: "test-only-key".to_owned(),
+        signer_public_key: vec![2; 33],
+        signature,
+        signed_at,
+    };
+    let stored = fixture
+        .ledger
+        .record_withdrawal_signature(&record)
+        .await
+        .unwrap();
+    let mut replay_record = record.clone();
+    replay_record.signature_id = Uuid::new_v4();
+    let replayed = fixture
+        .ledger
+        .record_withdrawal_signature(&replay_record)
+        .await
+        .unwrap();
+    assert_eq!(stored, replayed);
+    assert_eq!(
+        fixture
+            .ledger
+            .customer_withdrawals(CUSTOMER, 1)
+            .await
+            .unwrap()[0]
+            .state,
+        WithdrawalState::Signed
+    );
+    assert_eq!(
+        fixture.ledger.balance(fixture.reserved_id).await.unwrap(),
+        BigDecimal::from(250_000)
+    );
+
+    let mutation = sqlx::query(
+        "UPDATE ledger_withdrawal_authorizations SET policy_version = 'tampered' WHERE id = $1",
+    )
+    .bind(authorization.id)
+    .execute(fixture.ledger.pool())
+    .await;
+    assert!(mutation.is_err());
+
+    assert!(matches!(
+        fixture
+            .ledger
+            .cancel_reserved_withdrawal(reservation.withdrawal_id, CUSTOMER, Uuid::new_v4())
+            .await,
+        Err(LedgerError::InvalidWithdrawalTransition { .. })
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn database_rejects_authorization_that_changes_withdrawal_facts(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let reservation = fixture.reservation(51, 100_000);
+    let reserved = fixture
+        .ledger
+        .reserve_withdrawal(&reservation)
+        .await
+        .unwrap()
+        .withdrawal;
+    let approved_at = Utc::now();
+    let expires_at = chrono::DateTime::from_timestamp(approved_at.timestamp() + 600, 0).unwrap();
+
+    let mismatched = sqlx::query(
+        r#"
+        INSERT INTO ledger_withdrawal_authorizations (
+            id, withdrawal_id, envelope_version, chain_id, vault_address,
+            customer_reference, destination_address, asset_id, asset_address,
+            amount, nonce, expires_at, canonical_payload, digest,
+            policy_version, approved_by, approved_at
+        ) VALUES ($1, $2, 'vela.withdrawal.authorization.v1', $3, $4, $5, $6,
+                  $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(reservation.withdrawal_id)
+    .bind(1_i64)
+    .bind(VAULT)
+    .bind(CUSTOMER)
+    .bind(CUSTOMER)
+    .bind(reserved.asset_id)
+    .bind("0x3333333333333333333333333333333333333333")
+    .bind(BigDecimal::from(100_000))
+    .bind(BigDecimal::from(51))
+    .bind(expires_at)
+    .bind("tampered-chain")
+    .bind(vec![8_u8; 32])
+    .bind("withdrawal-policy.v1")
+    .bind("policy:test")
+    .bind(approved_at)
+    .execute(fixture.ledger.pool())
+    .await;
+    assert!(mismatched.is_err());
+    assert_eq!(
+        fixture
+            .ledger
+            .customer_withdrawals(CUSTOMER, 1)
+            .await
+            .unwrap()[0]
+            .state,
+        WithdrawalState::Reserved
+    );
 }

@@ -21,7 +21,11 @@ The customer nonce and request ID are unique. An identical retry returns the ori
 
 `POST /withdrawals/{id}/cancel` requires a fresh customer signature. Only `reserved` requests can be cancelled. Cancellation journals the exact reverse movement and records `cancelled` in the same transaction; retries return the original release rather than crediting twice.
 
-The legacy `/withdrawal-signature` route now fails closed whenever the authoritative ledger is configured. This prevents the environment-held demo signer from releasing custody assets without consuming a durable reservation. A future signer adapter must bind the withdrawal request ID, chain, vault, customer, destination, asset, amount, nonce, and expiry before the `approved`, `signing`, and `signed` transitions can be enabled.
+The legacy `/withdrawal-signature` route fails closed whenever the authoritative ledger is configured. This prevents the environment-held demo signer from releasing custody assets without consuming a durable reservation.
+
+EX-024 adds a provider-neutral `CustodySigner` boundary for a dedicated custody worker. Approval stores one immutable authorization envelope that binds the withdrawal request ID, chain, vault contract, customer, destination, asset code and on-chain token address, atomic amount, nonce, expiry, policy version, and approver. Its Keccak-256 digest is the only signing payload exposed to an adapter. The boundary recovers every returned signature against the adapter's configured secp256k1 public key before storing it. PostgreSQL refuses `approved`, `signing`, and `signed` transitions unless their matching authorization and signature evidence already exist, and both evidence tables are append-only.
+
+The default signer is disabled. A deterministic secp256k1 implementation exists only inside Rust tests, so this chapter adds no deployable private key, vendor account, or cost. Adapter failures leave the amount reserved and retryable rather than pretending a transfer occurred. A production HSM or MPC adapter, risk/compliance approval source, broadcast worker, permanent-failure release, and confirmation reconciliation remain required before real funds.
 
 ## Customer status
 

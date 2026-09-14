@@ -216,8 +216,8 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Validate available balance and locked exposure at the authoritative account boundary; only `customer_available` can fund a reservation.
 - [x] Atomically reserve the ledger amount in `customer_withdrawal_reserved`.
 - [x] Persist the withdrawal before requesting a custody signature; the legacy signer fails closed whenever the authoritative ledger is configured.
-- [ ] Bind signing authorization to chain, contract, user, destination, asset, amount, nonce, and request ID.
-- [ ] Replace the environment-held signing key with an HSM or MPC adapter boundary.
+- [x] Bind signing authorization to chain, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID in an immutable Keccak-256 envelope.
+- [x] Replace the authoritative withdrawal path's environment-held signing key with a provider-neutral HSM or MPC adapter boundary that is disabled by default; its deterministic signer is test-only.
 - [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states.
 - [ ] Observe transaction replacement and dropped transactions.
 - [ ] Restore reservations exactly once after permanent failure.
@@ -232,7 +232,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Custody cannot release funds without a matching durable reservation.
 - [ ] A failed withdrawal cannot permanently destroy customer funds.
 - [ ] Replayed requests and signatures cannot withdraw twice.
-- [ ] Concurrent withdrawals cannot exceed available balance.
+- [x] Concurrent withdrawals cannot exceed available balance; serializable reservation tests prove exactly one competing debit succeeds.
 - [ ] Confirmed withdrawals reconcile across custody and ledger.
 - [ ] ETH and USDC pass identical end-to-end state-machine tests.
 
@@ -493,6 +493,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Add guarded database transitions, immutable withdrawal identity, mandatory same-transaction state history, and an exactly-once pre-signing cancellation release.
     - Fail closed on the legacy environment-held custody signer whenever the ledger is authoritative; custody approval, signing, broadcast, completion, and reconciliation remain later M4/M5 work.
     - Expose ledger-only customer status and update the frontend to preflight, reserve, poll, explain, and safely cancel ETH/USDC withdrawal requests.
+24. [x] **EX-024: Contract-bound custody signer adapter**
+    - Persist a versioned authorization envelope binding request ID, chain, vault contract, customer, destination, asset code and token address, atomic amount, nonce, expiry, policy version, and approver.
+    - Hash the canonical envelope with Keccak-256, expose only its immutable digest to a provider-neutral asynchronous `CustodySigner` interface, and recover the returned signature against its configured secp256k1 public key.
+    - Guard `reserved` to `approved` to `signing` to `signed` transitions in PostgreSQL and require matching append-only authorization and recoverable-signature evidence.
+    - Make authorization and signature retries return the original evidence, reject conflicting identifiers or digests, and preserve the financial reservation throughout signing.
+    - Keep the runtime signer disabled and place the deterministic secp256k1 implementation behind tests only, with no vendor account, deployable key, broadcast, or real-funds path.
+    - Verify exact field binding, signature recovery, evidence immutability, transition bypass rejection, and signed-state reservation preservation.
 
 ## Parallel nonengineering work
 

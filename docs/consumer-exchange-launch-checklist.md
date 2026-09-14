@@ -139,7 +139,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 ## Withdrawal system
 
 - [x] Disable production withdrawal signing until durable ledger reservation exists.
-- [ ] Replace the current independent withdrawal-signature flow.
+- [x] Replace the authoritative path's independent withdrawal-signature flow with a reservation-bound signer adapter; retain the legacy signer only for non-authoritative demos.
 - [x] Require authenticated customer authorization before generating a withdrawal reservation.
 - [x] Atomically reserve the withdrawal amount in the ledger.
 - [x] Check available balance before signing.
@@ -148,8 +148,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Check sanctions status before signing.
 - [ ] Check withdrawal velocity and risk limits.
 - [x] Store the withdrawal request before producing a custody signature.
-- [ ] Bind signatures to chain ID, contract, user, asset, amount, nonce, and request ID.
-- [ ] Mark signatures as issued and prevent duplicate issuance.
+- [x] Bind custody authorization to chain ID, vault contract, user, destination, asset code and token address, amount, nonce, expiry, policy, approver, and request ID.
+- [x] Mark signatures as issued in immutable PostgreSQL evidence and prevent duplicate issuance per withdrawal and authorization.
 - [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts.
 - [ ] Track submitted, pending, confirmed, failed, replaced, and dropped transactions.
 - [ ] Restore reserved funds if a withdrawal fails permanently.

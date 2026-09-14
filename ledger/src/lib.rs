@@ -202,6 +202,8 @@ pub enum LedgerError {
     WithdrawalNotFound(Uuid),
     #[error("invalid withdrawal transition from {from} to {to}")]
     InvalidWithdrawalTransition { from: String, to: String },
+    #[error("withdrawal authorization was not found: {0}")]
+    WithdrawalAuthorizationNotFound(Uuid),
     #[error("independent RPC providers did not agree on finalized evidence")]
     DepositFinalityDisagreement,
     #[error("journal replay referenced unknown account: {0}")]
@@ -260,7 +262,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 5;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 6;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {

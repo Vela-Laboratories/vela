@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use sha3::Keccak256;
 use sqlx::{FromRow, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -121,6 +122,63 @@ pub struct ReservedWithdrawal {
     pub transaction: PostedTransaction,
 }
 
+#[derive(Debug, Clone)]
+pub struct ApproveWithdrawal {
+    pub authorization_id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub policy_version: String,
+    pub approved_by: String,
+    pub approved_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawalAuthorization {
+    pub id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub envelope_version: String,
+    pub chain_id: i64,
+    pub vault_address: String,
+    pub customer_reference: String,
+    pub destination_address: String,
+    pub asset_id: Uuid,
+    pub asset_code: String,
+    pub asset_address: String,
+    pub amount: BigDecimal,
+    pub nonce: BigDecimal,
+    pub expires_at: DateTime<Utc>,
+    pub canonical_payload: String,
+    pub digest: [u8; 32],
+    pub policy_version: String,
+    pub approved_by: String,
+    pub approved_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordWithdrawalSignature {
+    pub signature_id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub authorization_id: Uuid,
+    pub authorization_digest: [u8; 32],
+    pub signer_key_id: String,
+    pub signer_public_key: Vec<u8>,
+    pub signature: [u8; 65],
+    pub signed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawalSignatureRecord {
+    pub id: Uuid,
+    pub withdrawal_id: Uuid,
+    pub authorization_id: Uuid,
+    pub authorization_digest: [u8; 32],
+    pub signer_key_id: String,
+    pub signer_public_key: Vec<u8>,
+    pub algorithm: String,
+    pub signature: [u8; 65],
+    pub signed_at: DateTime<Utc>,
+}
+
 #[derive(Debug, FromRow)]
 struct StoredWithdrawal {
     id: Uuid,
@@ -129,6 +187,7 @@ struct StoredWithdrawal {
     asset_id: Uuid,
     asset_code: String,
     asset_decimals: i16,
+    asset_contract_address: Option<String>,
     destination_address: String,
     amount: BigDecimal,
     state: String,
@@ -142,6 +201,89 @@ struct StoredWithdrawal {
     transaction_hash: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct StoredWithdrawalAuthorization {
+    id: Uuid,
+    withdrawal_id: Uuid,
+    envelope_version: String,
+    chain_id: i64,
+    vault_address: String,
+    customer_reference: String,
+    destination_address: String,
+    asset_id: Uuid,
+    asset_code: String,
+    asset_address: String,
+    amount: BigDecimal,
+    nonce: BigDecimal,
+    expires_at: DateTime<Utc>,
+    canonical_payload: String,
+    digest: Vec<u8>,
+    policy_version: String,
+    approved_by: String,
+    approved_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct StoredWithdrawalSignature {
+    id: Uuid,
+    withdrawal_id: Uuid,
+    authorization_id: Uuid,
+    authorization_digest: Vec<u8>,
+    signer_key_id: String,
+    signer_public_key: Vec<u8>,
+    algorithm: String,
+    signature: Vec<u8>,
+    signed_at: DateTime<Utc>,
+}
+
+impl TryFrom<StoredWithdrawalAuthorization> for WithdrawalAuthorization {
+    type Error = LedgerError;
+
+    fn try_from(value: StoredWithdrawalAuthorization) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            withdrawal_id: value.withdrawal_id,
+            envelope_version: value.envelope_version,
+            chain_id: value.chain_id,
+            vault_address: value.vault_address,
+            customer_reference: value.customer_reference,
+            destination_address: value.destination_address,
+            asset_id: value.asset_id,
+            asset_code: value.asset_code,
+            asset_address: value.asset_address,
+            amount: value.amount,
+            nonce: value.nonce,
+            expires_at: value.expires_at,
+            canonical_payload: value.canonical_payload,
+            digest: fixed_bytes(value.digest, "withdrawal authorization digest")?,
+            policy_version: value.policy_version,
+            approved_by: value.approved_by,
+            approved_at: value.approved_at,
+        })
+    }
+}
+
+impl TryFrom<StoredWithdrawalSignature> for WithdrawalSignatureRecord {
+    type Error = LedgerError;
+
+    fn try_from(value: StoredWithdrawalSignature) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            withdrawal_id: value.withdrawal_id,
+            authorization_id: value.authorization_id,
+            authorization_digest: fixed_bytes(
+                value.authorization_digest,
+                "withdrawal signature digest",
+            )?,
+            signer_key_id: value.signer_key_id,
+            signer_public_key: value.signer_public_key,
+            algorithm: value.algorithm,
+            signature: fixed_bytes(value.signature, "withdrawal signature")?,
+            signed_at: value.signed_at,
+        })
+    }
 }
 
 impl TryFrom<StoredWithdrawal> for WithdrawalRecord {
@@ -520,6 +662,280 @@ impl Ledger {
         withdrawal.try_into()
     }
 
+    pub async fn authorize_withdrawal(
+        &self,
+        command: &ApproveWithdrawal,
+    ) -> Result<WithdrawalAuthorization, LedgerError> {
+        let mut attempt = 0_u32;
+        loop {
+            match self.authorize_withdrawal_once(command).await {
+                Err(error)
+                    if (is_retryable_transaction_error(&error)
+                        || is_withdrawal_evidence_race(&error))
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn authorize_withdrawal_once(
+        &self,
+        command: &ApproveWithdrawal,
+    ) -> Result<WithdrawalAuthorization, LedgerError> {
+        validate_approval(command)?;
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
+
+        if let Some(existing) =
+            load_authorization_by_withdrawal(&mut tx, command.withdrawal_id).await?
+        {
+            let existing: WithdrawalAuthorization = existing.try_into()?;
+            ensure_same_authorization(&existing, &withdrawal, command)?;
+            tx.commit().await?;
+            return Ok(existing);
+        }
+
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if state != WithdrawalState::Reserved {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Approved.as_str().to_owned(),
+            });
+        }
+        let nonce = withdrawal.nonce.clone().ok_or_else(|| {
+            LedgerError::InvalidWithdrawal("withdrawal authorization requires a nonce".to_owned())
+        })?;
+        let canonical_payload = authorization_payload(&withdrawal, &nonce, command);
+        let digest: [u8; 32] = Keccak256::digest(canonical_payload.as_bytes()).into();
+
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_authorizations (
+                id, withdrawal_id, envelope_version, chain_id, vault_address,
+                customer_reference, destination_address, asset_id, asset_address, amount, nonce,
+                expires_at, canonical_payload, digest, policy_version, approved_by, approved_at
+            )
+            VALUES ($1, $2, 'vela.withdrawal.authorization.v1', $3, lower($4),
+                    lower($5), lower($6), $7, lower($8), $9, $10, $11, $12, $13, $14, $15, $16)
+            "#,
+        )
+        .bind(command.authorization_id)
+        .bind(command.withdrawal_id)
+        .bind(withdrawal.chain_id)
+        .bind(&withdrawal.vault_address)
+        .bind(&withdrawal.customer_reference)
+        .bind(&withdrawal.destination_address)
+        .bind(withdrawal.asset_id)
+        .bind(asset_address(&withdrawal).to_ascii_lowercase())
+        .bind(&withdrawal.amount)
+        .bind(&nonce)
+        .bind(command.expires_at)
+        .bind(&canonical_payload)
+        .bind(digest.as_slice())
+        .bind(&command.policy_version)
+        .bind(&command.approved_by)
+        .bind(command.approved_at)
+        .execute(&mut *tx)
+        .await?;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            Some(WithdrawalState::Reserved),
+            WithdrawalState::Approved,
+            "withdrawal policy produced a durable contract-bound authorization",
+            json!({
+                "authorization_id": command.authorization_id,
+                "authorization_digest": hex_digest(&digest),
+                "policy_version": command.policy_version,
+                "expires_at": command.expires_at,
+            }),
+            Some(&command.approved_by),
+        )
+        .await?;
+        sqlx::query(
+            "UPDATE ledger_withdrawals SET state = 'approved', updated_at = transaction_timestamp() WHERE id = $1 AND state = 'reserved'",
+        )
+        .bind(command.withdrawal_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let authorization = load_authorization_by_withdrawal(&mut tx, command.withdrawal_id)
+            .await?
+            .ok_or(LedgerError::WithdrawalAuthorizationNotFound(
+                command.withdrawal_id,
+            ))?;
+        tx.commit().await?;
+        authorization.try_into()
+    }
+
+    pub async fn begin_withdrawal_signing(
+        &self,
+        withdrawal_id: Uuid,
+        authorization_id: Uuid,
+    ) -> Result<WithdrawalAuthorization, LedgerError> {
+        let mut attempt = 0_u32;
+        loop {
+            match self
+                .begin_withdrawal_signing_once(withdrawal_id, authorization_id)
+                .await
+            {
+                Err(error)
+                    if is_retryable_transaction_error(&error)
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn begin_withdrawal_signing_once(
+        &self,
+        withdrawal_id: Uuid,
+        authorization_id: Uuid,
+    ) -> Result<WithdrawalAuthorization, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, withdrawal_id).await?;
+        let authorization = load_authorization_by_withdrawal(&mut tx, withdrawal_id)
+            .await?
+            .ok_or(LedgerError::WithdrawalAuthorizationNotFound(withdrawal_id))?;
+        if authorization.id != authorization_id {
+            return Err(LedgerError::IdempotencyConflict);
+        }
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if state == WithdrawalState::Approved {
+            insert_history(
+                &mut tx,
+                withdrawal_id,
+                Some(state),
+                WithdrawalState::Signing,
+                "custody signer accepted the durable authorization",
+                json!({ "authorization_id": authorization_id }),
+                Some("custody-signer"),
+            )
+            .await?;
+            sqlx::query("UPDATE ledger_withdrawals SET state = 'signing', updated_at = transaction_timestamp() WHERE id = $1 AND state = 'approved'")
+                .bind(withdrawal_id)
+                .execute(&mut *tx)
+                .await?;
+        } else if !matches!(state, WithdrawalState::Signing | WithdrawalState::Signed) {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Signing.as_str().to_owned(),
+            });
+        }
+        tx.commit().await?;
+        authorization.try_into()
+    }
+
+    pub async fn record_withdrawal_signature(
+        &self,
+        command: &RecordWithdrawalSignature,
+    ) -> Result<WithdrawalSignatureRecord, LedgerError> {
+        let mut attempt = 0_u32;
+        loop {
+            match self.record_withdrawal_signature_once(command).await {
+                Err(error)
+                    if (is_retryable_transaction_error(&error)
+                        || is_withdrawal_evidence_race(&error))
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn record_withdrawal_signature_once(
+        &self,
+        command: &RecordWithdrawalSignature,
+    ) -> Result<WithdrawalSignatureRecord, LedgerError> {
+        validate_signature_record(command)?;
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let withdrawal = load_withdrawal_for_update(&mut tx, command.withdrawal_id).await?;
+        if let Some(existing) = load_signature(&mut tx, command.withdrawal_id).await? {
+            let existing: WithdrawalSignatureRecord = existing.try_into()?;
+            ensure_same_signature(&existing, command)?;
+            tx.commit().await?;
+            return Ok(existing);
+        }
+        let state = WithdrawalState::from_str(&withdrawal.state)?;
+        if state != WithdrawalState::Signing {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Signed.as_str().to_owned(),
+            });
+        }
+        let authorization = load_authorization_by_withdrawal(&mut tx, command.withdrawal_id)
+            .await?
+            .ok_or(LedgerError::WithdrawalAuthorizationNotFound(
+                command.withdrawal_id,
+            ))?;
+        if authorization.id != command.authorization_id
+            || authorization.digest.as_slice() != command.authorization_digest
+        {
+            return Err(LedgerError::IdempotencyConflict);
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_signatures (
+                id, withdrawal_id, authorization_id, authorization_digest,
+                signer_key_id, signer_public_key, algorithm, signature, signed_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'secp256k1_recoverable', $7, $8)
+            "#,
+        )
+        .bind(command.signature_id)
+        .bind(command.withdrawal_id)
+        .bind(command.authorization_id)
+        .bind(command.authorization_digest.as_slice())
+        .bind(&command.signer_key_id)
+        .bind(&command.signer_public_key)
+        .bind(command.signature.as_slice())
+        .bind(command.signed_at)
+        .execute(&mut *tx)
+        .await?;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            Some(state),
+            WithdrawalState::Signed,
+            "custody signer returned immutable recoverable signature evidence",
+            json!({
+                "authorization_id": command.authorization_id,
+                "signature_id": command.signature_id,
+                "signer_key_id": command.signer_key_id,
+            }),
+            Some("custody-signer"),
+        )
+        .await?;
+        sqlx::query("UPDATE ledger_withdrawals SET state = 'signed', updated_at = transaction_timestamp() WHERE id = $1 AND state = 'signing'")
+            .bind(command.withdrawal_id)
+            .execute(&mut *tx)
+            .await?;
+        let signature = load_signature(&mut tx, command.withdrawal_id)
+            .await?
+            .ok_or_else(|| {
+                LedgerError::InvalidWithdrawal("withdrawal signature was not stored".to_owned())
+            })?;
+        tx.commit().await?;
+        signature.try_into()
+    }
+
     pub async fn customer_withdrawals(
         &self,
         customer_reference: &str,
@@ -543,12 +959,31 @@ impl Ledger {
         .await?;
         rows.into_iter().map(TryInto::try_into).collect()
     }
+
+    pub async fn withdrawal_signature(
+        &self,
+        withdrawal_id: Uuid,
+    ) -> Result<Option<WithdrawalSignatureRecord>, LedgerError> {
+        let stored = sqlx::query_as::<_, StoredWithdrawalSignature>(
+            r#"
+            SELECT id, withdrawal_id, authorization_id, authorization_digest,
+                   signer_key_id, signer_public_key, algorithm, signature, signed_at
+            FROM ledger_withdrawal_signatures
+            WHERE withdrawal_id = $1
+            "#,
+        )
+        .bind(withdrawal_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        stored.map(TryInto::try_into).transpose()
+    }
 }
 
 fn withdrawal_select() -> &'static str {
     r#"
     SELECT withdrawal.id, withdrawal.customer_reference, withdrawal.source_account_id,
            withdrawal.asset_id, asset.code AS asset_code, asset.decimals AS asset_decimals,
+           asset.contract_address AS asset_contract_address,
            withdrawal.destination_address, withdrawal.amount, withdrawal.state,
            withdrawal.reservation_transaction_id, withdrawal.completion_transaction_id,
            withdrawal.release_transaction_id, withdrawal.chain_id, withdrawal.vault_address,
@@ -557,6 +992,51 @@ fn withdrawal_select() -> &'static str {
     FROM ledger_withdrawals withdrawal
     JOIN ledger_assets asset ON asset.id = withdrawal.asset_id
     "#
+}
+
+fn authorization_select() -> &'static str {
+    r#"
+    SELECT authz.id, authz.withdrawal_id,
+           authz.envelope_version, authz.chain_id,
+           authz.vault_address, authz.customer_reference,
+           authz.destination_address, authz.asset_id,
+           asset.code AS asset_code, authz.asset_address, authz.amount, authz.nonce,
+           authz.expires_at, authz.canonical_payload,
+           authz.digest, authz.policy_version,
+           authz.approved_by, authz.approved_at
+    FROM ledger_withdrawal_authorizations authz
+    JOIN ledger_assets asset ON asset.id = authz.asset_id
+    "#
+}
+
+async fn load_authorization_by_withdrawal(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<Option<StoredWithdrawalAuthorization>, LedgerError> {
+    Ok(sqlx::query_as::<_, StoredWithdrawalAuthorization>(&format!(
+        "{} WHERE authz.withdrawal_id = $1",
+        authorization_select()
+    ))
+    .bind(withdrawal_id)
+    .fetch_optional(&mut **tx)
+    .await?)
+}
+
+async fn load_signature(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<Option<StoredWithdrawalSignature>, LedgerError> {
+    Ok(sqlx::query_as::<_, StoredWithdrawalSignature>(
+        r#"
+        SELECT id, withdrawal_id, authorization_id, authorization_digest,
+               signer_key_id, signer_public_key, algorithm, signature, signed_at
+        FROM ledger_withdrawal_signatures
+        WHERE withdrawal_id = $1
+        "#,
+    )
+    .bind(withdrawal_id)
+    .fetch_optional(&mut **tx)
+    .await?)
 }
 
 async fn load_existing_reservation(
@@ -712,6 +1192,137 @@ fn validate_reservation(command: &ReserveWithdrawal) -> Result<(), LedgerError> 
     Ok(())
 }
 
+fn validate_approval(command: &ApproveWithdrawal) -> Result<(), LedgerError> {
+    let now = Utc::now();
+    let lifetime = command.expires_at - command.approved_at;
+    if command.authorization_id == Uuid::nil()
+        || command.withdrawal_id == Uuid::nil()
+        || command.policy_version.is_empty()
+        || command.policy_version.len() > 255
+        || !command
+            .policy_version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+        || command.approved_by.trim().is_empty()
+        || command.approved_by.len() > 255
+        || !command.approved_by.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-' | b'@')
+        })
+        || command.approved_at > now
+        || command.expires_at <= now
+        || command.expires_at.timestamp_subsec_nanos() != 0
+        || lifetime > chrono::Duration::hours(1)
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "withdrawal approval identity, policy, and one-hour maximum expiry are required"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn authorization_payload(
+    withdrawal: &StoredWithdrawal,
+    nonce: &BigDecimal,
+    command: &ApproveWithdrawal,
+) -> String {
+    format!(
+        "vela.withdrawal.authorization.v1|request_id={}|chain_id={}|vault={}|customer={}|destination={}|asset={}|asset_address={}|amount_atomic={}|nonce={}|expires_at={}|policy={}|approved_by={}",
+        withdrawal.id,
+        withdrawal.chain_id,
+        withdrawal.vault_address.to_ascii_lowercase(),
+        withdrawal.customer_reference.to_ascii_lowercase(),
+        withdrawal.destination_address.to_ascii_lowercase(),
+        withdrawal.asset_code,
+        asset_address(withdrawal).to_ascii_lowercase(),
+        withdrawal.amount.normalized().to_plain_string(),
+        nonce.normalized().to_plain_string(),
+        command.expires_at.timestamp(),
+        command.policy_version,
+        command.approved_by,
+    )
+}
+
+fn asset_address(withdrawal: &StoredWithdrawal) -> &str {
+    withdrawal
+        .asset_contract_address
+        .as_deref()
+        .unwrap_or("0x0000000000000000000000000000000000000000")
+}
+
+fn ensure_same_authorization(
+    existing: &WithdrawalAuthorization,
+    withdrawal: &StoredWithdrawal,
+    command: &ApproveWithdrawal,
+) -> Result<(), LedgerError> {
+    let nonce = withdrawal.nonce.as_ref().ok_or_else(|| {
+        LedgerError::InvalidWithdrawal("withdrawal authorization requires a nonce".to_owned())
+    })?;
+    let expected_payload = authorization_payload(withdrawal, nonce, command);
+    let expected_digest: [u8; 32] = Keccak256::digest(expected_payload.as_bytes()).into();
+    if existing.id != command.authorization_id
+        || existing.canonical_payload != expected_payload
+        || existing.digest != expected_digest
+        || existing.policy_version != command.policy_version
+        || existing.approved_by != command.approved_by
+        || existing.approved_at.timestamp_micros() != command.approved_at.timestamp_micros()
+        || existing.expires_at.timestamp_micros() != command.expires_at.timestamp_micros()
+    {
+        return Err(LedgerError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn validate_signature_record(command: &RecordWithdrawalSignature) -> Result<(), LedgerError> {
+    if command.signature_id == Uuid::nil()
+        || command.withdrawal_id == Uuid::nil()
+        || command.authorization_id == Uuid::nil()
+        || command.signer_key_id.trim().is_empty()
+        || command.signer_key_id.len() > 255
+        || !matches!(command.signer_public_key.len(), 33 | 65)
+        || command.signature[..64].iter().all(|byte| *byte == 0)
+        || command.signature[64] > 1
+        || command.signed_at > Utc::now()
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "canonical recoverable withdrawal signature evidence is invalid".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_same_signature(
+    existing: &WithdrawalSignatureRecord,
+    command: &RecordWithdrawalSignature,
+) -> Result<(), LedgerError> {
+    if existing.withdrawal_id != command.withdrawal_id
+        || existing.authorization_id != command.authorization_id
+        || existing.authorization_digest != command.authorization_digest
+        || existing.signer_key_id != command.signer_key_id
+        || existing.signer_public_key != command.signer_public_key
+        || existing.algorithm != "secp256k1_recoverable"
+    {
+        return Err(LedgerError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn fixed_bytes<const N: usize>(value: Vec<u8>, label: &str) -> Result<[u8; N], LedgerError> {
+    value.try_into().map_err(|_| {
+        LedgerError::InvalidWithdrawal(format!("stored {label} has an invalid length"))
+    })
+}
+
+fn hex_digest(digest: &[u8; 32]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
 fn ensure_same_reservation(
     existing: &StoredWithdrawal,
     command: &ReserveWithdrawal,
@@ -783,6 +1394,23 @@ fn is_withdrawal_nonce_race(error: &LedgerError) -> bool {
         LedgerError::Database(sqlx::Error::Database(database_error))
             if database_error.code().as_deref() == Some("23505")
                 && database_error.constraint() == Some("ledger_withdrawals_customer_nonce")
+    )
+}
+
+fn is_withdrawal_evidence_race(error: &LedgerError) -> bool {
+    matches!(
+        error,
+        LedgerError::Database(sqlx::Error::Database(database_error))
+            if database_error.code().as_deref() == Some("23505")
+                && matches!(
+                    database_error.constraint(),
+                    Some(
+                        "ledger_withdrawal_authorizations_withdrawal_id_key"
+                            | "ledger_withdrawal_authorizations_digest_key"
+                            | "ledger_withdrawal_signatures_withdrawal_id_key"
+                            | "ledger_withdrawal_signatures_authorization_id_key"
+                    )
+                )
     )
 }
 
