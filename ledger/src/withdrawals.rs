@@ -3447,14 +3447,15 @@ fn address_word(value: &str) -> Result<[u8; 32], LedgerError> {
         ));
     }
     let mut output = [0_u8; 32];
-    for (index, pair) in value.as_bytes()[2..].chunks_exact(2).enumerate() {
-        let high = hex_nibble(pair[0]).ok_or_else(|| {
+    let address = &value.as_bytes()[2..];
+    for (index, byte) in output[12..].iter_mut().enumerate() {
+        let high = hex_nibble(address[index * 2]).ok_or_else(|| {
             LedgerError::InvalidWithdrawal("contract address hex is invalid".to_owned())
         })?;
-        let low = hex_nibble(pair[1]).ok_or_else(|| {
+        let low = hex_nibble(address[index * 2 + 1]).ok_or_else(|| {
             LedgerError::InvalidWithdrawal("contract address hex is invalid".to_owned())
         })?;
-        output[12 + index] = (high << 4) | low;
+        *byte = (high << 4) | low;
     }
     Ok(output)
 }

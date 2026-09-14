@@ -20,8 +20,9 @@ COPY fix/Cargo.toml           fix/Cargo.toml
 COPY ledger/Cargo.toml        ledger/Cargo.toml
 COPY ledger/migrations        ledger/migrations
 COPY indexer/Cargo.toml       indexer/Cargo.toml
+COPY withdrawal-worker/Cargo.toml withdrawal-worker/Cargo.toml
 COPY benches/Cargo.toml       benches/Cargo.toml
-RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin indexer/src/bin benches/benches \
+RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin indexer/src/bin withdrawal-worker/src benches/benches \
     && echo 'fn main() {}' > api/src/main.rs \
     && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
     && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
@@ -29,16 +30,18 @@ RUN mkdir -p api/src engine/src engine/benches state/src types/src committer/src
     && echo '' > indexer/src/lib.rs \
     && echo 'fn main() {}' > indexer/src/main.rs \
     && echo 'fn main() {}' > indexer/src/bin/register.rs \
+    && echo '' > withdrawal-worker/src/lib.rs \
+    && echo 'fn main() {}' > withdrawal-worker/src/main.rs \
     && echo 'fn main() {}' > engine/benches/matching_engine_bench.rs \
     && echo 'fn main() {}' > benches/benches/matching.rs \
     && echo 'fn main() {}' > benches/benches/e2e_http.rs \
     && echo 'fn main() {}' > benches/benches/sustained_throughput.rs \
     && cargo build --release --bin api \
-    && rm -rf api engine state types committer committee tee zkvm perp fix ledger indexer benches
+    && rm -rf api engine state types committer committee tee zkvm perp fix ledger indexer withdrawal-worker benches
 
 # Now copy the real source and build for real.
 COPY . .
-RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src \
+RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src withdrawal-worker/src \
       -type f -exec touch {} + \
     && cargo build --release --bin api --bin ledger-migrate --bin ledger-bootstrap \
       --bin deposit-indexer --bin deposit-indexer-register
