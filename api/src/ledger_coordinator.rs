@@ -281,7 +281,7 @@ fn build_legs(
         .collect()
 }
 
-fn scale_engine_amount(amount: i128, asset_decimals: i16) -> Result<BigDecimal, String> {
+pub(crate) fn scale_engine_amount(amount: i128, asset_decimals: i16) -> Result<BigDecimal, String> {
     if asset_decimals < 0 {
         return Err("asset decimals cannot be negative".to_owned());
     }

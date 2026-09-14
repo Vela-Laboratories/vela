@@ -139,6 +139,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/account/{address}/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authoritative customer withdrawal reservations and status */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    address: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ledger-backed withdrawal states */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["WithdrawalStatusResponse"][];
+                            ok?: boolean;
+                        };
+                    };
+                };
+                /** @description Invalid address or limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authoritative ledger is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents/register": {
         parameters: {
             query?: never;
@@ -1787,7 +1844,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit signed withdrawal */
+        /** Authenticate and atomically reserve a customer withdrawal */
         post: {
             parameters: {
                 query?: never;
@@ -1795,10 +1852,103 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WithdrawBody"];
+                };
+            };
             responses: {
-                /** @description Queued */
+                /** @description Withdrawal durably reserved */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid customer signature */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Insufficient balance or idempotency conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Authoritative reservation unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/withdrawals/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a pre-signing withdrawal and release its reservation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelWithdrawalBody"];
+                };
+            };
+            responses: {
+                /** @description Reservation released exactly once */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid customer signature */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Withdrawal not found for customer */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Withdrawal can no longer be safely cancelled */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1891,6 +2041,12 @@ export interface components {
             client_order_id?: string;
             nonce: number;
             order_id?: number;
+            signature: string;
+        };
+        CancelWithdrawalBody: {
+            address: string;
+            /** Format: int64 */
+            nonce: number;
             signature: string;
         };
         DepositStatusResponse: {
@@ -2053,6 +2209,43 @@ export interface components {
             signature: string;
             /** @default 12 */
             slices: number;
+        };
+        WithdrawBody: {
+            address: string;
+            /** @description Positive integer in the matching engine's 8-decimal units */
+            amount: string;
+            /** @enum {string} */
+            asset: "ETH" | "USDC";
+            destination_address: string;
+            /** Format: int64 */
+            nonce: number;
+            signature: string;
+            /** Format: uuid */
+            withdrawal_id: string;
+        };
+        WithdrawalStatusResponse: {
+            /** @description Human-readable exact decimal amount */
+            amount: string;
+            /** @description Integer amount in the asset's smallest unit */
+            amount_atomic: string;
+            /** @enum {string} */
+            asset: "ETH" | "USDC";
+            /** Format: int64 */
+            chain_id: number;
+            /** Format: date-time */
+            created_at: string;
+            destination_address: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            nonce: string;
+            /** @enum {string} */
+            state: "requested" | "reserved" | "approved" | "signing" | "signed" | "broadcast" | "confirmed" | "rejected" | "cancelled" | "signing_failed" | "broadcast_failed" | "replaced" | "dropped" | "reversed";
+            transaction_hash?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            vault_address: string;
         };
     };
     responses: never;

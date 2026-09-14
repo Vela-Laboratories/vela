@@ -1,0 +1,794 @@
+use std::str::FromStr;
+use std::time::Duration;
+
+use bigdecimal::{BigDecimal, Zero};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use sqlx::{FromRow, Postgres, Transaction};
+use uuid::Uuid;
+
+use super::{
+    is_retryable_transaction_error, post_command_in_transaction, validate_command, JournalLegInput,
+    Ledger, LedgerError, PostTransaction, PostedTransaction,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WithdrawalState {
+    Requested,
+    Reserved,
+    Approved,
+    Signing,
+    Signed,
+    Broadcast,
+    Confirmed,
+    Rejected,
+    Cancelled,
+    SigningFailed,
+    BroadcastFailed,
+    Replaced,
+    Dropped,
+    Reversed,
+}
+
+impl WithdrawalState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Requested => "requested",
+            Self::Reserved => "reserved",
+            Self::Approved => "approved",
+            Self::Signing => "signing",
+            Self::Signed => "signed",
+            Self::Broadcast => "broadcast",
+            Self::Confirmed => "confirmed",
+            Self::Rejected => "rejected",
+            Self::Cancelled => "cancelled",
+            Self::SigningFailed => "signing_failed",
+            Self::BroadcastFailed => "broadcast_failed",
+            Self::Replaced => "replaced",
+            Self::Dropped => "dropped",
+            Self::Reversed => "reversed",
+        }
+    }
+}
+
+impl FromStr for WithdrawalState {
+    type Err = LedgerError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "requested" => Ok(Self::Requested),
+            "reserved" => Ok(Self::Reserved),
+            "approved" => Ok(Self::Approved),
+            "signing" => Ok(Self::Signing),
+            "signed" => Ok(Self::Signed),
+            "broadcast" => Ok(Self::Broadcast),
+            "confirmed" => Ok(Self::Confirmed),
+            "rejected" => Ok(Self::Rejected),
+            "cancelled" => Ok(Self::Cancelled),
+            "signing_failed" => Ok(Self::SigningFailed),
+            "broadcast_failed" => Ok(Self::BroadcastFailed),
+            "replaced" => Ok(Self::Replaced),
+            "dropped" => Ok(Self::Dropped),
+            "reversed" => Ok(Self::Reversed),
+            other => Err(LedgerError::InvalidWithdrawal(format!(
+                "unknown withdrawal state {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReserveWithdrawal {
+    pub withdrawal_id: Uuid,
+    pub reservation_transaction_id: Uuid,
+    pub customer_reference: String,
+    pub asset_code: String,
+    pub destination_address: String,
+    pub amount: BigDecimal,
+    pub nonce: u64,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawalRecord {
+    pub id: Uuid,
+    pub customer_reference: String,
+    pub source_account_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_code: String,
+    pub asset_decimals: i16,
+    pub destination_address: String,
+    pub amount: BigDecimal,
+    pub state: WithdrawalState,
+    pub reservation_transaction_id: Option<Uuid>,
+    pub completion_transaction_id: Option<Uuid>,
+    pub release_transaction_id: Option<Uuid>,
+    pub chain_id: i64,
+    pub vault_address: String,
+    pub nonce: Option<BigDecimal>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub transaction_hash: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReservedWithdrawal {
+    pub withdrawal: WithdrawalRecord,
+    pub transaction: PostedTransaction,
+}
+
+#[derive(Debug, FromRow)]
+struct StoredWithdrawal {
+    id: Uuid,
+    customer_reference: String,
+    source_account_id: Uuid,
+    asset_id: Uuid,
+    asset_code: String,
+    asset_decimals: i16,
+    destination_address: String,
+    amount: BigDecimal,
+    state: String,
+    reservation_transaction_id: Option<Uuid>,
+    completion_transaction_id: Option<Uuid>,
+    release_transaction_id: Option<Uuid>,
+    chain_id: i64,
+    vault_address: String,
+    nonce: Option<BigDecimal>,
+    expires_at: Option<DateTime<Utc>>,
+    transaction_hash: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl TryFrom<StoredWithdrawal> for WithdrawalRecord {
+    type Error = LedgerError;
+
+    fn try_from(value: StoredWithdrawal) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            customer_reference: value.customer_reference,
+            source_account_id: value.source_account_id,
+            asset_id: value.asset_id,
+            asset_code: value.asset_code,
+            asset_decimals: value.asset_decimals,
+            destination_address: value.destination_address,
+            amount: value.amount,
+            state: WithdrawalState::from_str(&value.state)?,
+            reservation_transaction_id: value.reservation_transaction_id,
+            completion_transaction_id: value.completion_transaction_id,
+            release_transaction_id: value.release_transaction_id,
+            chain_id: value.chain_id,
+            vault_address: value.vault_address,
+            nonce: value.nonce,
+            expires_at: value.expires_at,
+            transaction_hash: value.transaction_hash,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        })
+    }
+}
+
+impl Ledger {
+    pub async fn reserve_withdrawal(
+        &self,
+        command: &ReserveWithdrawal,
+    ) -> Result<ReservedWithdrawal, LedgerError> {
+        validate_reservation(command)?;
+        let mut attempt = 0_u32;
+        loop {
+            match self.reserve_withdrawal_once(command).await {
+                Err(error)
+                    if (is_retryable_transaction_error(&error)
+                        || is_withdrawal_nonce_race(&error))
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn reserve_withdrawal_once(
+        &self,
+        command: &ReserveWithdrawal,
+    ) -> Result<ReservedWithdrawal, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+
+        if let Some(existing) = load_existing_reservation(&mut tx, command).await? {
+            let request_hash = reservation_hash(command);
+            ensure_same_reservation(&existing, command)?;
+            let transaction_id = existing.reservation_transaction_id.ok_or_else(|| {
+                LedgerError::InvalidWithdrawal(
+                    "reserved withdrawal has no journal transaction".to_owned(),
+                )
+            })?;
+            let (transaction, stored_hash) =
+                load_posted_transaction(&mut tx, transaction_id).await?;
+            if stored_hash != request_hash {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return Ok(ReservedWithdrawal {
+                withdrawal: existing.try_into()?,
+                transaction,
+            });
+        }
+
+        let asset = sqlx::query_as::<_, (Uuid, i16, Option<i64>)>(
+            "SELECT id, decimals, chain_id FROM ledger_assets WHERE code = $1",
+        )
+        .bind(&command.asset_code)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| LedgerError::MissingAsset(command.asset_code.clone()))?;
+        let expected_decimals = match command.asset_code.as_str() {
+            "ETH" => 18,
+            "USDC" => 6,
+            _ => {
+                return Err(LedgerError::InvalidWithdrawal(
+                    "only ETH and USDC withdrawals are supported".to_owned(),
+                ))
+            }
+        };
+        if asset.1 != expected_decimals {
+            return Err(LedgerError::InvalidWithdrawal(format!(
+                "{} ledger decimals do not match the withdrawal policy",
+                command.asset_code
+            )));
+        }
+        let chain_id = asset.2.ok_or_else(|| {
+            LedgerError::InvalidWithdrawal("withdrawal asset has no configured chain".to_owned())
+        })?;
+        let source_account_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id FROM ledger_accounts
+            WHERE asset_id = $1
+              AND owner_type = 'customer'
+              AND lower(owner_reference) = lower($2)
+              AND account_type = 'customer_available'
+            "#,
+        )
+        .bind(asset.0)
+        .bind(&command.customer_reference)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| LedgerError::MissingAccount {
+            asset_code: command.asset_code.clone(),
+            owner_reference: command.customer_reference.clone(),
+            account_type: "customer_available".to_owned(),
+        })?;
+        let vault_addresses = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT owner_reference FROM ledger_accounts
+            WHERE asset_id = $1 AND owner_type = 'custody' AND account_type = 'custody_vault'
+            "#,
+        )
+        .bind(asset.0)
+        .fetch_all(&mut *tx)
+        .await?;
+        let vault_address = match vault_addresses.as_slice() {
+            [vault_address] => vault_address.clone(),
+            [] => {
+                return Err(LedgerError::MissingAccount {
+                    asset_code: command.asset_code.clone(),
+                    owner_reference: "configured custody vault".to_owned(),
+                    account_type: "custody_vault".to_owned(),
+                })
+            }
+            _ => {
+                return Err(LedgerError::InvalidWithdrawal(
+                    "withdrawal asset has multiple custody vault accounts".to_owned(),
+                ))
+            }
+        };
+        let reserved_account_id =
+            ensure_reserved_account(&mut tx, asset.0, &command.customer_reference).await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawals (
+                id, customer_reference, source_account_id, asset_id,
+                destination_address, amount, state, chain_id, vault_address,
+                nonce, expires_at
+            )
+            VALUES ($1, lower($2), $3, $4, lower($5), $6, 'requested', $7, lower($8), $9, $10)
+            "#,
+        )
+        .bind(command.withdrawal_id)
+        .bind(&command.customer_reference)
+        .bind(source_account_id)
+        .bind(asset.0)
+        .bind(&command.destination_address)
+        .bind(&command.amount)
+        .bind(chain_id)
+        .bind(&vault_address)
+        .bind(BigDecimal::from(command.nonce))
+        .bind(command.expires_at)
+        .execute(&mut *tx)
+        .await?;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            None,
+            WithdrawalState::Requested,
+            "authenticated customer withdrawal requested",
+            json!({ "destination_address": command.destination_address }),
+            Some(&command.customer_reference),
+        )
+        .await?;
+
+        let request_hash = reservation_hash(command);
+        let post = PostTransaction {
+            id: command.reservation_transaction_id,
+            operation_type: "withdrawal_reservation".to_owned(),
+            idempotency_key: format!(
+                "withdrawal-reservation:{}:{}",
+                command.customer_reference.to_ascii_lowercase(),
+                command.nonce
+            ),
+            request_hash,
+            external_reference: Some(json!({ "withdrawal_id": command.withdrawal_id })),
+            metadata: json!({
+                "source": "customer_withdrawal_api",
+                "destination_address": command.destination_address,
+                "chain_id": chain_id,
+                "vault_address": vault_address,
+            }),
+            legs: vec![
+                JournalLegInput {
+                    account_id: source_account_id,
+                    amount: -command.amount.clone(),
+                },
+                JournalLegInput {
+                    account_id: reserved_account_id,
+                    amount: command.amount.clone(),
+                },
+            ],
+        };
+        validate_command(&post)?;
+        let posted = post_command_in_transaction(&mut tx, &post)
+            .await?
+            .transaction;
+        insert_history(
+            &mut tx,
+            command.withdrawal_id,
+            Some(WithdrawalState::Requested),
+            WithdrawalState::Reserved,
+            "customer funds durably reserved before approval or signing",
+            json!({ "reservation_transaction_id": posted.id }),
+            Some("ledger"),
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE ledger_withdrawals
+            SET state = 'reserved', reservation_transaction_id = $2,
+                updated_at = transaction_timestamp()
+            WHERE id = $1 AND state = 'requested'
+            "#,
+        )
+        .bind(command.withdrawal_id)
+        .bind(posted.id)
+        .execute(&mut *tx)
+        .await?;
+
+        let withdrawal = load_withdrawal(&mut tx, command.withdrawal_id).await?;
+        tx.commit().await?;
+        Ok(ReservedWithdrawal {
+            withdrawal: withdrawal.try_into()?,
+            transaction: posted,
+        })
+    }
+
+    pub async fn cancel_reserved_withdrawal(
+        &self,
+        withdrawal_id: Uuid,
+        customer_reference: &str,
+        release_transaction_id: Uuid,
+    ) -> Result<WithdrawalRecord, LedgerError> {
+        if customer_reference.trim().is_empty() || release_transaction_id == Uuid::nil() {
+            return Err(LedgerError::InvalidWithdrawal(
+                "withdrawal cancellation identity is invalid".to_owned(),
+            ));
+        }
+        let mut attempt = 0_u32;
+        loop {
+            match self
+                .cancel_reserved_withdrawal_once(
+                    withdrawal_id,
+                    customer_reference,
+                    release_transaction_id,
+                )
+                .await
+            {
+                Err(error)
+                    if is_retryable_transaction_error(&error)
+                        && attempt < self.max_serializable_retries =>
+                {
+                    let backoff_ms = 5_u64.saturating_mul(1_u64 << attempt.min(6));
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    async fn cancel_reserved_withdrawal_once(
+        &self,
+        withdrawal_id: Uuid,
+        customer_reference: &str,
+        release_transaction_id: Uuid,
+    ) -> Result<WithdrawalRecord, LedgerError> {
+        let mut tx = self.pool.begin().await?;
+        set_serializable(&mut tx).await?;
+        let stored = load_withdrawal_for_update(&mut tx, withdrawal_id).await?;
+        if !stored
+            .customer_reference
+            .eq_ignore_ascii_case(customer_reference)
+        {
+            return Err(LedgerError::WithdrawalNotFound(withdrawal_id));
+        }
+        let state = WithdrawalState::from_str(&stored.state)?;
+        let request_hash = release_hash(&stored);
+        if state == WithdrawalState::Cancelled {
+            let transaction_id = stored.release_transaction_id.ok_or_else(|| {
+                LedgerError::InvalidWithdrawal(
+                    "cancelled withdrawal has no release transaction".to_owned(),
+                )
+            })?;
+            let (_, stored_hash) = load_posted_transaction(&mut tx, transaction_id).await?;
+            if stored_hash != request_hash {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return stored.try_into();
+        }
+        if state != WithdrawalState::Reserved {
+            return Err(LedgerError::InvalidWithdrawalTransition {
+                from: state.as_str().to_owned(),
+                to: WithdrawalState::Cancelled.as_str().to_owned(),
+            });
+        }
+
+        let reserved_account_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id FROM ledger_accounts
+            WHERE asset_id = $1 AND owner_type = 'customer'
+              AND lower(owner_reference) = lower($2)
+              AND account_type = 'customer_withdrawal_reserved'
+            "#,
+        )
+        .bind(stored.asset_id)
+        .bind(&stored.customer_reference)
+        .fetch_one(&mut *tx)
+        .await?;
+        let post = PostTransaction {
+            id: release_transaction_id,
+            operation_type: "withdrawal_release".to_owned(),
+            idempotency_key: format!("withdrawal-release:{}:cancelled", withdrawal_id),
+            request_hash,
+            external_reference: Some(json!({ "withdrawal_id": withdrawal_id })),
+            metadata: json!({ "reason": "customer_cancelled_before_signing" }),
+            legs: vec![
+                JournalLegInput {
+                    account_id: reserved_account_id,
+                    amount: -stored.amount.clone(),
+                },
+                JournalLegInput {
+                    account_id: stored.source_account_id,
+                    amount: stored.amount.clone(),
+                },
+            ],
+        };
+        validate_command(&post)?;
+        let posted = post_command_in_transaction(&mut tx, &post)
+            .await?
+            .transaction;
+        insert_history(
+            &mut tx,
+            withdrawal_id,
+            Some(state),
+            WithdrawalState::Cancelled,
+            "customer cancelled before signing; reservation released exactly once",
+            json!({ "release_transaction_id": posted.id }),
+            Some(customer_reference),
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE ledger_withdrawals
+            SET state = 'cancelled', release_transaction_id = $2,
+                updated_at = transaction_timestamp()
+            WHERE id = $1 AND state = 'reserved'
+            "#,
+        )
+        .bind(withdrawal_id)
+        .bind(posted.id)
+        .execute(&mut *tx)
+        .await?;
+        let withdrawal = load_withdrawal(&mut tx, withdrawal_id).await?;
+        tx.commit().await?;
+        withdrawal.try_into()
+    }
+
+    pub async fn customer_withdrawals(
+        &self,
+        customer_reference: &str,
+        limit: u32,
+    ) -> Result<Vec<WithdrawalRecord>, LedgerError> {
+        if customer_reference.trim().is_empty()
+            || customer_reference.len() > 255
+            || !(1..=100).contains(&limit)
+        {
+            return Err(LedgerError::InvalidWithdrawal(
+                "customer withdrawal query is invalid".to_owned(),
+            ));
+        }
+        let rows = sqlx::query_as::<_, StoredWithdrawal>(&format!(
+            "{} WHERE lower(withdrawal.customer_reference) = lower($1) ORDER BY withdrawal.created_at DESC, withdrawal.id LIMIT $2",
+            withdrawal_select()
+        ))
+        .bind(customer_reference)
+        .bind(i64::from(limit))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(TryInto::try_into).collect()
+    }
+}
+
+fn withdrawal_select() -> &'static str {
+    r#"
+    SELECT withdrawal.id, withdrawal.customer_reference, withdrawal.source_account_id,
+           withdrawal.asset_id, asset.code AS asset_code, asset.decimals AS asset_decimals,
+           withdrawal.destination_address, withdrawal.amount, withdrawal.state,
+           withdrawal.reservation_transaction_id, withdrawal.completion_transaction_id,
+           withdrawal.release_transaction_id, withdrawal.chain_id, withdrawal.vault_address,
+           withdrawal.nonce, withdrawal.expires_at, withdrawal.transaction_hash,
+           withdrawal.created_at, withdrawal.updated_at
+    FROM ledger_withdrawals withdrawal
+    JOIN ledger_assets asset ON asset.id = withdrawal.asset_id
+    "#
+}
+
+async fn load_existing_reservation(
+    tx: &mut Transaction<'_, Postgres>,
+    command: &ReserveWithdrawal,
+) -> Result<Option<StoredWithdrawal>, LedgerError> {
+    Ok(sqlx::query_as::<_, StoredWithdrawal>(&format!(
+        "{} WHERE withdrawal.id = $1 OR (lower(withdrawal.customer_reference) = lower($2) AND withdrawal.nonce = $3) FOR UPDATE OF withdrawal",
+        withdrawal_select()
+    ))
+    .bind(command.withdrawal_id)
+    .bind(&command.customer_reference)
+    .bind(BigDecimal::from(command.nonce))
+    .fetch_optional(&mut **tx)
+    .await?)
+}
+
+async fn load_withdrawal(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<StoredWithdrawal, LedgerError> {
+    sqlx::query_as::<_, StoredWithdrawal>(&format!(
+        "{} WHERE withdrawal.id = $1",
+        withdrawal_select()
+    ))
+    .bind(withdrawal_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(LedgerError::WithdrawalNotFound(withdrawal_id))
+}
+
+async fn load_withdrawal_for_update(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+) -> Result<StoredWithdrawal, LedgerError> {
+    sqlx::query_as::<_, StoredWithdrawal>(&format!(
+        "{} WHERE withdrawal.id = $1 FOR UPDATE OF withdrawal",
+        withdrawal_select()
+    ))
+    .bind(withdrawal_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(LedgerError::WithdrawalNotFound(withdrawal_id))
+}
+
+async fn ensure_reserved_account(
+    tx: &mut Transaction<'_, Postgres>,
+    asset_id: Uuid,
+    customer_reference: &str,
+) -> Result<Uuid, LedgerError> {
+    let candidate = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_accounts
+            (id, asset_id, owner_type, owner_reference, account_type, allow_negative)
+        VALUES ($1, $2, 'customer', lower($3), 'customer_withdrawal_reserved', false)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(candidate)
+    .bind(asset_id)
+    .bind(customer_reference)
+    .execute(&mut **tx)
+    .await?;
+    let account_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id FROM ledger_accounts
+        WHERE asset_id = $1 AND owner_type = 'customer'
+          AND lower(owner_reference) = lower($2)
+          AND account_type = 'customer_withdrawal_reserved'
+        "#,
+    )
+    .bind(asset_id)
+    .bind(customer_reference)
+    .fetch_one(&mut **tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO ledger_account_balances (account_id) VALUES ($1) ON CONFLICT DO NOTHING",
+    )
+    .bind(account_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(account_id)
+}
+
+async fn insert_history(
+    tx: &mut Transaction<'_, Postgres>,
+    withdrawal_id: Uuid,
+    from: Option<WithdrawalState>,
+    to: WithdrawalState,
+    reason: &str,
+    evidence: serde_json::Value,
+    actor_reference: Option<&str>,
+) -> Result<(), LedgerError> {
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_withdrawal_state_history
+            (withdrawal_id, from_state, to_state, reason, evidence, actor_reference)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(withdrawal_id)
+    .bind(from.map(WithdrawalState::as_str))
+    .bind(to.as_str())
+    .bind(reason)
+    .bind(evidence)
+    .bind(actor_reference)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn load_posted_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    transaction_id: Uuid,
+) -> Result<(PostedTransaction, [u8; 32]), LedgerError> {
+    let row = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Vec<u8>)>(
+        r#"
+        SELECT id, idempotency_key, created_at, request_hash
+        FROM ledger_journal_transactions WHERE id = $1
+        "#,
+    )
+    .bind(transaction_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let hash: [u8; 32] = row.3.try_into().map_err(|_| {
+        LedgerError::InvalidWithdrawal("journal request hash is malformed".to_owned())
+    })?;
+    Ok((
+        PostedTransaction {
+            id: row.0,
+            idempotency_key: row.1,
+            created_at: row.2,
+        },
+        hash,
+    ))
+}
+
+fn validate_reservation(command: &ReserveWithdrawal) -> Result<(), LedgerError> {
+    if command.withdrawal_id == Uuid::nil()
+        || command.reservation_transaction_id == Uuid::nil()
+        || command.customer_reference.trim().is_empty()
+        || command.customer_reference.len() > 255
+        || !is_asset_code(&command.asset_code)
+        || !is_evm_address(&command.destination_address)
+        || command.amount <= BigDecimal::zero()
+        || !command.amount.is_integer()
+    {
+        return Err(LedgerError::InvalidWithdrawal(
+            "withdrawal identity, destination, asset, and integer amount are required".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_same_reservation(
+    existing: &StoredWithdrawal,
+    command: &ReserveWithdrawal,
+) -> Result<(), LedgerError> {
+    if existing.id != command.withdrawal_id
+        || !existing
+            .customer_reference
+            .eq_ignore_ascii_case(&command.customer_reference)
+        || existing.asset_code != command.asset_code
+        || !existing
+            .destination_address
+            .eq_ignore_ascii_case(&command.destination_address)
+        || existing.amount != command.amount
+        || existing.nonce != Some(BigDecimal::from(command.nonce))
+        || existing.expires_at != command.expires_at
+    {
+        return Err(LedgerError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn reservation_hash(command: &ReserveWithdrawal) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    for value in [
+        command.withdrawal_id.to_string(),
+        command.customer_reference.to_ascii_lowercase(),
+        command.asset_code.clone(),
+        command.destination_address.to_ascii_lowercase(),
+        command.amount.normalized().to_plain_string(),
+        command.nonce.to_string(),
+        command
+            .expires_at
+            .map(|value| value.to_rfc3339())
+            .unwrap_or_default(),
+    ] {
+        hash.update((value.len() as u64).to_be_bytes());
+        hash.update(value.as_bytes());
+    }
+    hash.finalize().into()
+}
+
+fn release_hash(withdrawal: &StoredWithdrawal) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    hash.update(b"customer_cancelled_before_signing");
+    hash.update(withdrawal.id.as_bytes());
+    hash.update(withdrawal.amount.normalized().to_plain_string().as_bytes());
+    hash.finalize().into()
+}
+
+fn is_asset_code(value: &str) -> bool {
+    (2..=16).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+fn is_evm_address(value: &str) -> bool {
+    value.len() == 42
+        && value.starts_with("0x")
+        && value.as_bytes()[2..]
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit())
+        && value[2..].bytes().any(|byte| byte != b'0')
+}
+
+fn is_withdrawal_nonce_race(error: &LedgerError) -> bool {
+    matches!(
+        error,
+        LedgerError::Database(sqlx::Error::Database(database_error))
+            if database_error.code().as_deref() == Some("23505")
+                && database_error.constraint() == Some("ledger_withdrawals_customer_nonce")
+    )
+}
+
+async fn set_serializable(tx: &mut Transaction<'_, Postgres>) -> Result<(), LedgerError> {
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}

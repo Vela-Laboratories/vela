@@ -84,6 +84,30 @@ pub fn withdrawal_signing_message(asset: &str, amount: u64, nonce: u64) -> Vec<u
     format!("vela:withdraw:{}:{}:{}", asset, amount, nonce).into_bytes()
 }
 
+pub fn withdrawal_reservation_signing_message(
+    withdrawal_id: &str,
+    customer: &str,
+    destination: &str,
+    asset: &str,
+    amount: &str,
+    nonce: u64,
+) -> Vec<u8> {
+    format!(
+        "vela:withdrawal-reservation:{}:{}:{}:{}:{}:{}",
+        withdrawal_id,
+        customer.to_ascii_lowercase(),
+        destination.to_ascii_lowercase(),
+        asset.to_ascii_uppercase(),
+        amount,
+        nonce
+    )
+    .into_bytes()
+}
+
+pub fn withdrawal_cancel_signing_message(withdrawal_id: &str, nonce: u64) -> Vec<u8> {
+    format!("vela:withdrawal-cancel:{withdrawal_id}:{nonce}").into_bytes()
+}
+
 pub fn auth_signing_message(nonce: &str) -> Vec<u8> {
     format!("vela:auth:{}", nonce).into_bytes()
 }

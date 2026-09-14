@@ -77,7 +77,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Journal every matcher-produced trade when the authoritative ledger is configured.
 - [x] Journal every matcher-produced fee when the authoritative ledger is configured.
 - [x] Journal every matcher-produced rebate when the authoritative ledger is configured.
-- [ ] Journal every withdrawal reservation.
+- [x] Journal every withdrawal reservation atomically before acknowledging it; identical retries return the original journal transaction and concurrent reservations cannot overspend.
 - [ ] Journal every completed withdrawal.
 - [ ] Journal every failed or reversed withdrawal.
 - [x] Journal every administrative adjustment through the typed dual-control correction path.
@@ -140,14 +140,14 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 - [x] Disable production withdrawal signing until durable ledger reservation exists.
 - [ ] Replace the current independent withdrawal-signature flow.
-- [ ] Require authenticated customer authorization before generating a withdrawal.
-- [ ] Atomically reserve the withdrawal amount in the ledger.
-- [ ] Check available balance before signing.
+- [x] Require authenticated customer authorization before generating a withdrawal reservation.
+- [x] Atomically reserve the withdrawal amount in the ledger.
+- [x] Check available balance before signing.
 - [ ] Check open-order and locked-balance exposure before signing.
 - [ ] Check compliance restrictions before signing.
 - [ ] Check sanctions status before signing.
 - [ ] Check withdrawal velocity and risk limits.
-- [ ] Store the withdrawal request before producing a signature.
+- [x] Store the withdrawal request before producing a custody signature.
 - [ ] Bind signatures to chain ID, contract, user, asset, amount, nonce, and request ID.
 - [ ] Mark signatures as issued and prevent duplicate issuance.
 - [ ] Broadcast withdrawals through a controlled service or reliably observe customer broadcasts.
@@ -518,6 +518,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Show real transaction hashes linked to the configured Base block explorer.
 - [x] Show rejected, orphaned, reversed, and quarantined deposits through the same authoritative state list.
 - [ ] Build complete withdrawal status UI.
+- [x] Build the authoritative withdrawal-reservation UI with exact ETH/USDC amounts, wallet-bound request identity, ledger status polling, and safe pre-signing cancellation.
 - [ ] Show withdrawal review and confirmation state.
 - [ ] Give customers actionable recovery instructions.
 - [ ] Support ERC-20 withdrawals on-chain.

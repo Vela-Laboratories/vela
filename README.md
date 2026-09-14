@@ -203,9 +203,12 @@ Base URL: `https://vela-engine.fly.dev`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/account/:address/balances` | User balances by asset |
+| `GET` | `/account/:address/deposits` | Authoritative verified-deposit state and chain evidence |
+| `GET` | `/account/:address/withdrawals` | Authoritative withdrawal reservation and lifecycle state |
 | `POST` | `/deposit` | Create an unverified demo credit (`testnet-demo` only) |
-| `POST` | `/withdrawals` | Submit withdrawal request |
-| `POST` | `/withdrawal-signature` | Get operator signature for testnet withdrawal; disabled in production pending durable reservation |
+| `POST` | `/withdrawals` | Authenticate and atomically reserve an ETH/USDC withdrawal |
+| `POST` | `/withdrawals/:id/cancel` | Cancel and release a pre-signing reservation exactly once |
+| `POST` | `/withdrawal-signature` | Legacy demo signer; disabled whenever the authoritative ledger is configured |
 
 ### Transparency
 

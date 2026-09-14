@@ -2,7 +2,9 @@ use api::AppState;
 use axum_test::TestServer;
 use bigdecimal::BigDecimal;
 use engine::MatchingEngine;
+use k256::ecdsa::SigningKey;
 use serde_json::{json, Value};
+use sha3::{Digest, Keccak256};
 use std::sync::Arc;
 use types::{
     AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
@@ -23,6 +25,22 @@ fn make_wal() -> Arc<api::wal::Wal> {
 
 fn user_addr() -> String {
     "0x0000000000000000000000000000000000000001".to_string()
+}
+
+fn wallet(seed: u8) -> (SigningKey, String) {
+    let key = SigningKey::from_slice(&[seed; 32]).unwrap();
+    let public_key = key.verifying_key().to_encoded_point(false);
+    let hash = Keccak256::digest(&public_key.as_bytes()[1..]);
+    (key, format!("0x{}", hex::encode(&hash[12..])))
+}
+
+fn sign_personal(key: &SigningKey, message: &[u8]) -> String {
+    let hash = api::auth::eth_message_hash(message);
+    let (signature, recovery_id) = key.sign_prehash_recoverable(&hash).unwrap();
+    let mut bytes = Vec::with_capacity(65);
+    bytes.extend_from_slice(signature.to_bytes().as_ref());
+    bytes.push(recovery_id.to_byte() + 27);
+    format!("0x{}", hex::encode(bytes))
 }
 
 fn engine_with_market() -> MatchingEngine {
@@ -133,7 +151,7 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     let body: Value = response.json();
     assert_eq!(body["ok"], true);
     assert_eq!(body["ledger"], "ready");
-    assert_eq!(body["ledger_schema_version"], 4);
+    assert_eq!(body["ledger_schema_version"], 5);
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]
@@ -301,6 +319,161 @@ async fn test_deposit_status_is_customer_scoped_and_filterable(pool: sqlx::PgPoo
         ))
         .await;
     invalid.assert_status(axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_withdrawal_status_fails_closed_without_authoritative_ledger() {
+    let server = test_server(engine_with_market());
+    let response = server
+        .get(&format!("/account/{}/withdrawals", user_addr()))
+        .await;
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn test_withdrawal_reservation_and_cancellation_are_ledger_backed(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let (key, address) = wallet(9);
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool));
+    let asset_id = Uuid::new_v4();
+    ledger
+        .create_asset(&ledger::NewAsset {
+            id: asset_id,
+            code: "USDC".to_owned(),
+            decimals: 6,
+            chain_id: Some(84532),
+            contract_address: Some("0x3333333333333333333333333333333333333333".to_owned()),
+        })
+        .await
+        .unwrap();
+    let available_id = Uuid::new_v4();
+    let operations_id = Uuid::new_v4();
+    for account in [
+        ledger::NewAccount {
+            id: available_id,
+            asset_id,
+            owner_type: "customer".to_owned(),
+            owner_reference: address.clone(),
+            account_type: "customer_available".to_owned(),
+            allow_negative: false,
+        },
+        ledger::NewAccount {
+            id: Uuid::new_v4(),
+            asset_id,
+            owner_type: "custody".to_owned(),
+            owner_reference: "0x2222222222222222222222222222222222222222".to_owned(),
+            account_type: "custody_vault".to_owned(),
+            allow_negative: true,
+        },
+        ledger::NewAccount {
+            id: operations_id,
+            asset_id,
+            owner_type: "platform".to_owned(),
+            owner_reference: "platform:test".to_owned(),
+            account_type: "operational_adjustment".to_owned(),
+            allow_negative: true,
+        },
+    ] {
+        ledger.create_account(&account).await.unwrap();
+    }
+    ledger
+        .post(&ledger::PostTransaction {
+            id: Uuid::new_v4(),
+            operation_type: "deposit_credit".to_owned(),
+            idempotency_key: "api-withdrawal-seed".to_owned(),
+            request_hash: [3; 32],
+            external_reference: None,
+            metadata: json!({ "test": true }),
+            legs: vec![
+                ledger::JournalLegInput {
+                    account_id: operations_id,
+                    amount: BigDecimal::from(-5_000_000),
+                },
+                ledger::JournalLegInput {
+                    account_id: available_id,
+                    amount: BigDecimal::from(5_000_000),
+                },
+            ],
+        })
+        .await
+        .unwrap();
+    let state = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::TestnetDemo,
+        Some(ledger.clone()),
+    )
+    .await
+    .unwrap();
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    let withdrawal_id = Uuid::new_v4().to_string();
+    let amount = "100000000";
+    let nonce = 41;
+    let message = api::auth::withdrawal_reservation_signing_message(
+        &withdrawal_id,
+        &address,
+        &address,
+        "USDC",
+        amount,
+        nonce,
+    );
+    let request = json!({
+        "withdrawal_id": withdrawal_id,
+        "asset": "USDC",
+        "amount": amount,
+        "nonce": nonce,
+        "address": address,
+        "destination_address": address,
+        "signature": sign_personal(&key, &message),
+    });
+    let first = server.post("/withdrawals").json(&request).await;
+    first.assert_status_ok();
+    let body: Value = first.json();
+    assert_eq!(body["data"]["state"], "reserved");
+    assert_eq!(body["data"]["amount"], "1");
+    assert_eq!(body["data"]["amount_atomic"], "1000000");
+
+    let replay = server.post("/withdrawals").json(&request).await;
+    replay.assert_status_ok();
+    assert_eq!(
+        ledger.balance(available_id).await.unwrap(),
+        BigDecimal::from(4_000_000)
+    );
+    let listed = server.get(&format!("/account/{address}/withdrawals")).await;
+    listed.assert_status_ok();
+    let body: Value = listed.json();
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+
+    let cancel_message = api::auth::withdrawal_cancel_signing_message(&withdrawal_id, nonce);
+    let cancel = server
+        .post(&format!("/withdrawals/{withdrawal_id}/cancel"))
+        .json(&json!({
+            "nonce": nonce,
+            "address": address,
+            "signature": sign_personal(&key, &cancel_message),
+        }))
+        .await;
+    cancel.assert_status_ok();
+    let body: Value = cancel.json();
+    assert_eq!(body["data"]["state"], "cancelled");
+    assert_eq!(
+        ledger.balance(available_id).await.unwrap(),
+        BigDecimal::from(5_000_000)
+    );
+
+    let signing = server
+        .post("/withdrawal-signature")
+        .json(&json!({
+            "user": address,
+            "asset": "ETH",
+            "amount": "0.01",
+            "nonce": 1
+        }))
+        .await;
+    signing.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]

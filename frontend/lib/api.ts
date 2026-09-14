@@ -109,13 +109,17 @@ export interface CancelOrderBody {
 }
 
 export interface WithdrawBody {
+  withdrawal_id: string
   asset: string
   /** Raw integer amount (8 decimals) */
-  amount: number
+  amount: string
   nonce: number
   address: string
+  destination_address: string
   signature: string
 }
+
+export type WithdrawalStatus = ApiSchemas['WithdrawalStatusResponse']
 
 // ---------------------------------------------------------------------------
 // Fetch helper
@@ -217,34 +221,31 @@ export function cancelOrder(
 /** POST /withdrawals */
 export function initiateWithdrawal(
   body: WithdrawBody,
-): Promise<ApiResponse<unknown>> {
+): Promise<ApiResponse<WithdrawalStatus>> {
   return apiFetch('/withdrawals', {
     method: 'POST',
     body: JSON.stringify(body),
   })
 }
 
-/** POST /withdrawals */
-export async function withdraw(
-  user: string,
-  asset: string,
-  amount: string,
-  signature: string,
-  nonce: number,
-): Promise<ApiResponse<{ asset: string; amount: string }>> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
-  const rawAmount = Math.round(parseFloat(amount) * 1_000_000)
-  try {
-    const res = await fetch(`${apiUrl}/withdrawals`, {
+/** GET /account/:address/withdrawals */
+export function getWithdrawals(
+  address: string,
+): Promise<ApiResponse<WithdrawalStatus[]>> {
+  return apiFetch(`/account/${encodeURIComponent(address)}/withdrawals`, {
+    cache: 'no-store',
+  })
+}
+
+/** POST /withdrawals/:id/cancel */
+export function cancelWithdrawal(
+  withdrawalId: string,
+  body: { nonce: number; address: string; signature: string },
+): Promise<ApiResponse<WithdrawalStatus>> {
+  return apiFetch(`/withdrawals/${encodeURIComponent(withdrawalId)}/cancel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: user, asset, amount: rawAmount, signature, nonce }),
-      cache: 'no-store',
+      body: JSON.stringify(body),
     })
-    return res.json()
-  } catch {
-    return { ok: false, error: 'Network error' }
-  }
 }
 
 export interface OHLCVCandle {

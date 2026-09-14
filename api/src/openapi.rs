@@ -179,6 +179,29 @@ pub fn openapi_spec() -> serde_json::Value {
                     }
                 }
             },
+            "/account/{address}/withdrawals": {
+                "get": {
+                    "summary": "Authoritative customer withdrawal reservations and status",
+                    "parameters": [
+                        { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
+                        { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 } }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Ledger-backed withdrawal states",
+                            "content": { "application/json": { "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ok": { "type": "boolean" },
+                                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/WithdrawalStatusResponse" } }
+                                }
+                            } } }
+                        },
+                        "400": { "description": "Invalid address or limit" },
+                        "503": { "description": "Authoritative ledger is not configured or unavailable" }
+                    }
+                }
+            },
             "/perp/markets": {
                 "get": {
                     "summary": "Perp market state (mark/index/funding)",
@@ -387,7 +410,30 @@ pub fn openapi_spec() -> serde_json::Value {
                 }
             },
             "/withdrawals": {
-                "post": { "summary": "Submit signed withdrawal", "responses": { "200": { "description": "Queued" } } }
+                "post": {
+                    "summary": "Authenticate and atomically reserve a customer withdrawal",
+                    "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WithdrawBody" } } } },
+                    "responses": {
+                        "200": { "description": "Withdrawal durably reserved" },
+                        "400": { "description": "Invalid request" },
+                        "401": { "description": "Invalid customer signature" },
+                        "409": { "description": "Insufficient balance or idempotency conflict" },
+                        "503": { "description": "Authoritative reservation unavailable" }
+                    }
+                }
+            },
+            "/withdrawals/{id}/cancel": {
+                "post": {
+                    "summary": "Cancel a pre-signing withdrawal and release its reservation",
+                    "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+                    "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CancelWithdrawalBody" } } } },
+                    "responses": {
+                        "200": { "description": "Reservation released exactly once" },
+                        "401": { "description": "Invalid customer signature" },
+                        "404": { "description": "Withdrawal not found for customer" },
+                        "409": { "description": "Withdrawal can no longer be safely cancelled" }
+                    }
+                }
             },
             "/vaults": {
                 "get": { "summary": "List MM credit vaults + AUM", "responses": { "200": { "description": "Vaults" } } }
@@ -541,6 +587,50 @@ pub fn openapi_spec() -> serde_json::Value {
                         "observed_at": { "type": "string", "format": "date-time" },
                         "credited_at": { "type": ["string", "null"], "format": "date-time" },
                         "reversed_at": { "type": ["string", "null"], "format": "date-time" },
+                        "updated_at": { "type": "string", "format": "date-time" }
+                    }
+                },
+                "WithdrawBody": {
+                    "type": "object",
+                    "required": ["withdrawal_id", "asset", "amount", "nonce", "address", "destination_address", "signature"],
+                    "properties": {
+                        "withdrawal_id": { "type": "string", "format": "uuid" },
+                        "asset": { "type": "string", "enum": ["ETH", "USDC"] },
+                        "amount": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Positive integer in the matching engine's 8-decimal units" },
+                        "nonce": { "type": "integer", "format": "int64", "minimum": 0 },
+                        "address": { "type": "string" },
+                        "destination_address": { "type": "string" },
+                        "signature": { "type": "string" }
+                    }
+                },
+                "CancelWithdrawalBody": {
+                    "type": "object",
+                    "required": ["nonce", "address", "signature"],
+                    "properties": {
+                        "nonce": { "type": "integer", "format": "int64", "minimum": 0 },
+                        "address": { "type": "string" },
+                        "signature": { "type": "string" }
+                    }
+                },
+                "WithdrawalStatusResponse": {
+                    "type": "object",
+                    "required": [
+                        "id", "asset", "amount", "amount_atomic", "state", "destination_address",
+                        "chain_id", "vault_address", "nonce", "created_at", "updated_at"
+                    ],
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "asset": { "type": "string", "enum": ["ETH", "USDC"] },
+                        "amount": { "type": "string", "description": "Human-readable exact decimal amount" },
+                        "amount_atomic": { "type": "string", "description": "Integer amount in the asset's smallest unit" },
+                        "state": { "type": "string", "enum": ["requested", "reserved", "approved", "signing", "signed", "broadcast", "confirmed", "rejected", "cancelled", "signing_failed", "broadcast_failed", "replaced", "dropped", "reversed"] },
+                        "destination_address": { "type": "string" },
+                        "chain_id": { "type": "integer", "format": "int64" },
+                        "vault_address": { "type": "string" },
+                        "nonce": { "type": "string" },
+                        "transaction_hash": { "type": ["string", "null"] },
+                        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+                        "created_at": { "type": "string", "format": "date-time" },
                         "updated_at": { "type": "string", "format": "date-time" }
                     }
                 },

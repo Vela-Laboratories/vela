@@ -183,11 +183,37 @@ pub struct CancelOrderBody {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithdrawBody {
+    pub withdrawal_id: String,
     pub asset: String,
-    pub amount: u64,
+    pub amount: String,
+    pub nonce: u64,
+    pub address: String,
+    pub destination_address: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelWithdrawalBody {
     pub nonce: u64,
     pub address: String,
     pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawalStatusResponse {
+    pub id: String,
+    pub asset: String,
+    pub amount: String,
+    pub amount_atomic: String,
+    pub state: String,
+    pub destination_address: String,
+    pub chain_id: i64,
+    pub vault_address: String,
+    pub nonce: String,
+    pub transaction_hash: Option<String>,
+    pub expires_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

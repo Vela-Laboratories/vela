@@ -1,13 +1,13 @@
 use crate::{
     auth::{
         cancel_signing_message, eth_message_hash, order_signing_message, verify_matches_async,
-        withdrawal_signing_message,
+        withdrawal_cancel_signing_message, withdrawal_reservation_signing_message,
     },
     types::{
         format_amount, ApiResponse, BalanceResponse, BatchDetail, BatchSummary, BookLevel,
-        BookResponse, CancelOrderBody, DepositBody, DepositStatusResponse, MarketResponse,
-        OrderFillRecord, PostOrderBody, StateRootData, StoredFill, StoredOrder, WithdrawBody,
-        WsEnvelope,
+        BookResponse, CancelOrderBody, CancelWithdrawalBody, DepositBody, DepositStatusResponse,
+        MarketResponse, OrderFillRecord, PostOrderBody, StateRootData, StoredFill, StoredOrder,
+        WithdrawBody, WithdrawalStatusResponse, WsEnvelope,
     },
     wal,
     wal::{
@@ -242,6 +242,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/markets/:market/book", get(get_book))
         .route("/account/:address/balances", get(get_balances))
         .route("/account/:address/deposits", get(get_deposits))
+        .route("/account/:address/withdrawals", get(get_withdrawals))
         .route("/account/:address/orders", get(get_open_orders))
         .route(
             "/account/:address/orders/by-client-id/:client_id",
@@ -258,6 +259,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/trades", get(list_trades))
         .route("/trades/:market_id", get(list_trades_by_market))
         .route("/withdrawals", post(initiate_withdrawal))
+        .route("/withdrawals/:id/cancel", post(cancel_withdrawal))
         .route("/withdrawal-signature", post(withdrawal_signature_handler))
         .route("/deposit", post(deposit_handler))
         .route("/deposit/bridge", post(bridge_deposit_handler))
@@ -962,7 +964,7 @@ async fn get_deposits(
 
     let mut response = Vec::with_capacity(deposits.len());
     for deposit in deposits {
-        let amount = match format_ledger_deposit_amount(&deposit.amount, deposit.asset_decimals) {
+        let amount = match format_ledger_amount(&deposit.amount, deposit.asset_decimals) {
             Ok(amount) => amount,
             Err(error) => {
                 tracing::error!(
@@ -1010,7 +1012,7 @@ fn is_hex_hash(value: &str) -> bool {
         .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
-fn format_ledger_deposit_amount(amount: &BigDecimal, decimals: i16) -> Result<String, String> {
+fn format_ledger_amount(amount: &BigDecimal, decimals: i16) -> Result<String, String> {
     let decimals =
         usize::try_from(decimals).map_err(|_| "asset decimals cannot be negative".to_owned())?;
     let digits = amount.normalized().to_plain_string();
@@ -2023,9 +2025,6 @@ async fn initiate_withdrawal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<WithdrawBody>,
 ) -> impl IntoResponse {
-    if let Some(response) = reject_unjournaled_financial_route(&state, "withdrawal") {
-        return response;
-    }
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => {
@@ -2036,8 +2035,65 @@ async fn initiate_withdrawal(
                 .into_response()
         }
     };
-
-    let msg = withdrawal_signing_message(&body.asset, body.amount, body.nonce);
+    let withdrawal_id = match uuid::Uuid::parse_str(&body.withdrawal_id) {
+        Ok(id) if !id.is_nil() && id.to_string() == body.withdrawal_id => id,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid withdrawal_id")),
+            )
+                .into_response()
+        }
+    };
+    if !matches!(
+        UserId::from_hex(&body.destination_address),
+        Ok(destination) if destination.0 != [0; 20]
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("invalid destination_address")),
+        )
+            .into_response();
+    }
+    let asset = body.asset.to_ascii_uppercase();
+    if !matches!(asset.as_str(), "ETH" | "USDC") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "authoritative withdrawals currently support ETH and USDC only",
+            )),
+        )
+            .into_response();
+    }
+    let amount = match body.amount.parse::<u64>() {
+        Ok(amount) if amount > 0 && amount.to_string() == body.amount => amount,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err(
+                    "amount must be a positive integer in 8-decimal engine units",
+                )),
+            )
+                .into_response()
+        }
+    };
+    if !state.deposit_limiter.check(&body.address) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse::<()>::err(
+                "Rate limit exceeded. Please slow down.",
+            )),
+        )
+            .into_response();
+    }
+    let msg = withdrawal_reservation_signing_message(
+        &body.withdrawal_id,
+        &body.address,
+        &body.destination_address,
+        &asset,
+        &body.amount,
+        body.nonce,
+    );
     if verify_matches_async(msg, body.signature.clone(), body.address.clone())
         .await
         .is_err()
@@ -2049,15 +2105,85 @@ async fn initiate_withdrawal(
             .into_response();
     }
 
+    if let Some(ledger) = state.ledger.as_ref() {
+        let asset_decimals = if asset == "ETH" { 18 } else { 6 };
+        let amount_atomic = match crate::ledger_coordinator::scale_engine_amount(
+            i128::from(amount),
+            asset_decimals,
+        ) {
+            Ok(amount) => amount,
+            Err(error) => {
+                return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(error)))
+                    .into_response()
+            }
+        };
+        let command = ledger::ReserveWithdrawal {
+            withdrawal_id,
+            reservation_transaction_id: uuid::Uuid::new_v4(),
+            customer_reference: user.to_hex().to_ascii_lowercase(),
+            asset_code: asset,
+            destination_address: body.destination_address.to_ascii_lowercase(),
+            amount: amount_atomic,
+            nonce: body.nonce,
+            expires_at: None,
+        };
+        return match ledger.reserve_withdrawal(&command).await {
+            Ok(reserved) => match withdrawal_status_response(&reserved.withdrawal) {
+                Ok(response) => (StatusCode::OK, Json(ApiResponse::ok(response))).into_response(),
+                Err(error) => {
+                    tracing::error!(%error, withdrawal_id = %withdrawal_id, "withdrawal response conversion failed");
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(ApiResponse::<()>::err(
+                            "authoritative withdrawal unavailable",
+                        )),
+                    )
+                        .into_response()
+                }
+            },
+            Err(ledger::LedgerError::InsufficientFunds { .. }) => (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err("insufficient available balance")),
+            )
+                .into_response(),
+            Err(ledger::LedgerError::MissingAccount { account_type, .. })
+                if account_type == "customer_available" =>
+            {
+                (
+                    StatusCode::CONFLICT,
+                    Json(ApiResponse::<()>::err("insufficient available balance")),
+                )
+                    .into_response()
+            }
+            Err(ledger::LedgerError::IdempotencyConflict) => (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err(
+                    "withdrawal nonce or request ID was already used for a different request",
+                )),
+            )
+                .into_response(),
+            Err(error) => {
+                tracing::error!(%error, withdrawal_id = %withdrawal_id, "authoritative withdrawal reservation failed");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err(
+                        "authoritative withdrawal unavailable",
+                    )),
+                )
+                    .into_response()
+            }
+        };
+    }
+
     let wal_asset = body.asset.clone();
-    let wal_amount = body.amount;
+    let wal_amount = amount;
     let wal_nonce = body.nonce;
     let wal_user_hex = body.address.clone();
 
     let req = WithdrawalRequest {
         user: user.clone(),
-        asset: AssetId::from_str(&body.asset),
-        amount: body.amount,
+        asset: AssetId::from_str(&asset),
+        amount,
         nonce: body.nonce,
         signature: vec![],
     };
@@ -2121,6 +2247,187 @@ async fn initiate_withdrawal(
     }
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct WithdrawalStatusQuery {
+    limit: Option<u32>,
+}
+
+async fn get_withdrawals(
+    Path(address): Path<String>,
+    Query(query): Query<WithdrawalStatusQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    let limit = query.limit.unwrap_or(25);
+    if !(1..=100).contains(&limit) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("limit must be between 1 and 100")),
+        )
+            .into_response();
+    }
+    let Some(ledger) = state.ledger.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "authoritative withdrawal status is unavailable",
+            )),
+        )
+            .into_response();
+    };
+    let withdrawals = match ledger.customer_withdrawals(&user.to_hex(), limit).await {
+        Ok(withdrawals) => withdrawals,
+        Err(error) => {
+            tracing::error!(%error, user = %user.to_hex(), "authoritative withdrawal read failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err(
+                    "authoritative withdrawal status is unavailable",
+                )),
+            )
+                .into_response();
+        }
+    };
+    let response = match withdrawals
+        .iter()
+        .map(withdrawal_status_response)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::error!(%error, user = %user.to_hex(), "withdrawal response conversion failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err(
+                    "authoritative withdrawal status is unavailable",
+                )),
+            )
+                .into_response();
+        }
+    };
+    (StatusCode::OK, Json(ApiResponse::ok(response))).into_response()
+}
+
+async fn cancel_withdrawal(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CancelWithdrawalBody>,
+) -> impl IntoResponse {
+    let withdrawal_id = match uuid::Uuid::parse_str(&id) {
+        Ok(id) if !id.is_nil() => id,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid withdrawal ID")),
+            )
+                .into_response()
+        }
+    };
+    let user = match UserId::from_hex(&body.address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    let message = withdrawal_cancel_signing_message(&id, body.nonce);
+    if verify_matches_async(message, body.signature, body.address)
+        .await
+        .is_err()
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse::<()>::err("invalid signature")),
+        )
+            .into_response();
+    }
+    let Some(ledger) = state.ledger.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "authoritative withdrawal cancellation is unavailable",
+            )),
+        )
+            .into_response();
+    };
+    match ledger
+        .cancel_reserved_withdrawal(withdrawal_id, &user.to_hex(), uuid::Uuid::new_v4())
+        .await
+    {
+        Ok(withdrawal) => match withdrawal_status_response(&withdrawal) {
+            Ok(response) => (StatusCode::OK, Json(ApiResponse::ok(response))).into_response(),
+            Err(error) => {
+                tracing::error!(%error, withdrawal_id = %withdrawal_id, "withdrawal response conversion failed");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err(
+                        "withdrawal cancellation unavailable",
+                    )),
+                )
+                    .into_response()
+            }
+        },
+        Err(ledger::LedgerError::WithdrawalNotFound(_)) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::<()>::err("withdrawal not found")),
+        )
+            .into_response(),
+        Err(ledger::LedgerError::InvalidWithdrawalTransition { .. }) => (
+            StatusCode::CONFLICT,
+            Json(ApiResponse::<()>::err(
+                "withdrawal can no longer be cancelled safely",
+            )),
+        )
+            .into_response(),
+        Err(error) => {
+            tracing::error!(%error, withdrawal_id = %withdrawal_id, "withdrawal cancellation failed");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err(
+                    "withdrawal cancellation unavailable",
+                )),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn withdrawal_status_response(
+    withdrawal: &ledger::WithdrawalRecord,
+) -> Result<WithdrawalStatusResponse, String> {
+    Ok(WithdrawalStatusResponse {
+        id: withdrawal.id.to_string(),
+        asset: withdrawal.asset_code.clone(),
+        amount: format_ledger_amount(&withdrawal.amount, withdrawal.asset_decimals)?,
+        amount_atomic: withdrawal.amount.normalized().to_plain_string(),
+        state: withdrawal.state.as_str().to_owned(),
+        destination_address: withdrawal.destination_address.clone(),
+        chain_id: withdrawal.chain_id,
+        vault_address: withdrawal.vault_address.clone(),
+        nonce: withdrawal
+            .nonce
+            .as_ref()
+            .map(|nonce| nonce.normalized().to_plain_string())
+            .unwrap_or_default(),
+        transaction_hash: withdrawal.transaction_hash.clone(),
+        expires_at: withdrawal.expires_at.map(|time| time.to_rfc3339()),
+        created_at: withdrawal.created_at.to_rfc3339(),
+        updated_at: withdrawal.updated_at.to_rfc3339(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2586,6 +2893,15 @@ async fn withdrawal_signature_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<WithdrawalSignatureRequest>,
 ) -> impl IntoResponse {
+    if state.ledger.is_some() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "Custody signing is disabled until the signer consumes a durable reservation and binds the withdrawal request ID.",
+            )),
+        )
+            .into_response();
+    }
     if state.runtime_mode.is_production() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,

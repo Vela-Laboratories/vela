@@ -65,12 +65,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
         })
         .collect();
-    controlled_accounts.extend(["ETH", "USDC"].map(|asset_code| AccountProvisionRequest {
-        asset_code: asset_code.to_owned(),
-        owner_type: "custody".to_owned(),
-        owner_reference: custody_vault_address.to_ascii_lowercase(),
-        account_type: "custody_vault".to_owned(),
-        allow_negative: true,
+    controlled_accounts.extend(["ETH", "USDC"].into_iter().flat_map(|asset_code| {
+        ["custody_vault", "custody_withdrawn"].map(|account_type| AccountProvisionRequest {
+            asset_code: asset_code.to_owned(),
+            owner_type: "custody".to_owned(),
+            owner_reference: custody_vault_address.to_ascii_lowercase(),
+            account_type: account_type.to_owned(),
+            allow_negative: true,
+        })
     }));
     ledger.ensure_accounts(&controlled_accounts).await?;
 

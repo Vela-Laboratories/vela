@@ -1,16 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { withdraw, getBalances, type BalanceResponse } from '@/lib/api'
-import { requestWithdrawalSignature, withdrawETH } from '@/lib/contract'
+import {
+  cancelWithdrawal,
+  getBalances,
+  getWithdrawals,
+  initiateWithdrawal,
+  type BalanceResponse,
+  type WithdrawalStatus,
+} from '@/lib/api'
+import {
+  parseWithdrawalAmount,
+  withdrawalCancelMessage,
+  withdrawalReservationMessage,
+} from '@/lib/withdrawal'
 import { Spinner } from '@/components/ui/Spinner'
 
-const ASSETS = [
-  'USDC', 'ETH', 'BTC', 'SOL', 'AVAX', 'MATIC',
-  'LINK', 'UNI', 'ARB', 'OP', 'AAVE', 'DOGE',
-]
+const ASSETS = ['USDC', 'ETH'] as const
+type SupportedAsset = (typeof ASSETS)[number]
 
 function ConnectGate() {
   const { connect } = useAuth()
@@ -22,8 +31,8 @@ function ConnectGate() {
     setError(null)
     try {
       await connect()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect wallet')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to connect wallet')
     } finally {
       setConnecting(false)
     }
@@ -31,36 +40,17 @@ function ConnectGate() {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(14,26,32,0.08)] p-8" style={{ borderRadius: 0 }}>
-        <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#00D2D2"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="14" cy="14" r="2" fill="#00D2D2" />
-            <path
-              d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#00D2D2"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </div>
+      <div className="w-full max-w-sm text-center bg-canvas border border-border p-8">
         <h2 className="text-xl font-semibold text-ink mb-2">Connect your wallet</h2>
-        <p className="text-sm text-brown mb-6">Connect your wallet to withdraw funds.</p>
-        {error && (
-          <p className="text-xs text-red-600 mb-4">{error}</p>
-        )}
+        <p className="text-sm text-brown mb-6">
+          Connect the wallet that owns the exchange balance you want to withdraw.
+        </p>
+        {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
         <button
           type="button"
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full flex items-center justify-center gap-2 px-4 h-10 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-ink hover:text-parchment transition-colors duration-150 disabled:opacity-50"
-          style={{ borderRadius: 0 }}
+          className="w-full flex items-center justify-center gap-2 h-10 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] disabled:opacity-50"
         >
           {connecting && <Spinner size="xs" className="text-ink" />}
           Connect Wallet
@@ -70,320 +60,290 @@ function ConnectGate() {
   )
 }
 
-interface SuccessState {
-  amount: string
-  asset: string
-  nonce: number
-  txHash: string | null
+function stateGuidance(state: string): string {
+  switch (state) {
+    case 'reserved':
+      return 'Funds are reserved in the ledger. Custody has not signed or sent a transaction.'
+    case 'approved':
+    case 'signing':
+      return 'The request passed review and is entering the custody signer.'
+    case 'signed':
+      return 'Custody authorization exists. The reservation remains locked until final outcome.'
+    case 'broadcast':
+    case 'replaced':
+      return 'The on-chain transaction is being monitored for final confirmation.'
+    case 'confirmed':
+      return 'The on-chain transfer confirmed and the ledger withdrawal completed.'
+    case 'cancelled':
+    case 'signing_failed':
+    case 'reversed':
+      return 'The reservation was released back to the available balance.'
+    case 'dropped':
+    case 'broadcast_failed':
+      return 'Custody intervention is required. Funds remain reserved to prevent a double withdrawal.'
+    default:
+      return 'The authoritative ledger is tracking this request.'
+  }
 }
 
 export default function WithdrawPage() {
   const { address, isConnected } = useAuth()
-
-  const [selectedAsset, setSelectedAsset] = useState('USDC')
+  const [selectedAsset, setSelectedAsset] = useState<SupportedAsset>('USDC')
   const [amount, setAmount] = useState('')
   const [balances, setBalances] = useState<BalanceResponse[]>([])
+  const [withdrawals, setWithdrawals] = useState<WithdrawalStatus[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [loadingMsg, setLoadingMsg] = useState('')
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [loadingMessage, setLoadingMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<SuccessState | null>(null)
+  const [success, setSuccess] = useState<WithdrawalStatus | null>(null)
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!address) return
-    getBalances(address).then((res) => {
-      if (res.ok && res.data) setBalances(res.data)
-    })
+    const [balanceResponse, withdrawalResponse] = await Promise.all([
+      getBalances(address),
+      getWithdrawals(address),
+    ])
+    if (balanceResponse.ok && balanceResponse.data) setBalances(balanceResponse.data)
+    if (withdrawalResponse.ok && withdrawalResponse.data) {
+      setWithdrawals(withdrawalResponse.data)
+    }
   }, [address])
 
-  const currentBalance = balances.find(
-    (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
-  )
-
-  const availableAmount = currentBalance ? parseFloat(currentBalance.available) : 0
-  const amountNum = parseFloat(amount) || 0
-  const amountExceedsBalance = amount !== '' && amountNum > availableAmount
-
-  function handleMax() {
-    if (currentBalance) {
-      setAmount(currentBalance.available)
+  useEffect(() => {
+    const initial = window.setTimeout(refresh, 0)
+    const interval = window.setInterval(refresh, 5_000)
+    return () => {
+      window.clearTimeout(initial)
+      window.clearInterval(interval)
     }
+  }, [refresh])
+
+  const currentBalance = balances.find(
+    (balance) => balance.asset.toUpperCase() === selectedAsset,
+  )
+  const availableAmount = Number(currentBalance?.available ?? '0')
+  const enteredAmount = Number(amount || '0')
+  const amountExceedsBalance = Number.isFinite(enteredAmount) && enteredAmount > availableAmount
+
+  async function walletSignature(message: string): Promise<string> {
+    if (!address) throw new Error('Connect a wallet first.')
+    const ethereum = (window as Window & {
+      ethereum?: { request(input: { method: string; params: string[] }): Promise<unknown> }
+    }).ethereum
+    if (!ethereum) throw new Error('No browser wallet detected.')
+    const signature = await ethereum.request({
+      method: 'personal_sign',
+      params: [message, address],
+    })
+    if (typeof signature !== 'string') throw new Error('Wallet returned an invalid signature.')
+    return signature
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     if (!address || !amount || amountExceedsBalance) return
     setSubmitting(true)
     setError(null)
-
+    setSuccess(null)
     try {
-      if (selectedAsset === 'ETH') {
-        const nonce = Date.now()
-        setLoadingMsg('Requesting operator signature...')
-        const { signature, amountWei } = await requestWithdrawalSignature(address, 'ETH', amount, nonce)
-        setLoadingMsg('Confirm transaction in MetaMask...')
-        const txHash = await withdrawETH(amountWei, nonce, signature)
-        setSuccess({ amount, asset: selectedAsset, nonce, txHash })
-      } else {
-        const rawAmount = Math.round(parseFloat(amount) * 1_000_000)
-        const nonce = Date.now()
-        const message = `vela:withdraw:${selectedAsset}:${rawAmount}:${nonce}`
-        const signature = (await (window as any).ethereum.request({
-          method: 'personal_sign',
-          params: [message, address],
-        })) as string
-
-        const res = await withdraw(address, selectedAsset, amount, signature, nonce)
-        if (!res.ok) {
-          setError(res.error ?? 'Withdrawal failed')
-          setSubmitting(false)
-          return
-        }
-        setSuccess({ amount, asset: selectedAsset, nonce, txHash: null })
+      setLoadingMessage('Checking authoritative withdrawal service...')
+      const preflight = await getWithdrawals(address)
+      if (!preflight.ok || !preflight.data) {
+        throw new Error('Authoritative withdrawal service is unavailable. No funds were reserved.')
       }
+      const withdrawalId = crypto.randomUUID()
+      const nonce = Date.now()
+      const rawAmount = parseWithdrawalAmount(amount, selectedAsset)
+      const message = withdrawalReservationMessage({
+        withdrawalId,
+        customer: address,
+        destination: address,
+        asset: selectedAsset,
+        amount: rawAmount,
+        nonce,
+      })
+      setLoadingMessage('Authorize the exact reservation in your wallet...')
+      const signature = await walletSignature(message)
+      setLoadingMessage('Reserving funds in the authoritative ledger...')
+      const response = await initiateWithdrawal({
+        withdrawal_id: withdrawalId,
+        asset: selectedAsset,
+        amount: rawAmount,
+        nonce,
+        address,
+        destination_address: address,
+        signature,
+      })
+      if (!response.ok || !response.data) {
+        throw new Error(response.error ?? 'Withdrawal reservation failed.')
+      }
+      setSuccess(response.data)
+      setWithdrawals((current) => [
+        response.data!,
+        ...current.filter((item) => item.id !== response.data!.id),
+      ])
+      setAmount('')
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Withdrawal reservation failed.')
+    } finally {
       setSubmitting(false)
-    } catch (err) {
-      setSubmitting(false)
-      setError(err instanceof Error ? err.message : 'Withdrawal failed')
+      setLoadingMessage('')
     }
   }
 
-  if (!isConnected) {
-    return <ConnectGate />
+  async function handleCancel(withdrawal: WithdrawalStatus) {
+    if (!address || withdrawal.state !== 'reserved') return
+    setCancellingId(withdrawal.id)
+    setError(null)
+    try {
+      const nonce = Number(withdrawal.nonce)
+      if (!Number.isSafeInteger(nonce)) throw new Error('Withdrawal nonce is invalid.')
+      const signature = await walletSignature(withdrawalCancelMessage(withdrawal.id, nonce))
+      const response = await cancelWithdrawal(withdrawal.id, { nonce, address, signature })
+      if (!response.ok || !response.data) {
+        throw new Error(response.error ?? 'Withdrawal cancellation failed.')
+      }
+      setWithdrawals((current) => current.map((item) => (
+        item.id === response.data!.id ? response.data! : item
+      )))
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Withdrawal cancellation failed.')
+    } finally {
+      setCancellingId(null)
+    }
   }
 
-  const shortAddress = address
-    ? `${address.slice(0, 6)}...${address.slice(-4)}`
-    : ''
-
-  const isOnChain = selectedAsset === 'ETH'
+  if (!isConnected) return <ConnectGate />
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
-      <div className="w-full max-w-[480px]">
+      <div className="w-full max-w-[520px]">
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           WITHDRAW FUNDS
         </p>
+        <div className="mb-6 border-l-[3px] border-[#00D2D2] bg-[rgba(0,210,210,0.04)] px-4 py-3">
+          <p className="text-[0.8rem] text-ink leading-relaxed">
+            A wallet signature authorizes one exact request. Vela reserves the balance atomically
+            before review, signing, or broadcast. This build does not issue custody signatures yet.
+          </p>
+        </div>
 
-        {success ? (
-          <div
-            className="bg-canvas border border-border p-8 flex flex-col items-center text-center"
-            style={{ borderRadius: 0 }}
-          >
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 48 48"
-              fill="none"
-              className="mb-5"
-            >
-              <circle cx="24" cy="24" r="23" stroke="#00A090" strokeWidth="2" />
-              <path
-                d="M14 24l7 7 13-14"
-                stroke="#00A090"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            {success.txHash ? (
-              <>
-                <p className="text-xl font-semibold text-ink mb-2">
-                  Withdrawal submitted on-chain
-                </p>
-                <p className="text-sm text-brown mb-5">
-                  Your {success.amount} ETH will arrive in your wallet once the
-                  transaction confirms on Ethereum Sepolia.
-                </p>
-                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
-                  TRANSACTION HASH
-                </p>
-                <p
-                  className="text-xs font-mono text-ink mb-4 break-all"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {success.txHash}
-                </p>
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${success.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 mb-4"
-                  style={{ background: '#00D2D2', borderRadius: 0 }}
-                >
-                  VIEW ON ETHERSCAN
-                </a>
-              </>
-            ) : (
-              <>
-                <p className="text-xl font-semibold text-ink mb-2">
-                  Withdrawal requested
-                </p>
-                <p className="text-sm text-brown mb-5">
-                  Your withdrawal of {success.amount} {success.asset} has been submitted.
-                  This testnet request requires manual operator handling and has no guaranteed completion time.
-                </p>
-                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
-                  REFERENCE NUMBER
-                </p>
-                <p
-                  className="text-sm font-mono text-ink mb-7"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {success.nonce}
-                </p>
-              </>
-            )}
-            <Link
-              href="/dashboard"
-              className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink border border-border transition-colors duration-150 hover:bg-vellum"
-              style={{ borderRadius: 0 }}
-            >
-              VIEW BALANCE
-            </Link>
+        {success && (
+          <div className="bg-canvas border border-border p-6 mb-6">
+            <p className="text-lg font-semibold text-ink mb-2">Funds reserved</p>
+            <p className="text-sm text-brown mb-3">
+              {success.amount} {success.asset} is unavailable for trading or another withdrawal.
+              No custody transaction has been signed or broadcast.
+            </p>
+            <p className="text-xs text-brown font-mono break-all">Request {success.id}</p>
           </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            className="bg-canvas border border-border p-8"
-            style={{ borderRadius: 0 }}
-          >
-            <div className="mb-6">
-              <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
-                CONNECTED WALLET
-              </p>
-              <p
-                className="text-sm"
-                style={{ fontFamily: 'var(--font-mono)', color: '#7BA4B8' }}
-              >
-                {shortAddress}
-              </p>
-            </div>
-
-            <div className="mb-5">
-              <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
-                ASSET
-              </label>
-              <select
-                value={selectedAsset}
-                onChange={(e) => {
-                  setSelectedAsset(e.target.value)
-                  setAmount('')
-                }}
-                className="w-full h-10 px-3 bg-vellum border border-border text-sm text-ink appearance-none focus:outline-none focus:border-ink"
-                style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
-              >
-                {ASSETS.map((a) => {
-                  const bal = balances.find((b) => b.asset.toUpperCase() === a.toUpperCase())
-                  const available = bal ? parseFloat(bal.available).toFixed(2) : '0.00'
-                  return (
-                    <option key={a} value={a}>
-                      {a} — {available} available
-                    </option>
-                  )
-                })}
-              </select>
-            </div>
-
-            <div className="mb-5">
-              <div
-                style={{
-                  borderLeft: '3px solid ' + (isOnChain ? '#00D2D2' : 'rgba(123,164,184,0.4)'),
-                  background: isOnChain ? 'rgba(0,210,210,0.04)' : 'rgba(123,164,184,0.04)',
-                  padding: '8px 12px',
-                }}
-              >
-                <p className="text-[0.72rem] text-brown leading-relaxed">
-                  {isOnChain
-                    ? '● Ethereum Sepolia test withdrawal'
-                    : '● Manual beta request; no completion-time guarantee'}
-                </p>
-                {!isOnChain && (
-                  <p className="text-[0.68rem] text-brown mt-1 opacity-70">
-                    ERC20 on-chain withdrawals coming soon
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
-                AMOUNT
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className={[
-                    'w-full h-10 pl-3 pr-24 bg-vellum border text-sm text-ink focus:outline-none',
-                    amountExceedsBalance
-                      ? 'border-terra focus:border-terra'
-                      : 'border-border focus:border-ink',
-                  ].join(' ')}
-                  style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleMax}
-                    className="text-[0.65rem] font-medium uppercase tracking-[0.08em] text-brown hover:text-ink transition-colors duration-150"
-                  >
-                    MAX
-                  </button>
-                  <span
-                    className="text-xs text-brown"
-                    style={{ fontFamily: 'var(--font-mono)' }}
-                  >
-                    {selectedAsset}
-                  </span>
-                </div>
-              </div>
-              {amountExceedsBalance && (
-                <p className="text-xs mt-1" style={{ color: '#00D2D2' }}>
-                  Amount exceeds available balance
-                </p>
-              )}
-            </div>
-
-            <div className="mb-7">
-              <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
-                WITHDRAWAL DESTINATION
-              </p>
-              <p
-                className="text-sm break-all"
-                style={{ fontFamily: 'var(--font-mono)', color: '#7BA4B8' }}
-              >
-                {address}
-              </p>
-            </div>
-
-            {error && (
-              <p className="text-xs mb-4" style={{ color: '#00D2D2' }}>
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting || !amount || amountExceedsBalance}
-              className="w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 disabled:opacity-50"
-              style={{ background: '#00D2D2', borderRadius: 0 }}
-            >
-              {submitting && <Spinner size="xs" className="text-white" />}
-              {submitting ? loadingMsg || 'Processing...' : `WITHDRAW ${amount || '0'} ${selectedAsset}`}
-            </button>
-          </form>
         )}
 
-        <div className="mt-8">
-          <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-4">
-            PENDING WITHDRAWALS
-          </p>
-          <div className="bg-canvas border border-border" style={{ borderRadius: 0 }}>
-            <p className="text-sm text-brown text-center py-8">No pending withdrawals</p>
+        <form onSubmit={handleSubmit} className="bg-canvas border border-border p-8">
+          <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
+            ASSET
+          </label>
+          <select
+            value={selectedAsset}
+            onChange={(event) => {
+              setSelectedAsset(event.target.value as SupportedAsset)
+              setAmount('')
+            }}
+            className="w-full h-10 px-3 mb-5 bg-vellum border border-border text-sm text-ink"
+          >
+            {ASSETS.map((asset) => <option key={asset} value={asset}>{asset}</option>)}
+          </select>
+
+          <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
+            AMOUNT
+          </label>
+          <div className="relative mb-2">
+            <input
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              className="w-full h-10 px-3 pr-20 bg-vellum border border-border text-sm text-ink font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setAmount(currentBalance?.available ?? '')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.65rem] uppercase text-brown"
+            >
+              MAX
+            </button>
           </div>
-        </div>
+          <p className="text-xs text-brown mb-5">
+            Available: {currentBalance?.available ?? '0'} {selectedAsset}
+          </p>
+
+          <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-1">
+            DESTINATION
+          </p>
+          <p className="text-xs text-ink font-mono break-all mb-6">{address}</p>
+
+          {amountExceedsBalance && (
+            <p className="text-xs text-red-600 mb-4">Amount exceeds available balance.</p>
+          )}
+          {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+          {loadingMessage && <p className="text-xs text-brown mb-3">{loadingMessage}</p>}
+          <button
+            type="submit"
+            disabled={submitting || !amount || amountExceedsBalance}
+            className="w-full flex items-center justify-center gap-2 h-10 bg-[#00D2D2] text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink disabled:opacity-50"
+          >
+            {submitting && <Spinner size="xs" className="text-ink" />}
+            RESERVE WITHDRAWAL
+          </button>
+        </form>
+
+        <section className="mt-8" aria-label="Withdrawal activity">
+          <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-4">
+            WITHDRAWAL ACTIVITY
+          </p>
+          <div className="bg-canvas border border-border">
+            {withdrawals.length === 0 ? (
+              <p className="text-sm text-brown text-center py-8">No authoritative withdrawals</p>
+            ) : withdrawals.map((withdrawal) => (
+              <article key={withdrawal.id} className="p-4 border-b border-border last:border-b-0">
+                <div className="flex justify-between gap-4 mb-2">
+                  <span className="text-sm text-ink font-mono">
+                    {withdrawal.amount} {withdrawal.asset}
+                  </span>
+                  <span className="text-[0.65rem] uppercase tracking-[0.1em] text-[#00A090]">
+                    {withdrawal.state}
+                  </span>
+                </div>
+                <p className="text-xs text-brown mb-2">{stateGuidance(withdrawal.state)}</p>
+                <p className="text-[0.65rem] text-brown font-mono break-all mb-3">
+                  {withdrawal.id}
+                </p>
+                {withdrawal.transaction_hash && (
+                  <p className="text-[0.65rem] text-brown font-mono break-all mb-3">
+                    Transaction {withdrawal.transaction_hash}
+                  </p>
+                )}
+                {withdrawal.state === 'reserved' && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCancel(withdrawal)}
+                    disabled={cancellingId === withdrawal.id}
+                    className="text-[0.65rem] uppercase tracking-[0.1em] text-brown underline disabled:opacity-50"
+                  >
+                    {cancellingId === withdrawal.id ? 'Releasing...' : 'Cancel and release funds'}
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <Link href="/dashboard" className="block text-center text-xs text-brown mt-6 underline">
+          Return to dashboard
+        </Link>
       </div>
     </div>
   )

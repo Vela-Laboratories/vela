@@ -4,7 +4,7 @@
 
 PostgreSQL is Vela's authoritative financial system of record. The matching engine proposes deterministic effects; the ledger validates and commits ownership changes before any success response or public event. All asset amounts are signed integer base units stored as PostgreSQL `NUMERIC`, never floating point.
 
-The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. Migration `0003_chain_indexer.sql` adds the immutable deployment registry, single-worker lease, monotonic finalized checkpoint, and halt evidence for the Base indexer. Migration `0004_deposit_reorg_recovery.sql` adds cyclic finalized-history audits, credited-deposit reversal references, and asset-wide financial halts. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
+The base schema lives at [`ledger/migrations/0001_authoritative_ledger.sql`](../../ledger/migrations/0001_authoritative_ledger.sql). Forward migration `0002_deposit_state_machine.sql` adds canonical case-insensitive event identity, database transition guards, and same-transaction history enforcement. Migration `0003_chain_indexer.sql` adds the immutable deployment registry, single-worker lease, monotonic finalized checkpoint, and halt evidence for the Base indexer. Migration `0004_deposit_reorg_recovery.sql` adds cyclic finalized-history audits, credited-deposit reversal references, and asset-wide financial halts. Migration `0005_withdrawal_reservations.sql` adds customer-nonce uniqueness, guarded withdrawal transitions, immutable identity fields, and mandatory same-transaction state history. The `ledger` Rust crate owns the posting transaction and SQLx migration runner.
 
 ## Accounts
 
@@ -36,7 +36,7 @@ The request hash binds an idempotency key to its original command. An identical 
 
 `ledger_deposits`, `ledger_deposit_chain_events`, and `ledger_deposit_state_history` store the complete deposit projection, canonical chain identity, and append-only transition history. `(chain_id, lower(transaction_hash), log_index)` and the vault deposit ID are independently unique. The typed ledger service makes observation replay-safe, requires two-provider finalized evidence, and commits the final custody/customer journal movement atomically with `credited` state and history. See [Verified deposit ledger boundary](verified-deposit-ledger.md).
 
-`ledger_withdrawals` and `ledger_withdrawal_state_history` store the current withdrawal projection, immutable transition history, reservation/completion/release journal references, destination, nonce, expiry, and broadcast identity. The allowed state values match ADR-003 and ADR-004.
+`ledger_withdrawals` and `ledger_withdrawal_state_history` store the current withdrawal projection, immutable transition history, reservation/completion/release journal references, destination, nonce, expiry, and broadcast identity. `Ledger::reserve_withdrawal` persists the request and moves customer ownership from `customer_available` to `customer_withdrawal_reserved` in one serializable transaction. The customer and request ID are replay-safe, and one customer nonce cannot authorize two different requests. A cancellation is allowed only before signing and journals an exactly-once release back to available funds. Completion, custody signing, broadcast monitoring, and finalized reconciliation remain separate work.
 
 ## Custody, reconciliation, and corrections
 
@@ -60,6 +60,9 @@ The request hash binds an idempotency key to its original command. An identical 
 | Finalized deposit credit is atomic and idempotent | Deposit ledger service | Journal, projection, deposit transaction FK, transition/history triggers | PostgreSQL finality, double-credit, balance, and transition-bypass tests |
 | Contradicted credits cannot remain usable | Deposit indexer and ledger service | Asset-halt journal trigger, reversal FK, transition/history guards | Two-provider historical rewrite, complete reversal, spent-credit quarantine, blocked-operation, and retry tests |
 | Administrative corrections require two people | Typed ledger correction command | Initiator/approver inequality | Self-approval, idempotency, bypass, and atomic-rollback tests |
+| Concurrent withdrawals cannot exceed available ownership | Withdrawal reservation service | Serializable projection-row locks and nonnegative customer accounts | Concurrent PostgreSQL reservation test |
+| Withdrawal retries cannot reserve twice | Withdrawal reservation service | Customer-nonce and journal idempotency uniqueness | Identical replay and conflicting replay tests |
+| Pre-signing cancellation cannot create or destroy ownership | Withdrawal cancellation service | Balanced release journal and guarded transition/history triggers | Exactly-once cancellation and balance-restoration test |
 
 ## Schema evolution
 

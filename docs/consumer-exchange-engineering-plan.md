@@ -212,10 +212,10 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M4 tasks
 
-- [ ] Authenticate the customer withdrawal request.
-- [ ] Validate available balance and locked exposure.
-- [ ] Atomically reserve the ledger amount.
-- [ ] Persist the withdrawal before requesting a signature.
+- [x] Authenticate the customer withdrawal request; the wallet signature binds request ID, customer, destination, asset, exact amount, and nonce.
+- [x] Validate available balance and locked exposure at the authoritative account boundary; only `customer_available` can fund a reservation.
+- [x] Atomically reserve the ledger amount in `customer_withdrawal_reserved`.
+- [x] Persist the withdrawal before requesting a custody signature; the legacy signer fails closed whenever the authoritative ledger is configured.
 - [ ] Bind signing authorization to chain, contract, user, destination, asset, amount, nonce, and request ID.
 - [ ] Replace the environment-held signing key with an HSM or MPC adapter boundary.
 - [ ] Track requested, reserved, approved, signed, submitted, confirmed, failed, canceled, and reversed states.
@@ -225,7 +225,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Add per-user, per-asset, and platform withdrawal limits.
 - [ ] Add a global withdrawal halt.
 - [ ] Add risk and compliance policy hooks without hardcoding a specific vendor.
-- [ ] Expose actionable withdrawal status to the frontend.
+- [x] Expose actionable withdrawal reservation status to the frontend, including a signed pre-signing cancellation that releases funds exactly once.
 
 ### M4 acceptance criteria
 
@@ -486,6 +486,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Add explicit Base and Base Sepolia public configuration, reject every other chain, and keep verified submission disabled until a valid vault and asset address are supplied.
     - Poll and display ledger-backed deposit activity with the real transaction hash while preserving the separately labeled non-authoritative demo flow for other testnet assets.
     - Verify customer scoping, transaction filtering, exact decimal amounts, fail-closed ledger absence, frontend configuration guards, generated API types, and the existing Rust and frontend suites.
+23. [x] **EX-023: Atomic withdrawal reservation and customer status**
+    - Replace authoritative-mode matching-engine withdrawal mutation with a serializable PostgreSQL reservation from customer available to customer withdrawal-reserved ownership.
+    - Bind the customer's EIP-191 authorization to a UUID request ID, normalized customer and destination addresses, ETH/USDC asset, exact amount, and nonce.
+    - Make identical retries return the original journal transaction, reject conflicting ID or nonce reuse, and prove concurrent reservations cannot overspend.
+    - Add guarded database transitions, immutable withdrawal identity, mandatory same-transaction state history, and an exactly-once pre-signing cancellation release.
+    - Fail closed on the legacy environment-held custody signer whenever the ledger is authoritative; custody approval, signing, broadcast, completion, and reconciliation remain later M4/M5 work.
+    - Expose ledger-only customer status and update the frontend to preflight, reserve, poll, explain, and safely cancel ETH/USDC withdrawal requests.
 
 ## Parallel nonengineering work
 
