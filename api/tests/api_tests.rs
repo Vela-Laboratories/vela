@@ -181,8 +181,8 @@ async fn test_production_readiness_requires_operational_dependencies_with_curren
     response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json();
     assert_eq!(body["ok"], false);
-    assert_eq!(body["ledger"], "ready");
-    assert_eq!(body["ledger_schema_version"], 13);
+    assert_eq!(body["ledger"], "configured");
+    assert!(body.get("ledger_schema_version").is_none());
     assert_eq!(body["engine_leadership"]["configured"], true);
     assert_eq!(body["engine_leadership"]["state"], "active");
     assert!(body["engine_leadership"].get("owner_id").is_none());

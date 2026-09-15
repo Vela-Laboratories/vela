@@ -46,6 +46,35 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Obtain CFTC review before offering perps, futures, options, margin, or financed commodity transactions.
 - [ ] Document Vela's regulatory assumptions and update them when the product changes.
 
+## Deferred exchange-token decision
+
+- [x] Keep any Vela exchange token out of the initial launch and current
+      infrastructure-remediation critical path.
+- [ ] Treat `$VELA` and `$VCE` only as working labels until ticker, trademark,
+      domain, chain, and existing-token collision diligence is complete.
+- [ ] Resolve the known existing Vela Exchange (`VELA`) token collision; do not
+      adopt or market `$VELA` while customer-confusion and trademark risks remain.
+- [ ] Define the exact problem a transferable token would solve.
+- [ ] Compare the proposed token against loyalty points, volume tiers, fee
+      credits, rebates, and ordinary equity financing.
+- [ ] Obtain written jurisdiction-specific legal analysis for issuance, sale,
+      airdrops, rewards, staking, custody, transfer, secondary trading, and
+      self-listing before writing production token contracts.
+- [ ] Select and document the issuing entity and every related-party conflict.
+- [ ] Design and stress-test supply, allocations, vesting, unlocks, emissions,
+      treasury powers, burns or buybacks, liquidity, and fully diluted value.
+- [ ] Establish insider, treasury, market-maker, surveillance, disclosure,
+      independent-listing, and delisting controls.
+- [ ] Define tax, accounting, reporting, AML/KYC, sanctions, record-retention,
+      and customer-support obligations.
+- [ ] Define genuine and bounded governance utility, or omit governance claims.
+- [ ] Define explicit criteria for choosing points, fee tiers, or no token.
+- [ ] Keep exchange solvency, ordinary deposits, trading, withdrawals, customer
+      recovery, and company runway independent of the token and its market price.
+- [ ] Commission independent economic, legal, smart-contract, and security
+      reviews before public distribution or exchange listing.
+- [ ] Complete a testnet rehearsal and capped launch before broad distribution.
+
 ## Critical custody and settlement redesign
 
 - [x] Restrict the current unverified direct-credit endpoint to `testnet-demo`.

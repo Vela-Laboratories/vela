@@ -363,6 +363,71 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Market-quality launch gate is green.
 - [ ] A written go or no-go review approves strict initial customer and value caps.
 
+## Deferred product option: Vela exchange token
+
+**Status:** Discovery only. This is not part of the initial consumer-exchange
+launch path, and `$VELA` and `$VCE` are unreserved working labels rather than a
+selected name, ticker, asset, or public commitment. Preliminary discovery has
+already identified an existing Arbitrum token marketed as
+[Vela Exchange (`VELA`)](https://arbiscan.io/token/0x088cd8f5ef3652623c22d48b1605dcfe860cd704),
+so `$VELA` must be treated as a known collision unless formal diligence resolves
+the name, trademark, and customer-confusion risks.
+
+**Start gate:** Do not begin token implementation, issuance, sale, airdrop,
+liquidity provisioning, or listing until Milestone 8 is complete, the core
+exchange has operated stably with real users, and counsel has approved a scoped
+discovery process.
+
+### Token decision tasks
+
+- [ ] Identify the specific customer or protocol problem a token would solve.
+- [ ] Compare a transferable token against nontransferable loyalty points,
+      volume tiers, fee credits, rebates, and ordinary equity financing.
+- [ ] Decide whether the design is a utility, rewards, governance, staking,
+      network-security, or other instrument; do not combine unrelated purposes
+      merely to create demand.
+- [ ] Conduct name, ticker, trademark, domain, chain, and existing-token
+      collision diligence before selecting `$VELA`, `$VCE`, or another label.
+- [ ] Obtain written jurisdiction-specific analysis covering creation,
+      issuance, sale, airdrops, rewards, staking, custody, transfer, secondary
+      trading, exchange self-listing, disclosures, and customer eligibility.
+- [ ] Determine the issuing entity and its relationship to the exchange,
+      treasury, founders, employees, investors, market makers, and customers.
+- [ ] Model fixed or capped supply, allocations, vesting, unlocks, emissions,
+      treasury authority, burns or buybacks, liquidity, and fully diluted value.
+- [ ] Stress-test concentration, unlock, run, manipulation, governance-capture,
+      thin-liquidity, treasury, and exchange-solvency scenarios.
+- [ ] Establish conflicts, insider-trading, treasury-transaction, market-maker,
+      surveillance, disclosure, and independent listing-review controls.
+- [ ] Define tax, accounting, cost-basis, rewards-reporting, sanctions, AML/KYC,
+      travel-rule, record-retention, and customer-support requirements.
+- [ ] Define whether governance powers are genuine and bounded; document every
+      power that remains with the operating company or token administrator.
+- [ ] Specify minimal contracts, administrative powers, upgrade policy,
+      emergency controls, custody model, distribution mechanism, and migration
+      plan only after the product and legal decisions are approved.
+- [ ] Commission independent economic, legal, smart-contract, and security
+      reviews before any public distribution or exchange listing.
+- [ ] Define explicit kill criteria under which Vela chooses points, fee tiers,
+      or no token instead.
+
+### Token acceptance criteria
+
+- [ ] A written decision demonstrates that a transferable token provides
+      durable utility that cannot be delivered more safely by ordinary product
+      features.
+- [ ] The token is not required for exchange solvency, ordinary deposits,
+      trading, withdrawals, customer recovery, or continued company financing.
+- [ ] Legal approval, economic analysis, token-holder disclosures, allocation
+      and vesting schedules, treasury controls, and conflict policies are public
+      and internally approved before distribution.
+- [ ] Audited contracts and operational controls constrain minting, upgrades,
+      treasury movement, privileged transfers, pausing, and key recovery.
+- [ ] Listing approval is independent, documented, and subject to the same or
+      stricter surveillance and delisting standards as third-party assets.
+- [ ] A testnet rehearsal and capped launch demonstrate distribution,
+      accounting, custody, support, monitoring, and incident-response behavior.
+
 ## Launch gates
 
 ### Custody gate
