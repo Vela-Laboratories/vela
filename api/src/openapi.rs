@@ -616,7 +616,8 @@ pub fn openapi_spec() -> serde_json::Value {
                     "type": "object",
                     "required": [
                         "id", "asset", "amount", "amount_atomic", "state", "destination_address",
-                        "chain_id", "vault_address", "nonce", "created_at", "updated_at"
+                        "phase", "funds_status", "terminal", "can_cancel", "action_required",
+                        "status_message", "chain_id", "vault_address", "nonce", "created_at", "updated_at"
                     ],
                     "properties": {
                         "id": { "type": "string", "format": "uuid" },
@@ -624,11 +625,20 @@ pub fn openapi_spec() -> serde_json::Value {
                         "amount": { "type": "string", "description": "Human-readable exact decimal amount" },
                         "amount_atomic": { "type": "string", "description": "Integer amount in the asset's smallest unit" },
                         "state": { "type": "string", "enum": ["requested", "reserved", "approved", "signing", "signed", "broadcast", "confirmed", "rejected", "cancelled", "signing_failed", "broadcast_failed", "replaced", "dropped", "reversed"] },
+                        "phase": { "type": "string", "enum": ["review", "custody", "chain", "recovery", "complete"] },
+                        "funds_status": { "type": "string", "enum": ["reserved", "released", "settled"] },
+                        "terminal": { "type": "boolean" },
+                        "can_cancel": { "type": "boolean" },
+                        "action_required": { "type": "string", "enum": ["none", "wait", "wait_for_finality", "operator_review"] },
+                        "status_message": { "type": "string" },
                         "destination_address": { "type": "string" },
                         "chain_id": { "type": "integer", "format": "int64" },
                         "vault_address": { "type": "string" },
                         "nonce": { "type": "string" },
                         "transaction_hash": { "type": ["string", "null"] },
+                        "reservation_transaction_id": { "type": ["string", "null"], "format": "uuid" },
+                        "completion_transaction_id": { "type": ["string", "null"], "format": "uuid" },
+                        "release_transaction_id": { "type": ["string", "null"], "format": "uuid" },
                         "expires_at": { "type": ["string", "null"], "format": "date-time" },
                         "created_at": { "type": "string", "format": "date-time" },
                         "updated_at": { "type": "string", "format": "date-time" }

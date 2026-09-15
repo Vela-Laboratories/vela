@@ -325,6 +325,93 @@ async fn reservation_is_atomic_idempotent_and_customer_scoped(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn eth_uses_the_same_atomic_reservation_and_release_state_machine(pool: PgPool) {
+    let ledger = Ledger::from_pool(pool);
+    let asset_id = Uuid::new_v4();
+    ledger
+        .create_asset(&NewAsset {
+            id: asset_id,
+            code: "ETH".to_owned(),
+            decimals: 18,
+            chain_id: Some(84532),
+            contract_address: None,
+        })
+        .await
+        .unwrap();
+    let available_id = Uuid::new_v4();
+    let operations_id = Uuid::new_v4();
+    for account in [
+        NewAccount {
+            id: available_id,
+            asset_id,
+            owner_type: "customer".to_owned(),
+            owner_reference: CUSTOMER.to_owned(),
+            account_type: "customer_available".to_owned(),
+            allow_negative: false,
+        },
+        NewAccount {
+            id: Uuid::new_v4(),
+            asset_id,
+            owner_type: "custody".to_owned(),
+            owner_reference: VAULT.to_owned(),
+            account_type: "custody_vault".to_owned(),
+            allow_negative: true,
+        },
+        NewAccount {
+            id: operations_id,
+            asset_id,
+            owner_type: "platform".to_owned(),
+            owner_reference: "platform:test".to_owned(),
+            account_type: "operational_adjustment".to_owned(),
+            allow_negative: true,
+        },
+    ] {
+        ledger.create_account(&account).await.unwrap();
+    }
+    let amount = BigDecimal::from(1_000_000_000_000_000_000_i128);
+    ledger
+        .post(&PostTransaction {
+            id: Uuid::new_v4(),
+            operation_type: "deposit_credit".to_owned(),
+            idempotency_key: "seed:eth-parity".to_owned(),
+            request_hash: [19; 32],
+            external_reference: None,
+            metadata: json!({ "test": true }),
+            legs: vec![
+                JournalLegInput {
+                    account_id: operations_id,
+                    amount: -amount.clone(),
+                },
+                JournalLegInput {
+                    account_id: available_id,
+                    amount: amount.clone(),
+                },
+            ],
+        })
+        .await
+        .unwrap();
+    let request = ReserveWithdrawal {
+        withdrawal_id: Uuid::new_v4(),
+        reservation_transaction_id: Uuid::new_v4(),
+        customer_reference: CUSTOMER.to_owned(),
+        asset_code: "ETH".to_owned(),
+        destination_address: CUSTOMER.to_owned(),
+        amount: amount.clone(),
+        nonce: 77,
+        expires_at: None,
+    };
+    let reserved = ledger.reserve_withdrawal(&request).await.unwrap();
+    assert_eq!(reserved.withdrawal.state, WithdrawalState::Reserved);
+    let cancelled = ledger
+        .cancel_reserved_withdrawal(request.withdrawal_id, CUSTOMER, Uuid::new_v4())
+        .await
+        .unwrap();
+    assert_eq!(cancelled.state, WithdrawalState::Cancelled);
+    assert!(cancelled.release_transaction_id.is_some());
+    assert_eq!(ledger.balance(available_id).await.unwrap(), amount);
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn cancellation_releases_the_reservation_exactly_once(pool: PgPool) {
     let fixture = Fixture::new(pool, 1_000_000).await;
     let command = fixture.reservation(11, 400_000);

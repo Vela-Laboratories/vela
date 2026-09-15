@@ -2500,12 +2500,29 @@ async fn cancel_withdrawal(
 fn withdrawal_status_response(
     withdrawal: &ledger::WithdrawalRecord,
 ) -> Result<WithdrawalStatusResponse, String> {
+    let released = withdrawal.release_transaction_id.is_some();
+    let completed = withdrawal.completion_transaction_id.is_some();
+    let (phase, action_required, status_message) =
+        withdrawal_status_semantics(withdrawal.state, completed, released);
+    let funds_status = if completed {
+        "settled"
+    } else if released {
+        "released"
+    } else {
+        "reserved"
+    };
     Ok(WithdrawalStatusResponse {
         id: withdrawal.id.to_string(),
         asset: withdrawal.asset_code.clone(),
         amount: format_ledger_amount(&withdrawal.amount, withdrawal.asset_decimals)?,
         amount_atomic: withdrawal.amount.normalized().to_plain_string(),
         state: withdrawal.state.as_str().to_owned(),
+        phase: phase.to_owned(),
+        funds_status: funds_status.to_owned(),
+        terminal: completed || released,
+        can_cancel: withdrawal.state == ledger::WithdrawalState::Reserved,
+        action_required: action_required.to_owned(),
+        status_message: status_message.to_owned(),
         destination_address: withdrawal.destination_address.clone(),
         chain_id: withdrawal.chain_id,
         vault_address: withdrawal.vault_address.clone(),
@@ -2515,10 +2532,103 @@ fn withdrawal_status_response(
             .map(|nonce| nonce.normalized().to_plain_string())
             .unwrap_or_default(),
         transaction_hash: withdrawal.transaction_hash.clone(),
+        reservation_transaction_id: withdrawal
+            .reservation_transaction_id
+            .map(|id| id.to_string()),
+        completion_transaction_id: withdrawal
+            .completion_transaction_id
+            .map(|id| id.to_string()),
+        release_transaction_id: withdrawal.release_transaction_id.map(|id| id.to_string()),
         expires_at: withdrawal.expires_at.map(|time| time.to_rfc3339()),
         created_at: withdrawal.created_at.to_rfc3339(),
         updated_at: withdrawal.updated_at.to_rfc3339(),
     })
+}
+
+fn withdrawal_status_semantics(
+    state: ledger::WithdrawalState,
+    completed: bool,
+    released: bool,
+) -> (&'static str, &'static str, &'static str) {
+    match state {
+        ledger::WithdrawalState::Requested | ledger::WithdrawalState::Reserved => (
+            "review",
+            "none",
+            "Funds are reserved in the authoritative ledger and have not entered custody signing.",
+        ),
+        ledger::WithdrawalState::Approved
+        | ledger::WithdrawalState::Signing
+        | ledger::WithdrawalState::Signed => (
+            "custody",
+            "wait",
+            "The request passed policy review and is progressing through custody authorization.",
+        ),
+        ledger::WithdrawalState::Broadcast | ledger::WithdrawalState::Replaced => (
+            "chain",
+            "wait_for_finality",
+            "The exact on-chain transaction is being monitored through finality.",
+        ),
+        ledger::WithdrawalState::Confirmed if completed => (
+            "complete",
+            "none",
+            "The on-chain transfer finalized and the authoritative ledger recorded completion.",
+        ),
+        ledger::WithdrawalState::Rejected
+        | ledger::WithdrawalState::Cancelled
+        | ledger::WithdrawalState::SigningFailed
+            if released =>
+        {
+            (
+                "complete",
+                "none",
+                "The request ended before broadcast and its reservation was released.",
+            )
+        }
+        ledger::WithdrawalState::BroadcastFailed if released => (
+            "complete",
+            "none",
+            "Finalized non-execution was proven and the reservation was released.",
+        ),
+        ledger::WithdrawalState::Dropped
+        | ledger::WithdrawalState::Reversed
+        | ledger::WithdrawalState::BroadcastFailed
+        | ledger::WithdrawalState::Confirmed
+        | ledger::WithdrawalState::Rejected
+        | ledger::WithdrawalState::Cancelled
+        | ledger::WithdrawalState::SigningFailed => (
+            "recovery",
+            "operator_review",
+            "Funds remain reserved until custody can prove execution or finalized non-execution.",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod withdrawal_status_tests {
+    use super::withdrawal_status_semantics;
+    use ledger::WithdrawalState;
+
+    #[test]
+    fn failed_broadcast_stays_in_recovery_until_release_is_journaled() {
+        let pending = withdrawal_status_semantics(WithdrawalState::BroadcastFailed, false, false);
+        assert_eq!(pending.0, "recovery");
+        assert_eq!(pending.1, "operator_review");
+
+        let released = withdrawal_status_semantics(WithdrawalState::BroadcastFailed, false, true);
+        assert_eq!(released.0, "complete");
+        assert_eq!(released.1, "none");
+    }
+
+    #[test]
+    fn confirmed_withdrawal_is_complete_only_with_completion_receipt() {
+        let confirmed = withdrawal_status_semantics(WithdrawalState::Confirmed, true, false);
+        assert_eq!(confirmed.0, "complete");
+        assert_eq!(confirmed.1, "none");
+
+        let inconsistent = withdrawal_status_semantics(WithdrawalState::Confirmed, false, false);
+        assert_eq!(inconsistent.0, "recovery");
+        assert_eq!(inconsistent.1, "operator_review");
+    }
 }
 
 // ---------------------------------------------------------------------------

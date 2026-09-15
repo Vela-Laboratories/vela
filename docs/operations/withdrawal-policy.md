@@ -1,5 +1,19 @@
 # Withdrawal policy operations
 
+## Customer status contract
+
+The customer withdrawal API does not infer safety from a state label alone.
+Every response includes `phase`, `funds_status`, `terminal`, `can_cancel`,
+`action_required`, and a backend-owned `status_message`. It also exposes the
+reservation, completion, and release journal transaction IDs plus the current
+on-chain transaction hash when one exists.
+
+`confirmed` is terminal only with a completion journal receipt. A failed,
+dropped, or reverted broadcast remains `funds_status=reserved` and requires
+operator review until finalized non-execution evidence creates a release
+receipt. This prevents the UI from telling a customer that funds returned when
+the authorization may still be executable on-chain.
+
 ## Scope
 
 EX-025 provides free, provider-neutral controls in PostgreSQL. It does not configure a sanctions, KYT, or blockchain-analytics vendor and it does not enable custody signing or transaction broadcast. A missing policy or a compliance disposition of `reject`, `review`, or `unavailable` cannot produce an authorization. EX-026 adds a separate source- and test-only V2 execution evidence boundary; see [Withdrawal execution observer operations](withdrawal-observer.md).

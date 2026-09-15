@@ -60,32 +60,6 @@ function ConnectGate() {
   )
 }
 
-function stateGuidance(state: string): string {
-  switch (state) {
-    case 'reserved':
-      return 'Funds are reserved in the ledger. Custody has not signed or sent a transaction.'
-    case 'approved':
-    case 'signing':
-      return 'The request passed review and is entering the custody signer.'
-    case 'signed':
-      return 'Custody authorization exists. The reservation remains locked until final outcome.'
-    case 'broadcast':
-    case 'replaced':
-      return 'The on-chain transaction is being monitored for final confirmation.'
-    case 'confirmed':
-      return 'The on-chain transfer confirmed and the ledger withdrawal completed.'
-    case 'cancelled':
-    case 'signing_failed':
-    case 'reversed':
-      return 'The reservation was released back to the available balance.'
-    case 'dropped':
-    case 'broadcast_failed':
-      return 'Custody intervention is required. Funds remain reserved to prevent a double withdrawal.'
-    default:
-      return 'The authoritative ledger is tracking this request.'
-  }
-}
-
 export default function WithdrawPage() {
   const { address, isConnected } = useAuth()
   const [selectedAsset, setSelectedAsset] = useState<SupportedAsset>('USDC')
@@ -317,7 +291,11 @@ export default function WithdrawPage() {
                     {withdrawal.state}
                   </span>
                 </div>
-                <p className="text-xs text-brown mb-2">{stateGuidance(withdrawal.state)}</p>
+                <p className="text-xs text-brown mb-1">{withdrawal.status_message}</p>
+                <p className="text-[0.65rem] uppercase tracking-[0.08em] text-brown mb-2">
+                  Funds {withdrawal.funds_status.replace('_', ' ')}
+                  {withdrawal.action_required === 'operator_review' ? ' · Operator review required' : ''}
+                </p>
                 <p className="text-[0.65rem] text-brown font-mono break-all mb-3">
                   {withdrawal.id}
                 </p>
@@ -326,7 +304,7 @@ export default function WithdrawPage() {
                     Transaction {withdrawal.transaction_hash}
                   </p>
                 )}
-                {withdrawal.state === 'reserved' && (
+                {withdrawal.can_cancel && (
                   <button
                     type="button"
                     onClick={() => void handleCancel(withdrawal)}

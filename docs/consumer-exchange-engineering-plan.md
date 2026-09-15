@@ -312,7 +312,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Complete session-key creation and revocation.
 - [ ] Support scoped, expiring session permissions.
 - [x] Complete ETH and USDC deposit status interfaces; both assets share the fail-closed Base configuration and ledger-backed activity view, while submission remains disabled until the compatible vault is deployed and configured.
-- [ ] Complete ETH and USDC withdrawal status interfaces.
+- [x] Complete authoritative ETH and USDC withdrawal status interfaces with funds disposition, terminality, action-required guidance, transaction hash, and ledger receipt identities.
 - [ ] Add transaction receipts and downloadable history.
 - [ ] Add fee previews and clear rejection messages.
 - [ ] Add deposit, withdrawal, account, and platform limits to the UI.
@@ -608,6 +608,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Deduplicate identical alerts, retry undelivered state on the next poll, bound every request, and never expose endpoint or webhook URLs in status, readiness, metrics, logs, or payloads.
     - Verify production-required versus development-optional dependency behavior and preserve the unconfigured testnet-demo boundary.
     - Actual paging-provider provisioning, 24/7 ownership, escalation policy, and hosted delivery exercises remain launch gates.
+37. [x] **EX-037: Authoritative withdrawal progress and recovery UX**
+    - Derive customer-visible phase, funds disposition, terminality, cancellation eligibility, required action, and plain-language status from the durable withdrawal state plus completion/release journal receipts.
+    - Never label a dropped, reverted, or failed broadcast complete merely from its enum state. Keep funds visibly reserved and require operator review until exact finalized execution or non-execution produces the corresponding immutable journal receipt.
+    - Return reservation, completion, and release transaction identities alongside the on-chain hash so customers and operators can correlate every outcome to the authoritative ledger.
+    - Drive the withdrawal page from backend semantics instead of duplicating a potentially stale frontend state map, and expose operator-review conditions explicitly.
+    - Add ETH parity coverage for atomic reservation and cancellation/release while retaining the full USDC authorization, broadcast-observation, replacement, revert, finalization, and expiry suites.
+    - The broadcaster remains disabled and unconfigured: live custody signing, gas relay, hosted dual-provider observation, and a deployed ETH/USDC end-to-end test remain launch gates before real funds.
 
 ## Parallel nonengineering work
 

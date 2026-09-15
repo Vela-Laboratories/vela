@@ -2224,24 +2224,39 @@ export interface components {
             withdrawal_id: string;
         };
         WithdrawalStatusResponse: {
+            /** @enum {string} */
+            action_required: "none" | "wait" | "wait_for_finality" | "operator_review";
             /** @description Human-readable exact decimal amount */
             amount: string;
             /** @description Integer amount in the asset's smallest unit */
             amount_atomic: string;
             /** @enum {string} */
             asset: "ETH" | "USDC";
+            can_cancel: boolean;
             /** Format: int64 */
             chain_id: number;
+            /** Format: uuid */
+            completion_transaction_id?: string | null;
             /** Format: date-time */
             created_at: string;
             destination_address: string;
             /** Format: date-time */
             expires_at?: string | null;
+            /** @enum {string} */
+            funds_status: "reserved" | "released" | "settled";
             /** Format: uuid */
             id: string;
             nonce: string;
             /** @enum {string} */
+            phase: "review" | "custody" | "chain" | "recovery" | "complete";
+            /** Format: uuid */
+            release_transaction_id?: string | null;
+            /** Format: uuid */
+            reservation_transaction_id?: string | null;
+            /** @enum {string} */
             state: "requested" | "reserved" | "approved" | "signing" | "signed" | "broadcast" | "confirmed" | "rejected" | "cancelled" | "signing_failed" | "broadcast_failed" | "replaced" | "dropped" | "reversed";
+            status_message: string;
+            terminal: boolean;
             transaction_hash?: string | null;
             /** Format: date-time */
             updated_at: string;

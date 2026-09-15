@@ -163,7 +163,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add large-withdrawal review thresholds.
 - [ ] Add a withdrawal allowlist option.
 - [x] Add a durable global withdrawal kill switch that blocks new reservation, approval, and signing while allowing safe releases and mandatory journaling of already-finalized custody execution; require three-party evidence to resolve it.
-- [ ] Add clear customer-visible withdrawal status and failure recovery.
+- [x] Add clear authoritative customer-visible withdrawal phase, funds disposition, terminality, cancellation eligibility, ledger receipts, and operator-review guidance; actual operator recovery execution remains an operations gate.
 
 ## Remove test and synthetic behavior from production
 
