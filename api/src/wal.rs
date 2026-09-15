@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use crc::{Crc, CRC_64_ECMA_182};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -114,6 +114,7 @@ pub struct WalEngineStop {
     pub final_sequence: u64,
 }
 
+#[derive(Debug)]
 pub struct WalEntry {
     pub sequence: u64,
     pub timestamp_ns: u64,
@@ -169,42 +170,58 @@ fn parse_segment_number(name: &str) -> Option<u32> {
         .and_then(|s| s.parse().ok())
 }
 
-fn find_max_segment_sync(dir: &Path) -> Option<u32> {
-    std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name();
-            parse_segment_number(&name.to_string_lossy())
-        })
-        .max()
+fn list_segments_sync(dir: &Path) -> Result<Vec<(u32, PathBuf)>> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("read WAL directory"),
+    };
+
+    let mut segments = Vec::new();
+    for entry in entries {
+        let entry = entry.context("read WAL directory entry")?;
+        let name = entry.file_name();
+        if let Some(number) = parse_segment_number(&name.to_string_lossy()) {
+            segments.push((number, entry.path()));
+        }
+    }
+    segments.sort_unstable_by_key(|(number, _)| *number);
+    for pair in segments.windows(2) {
+        let expected = pair[0]
+            .0
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("WAL segment number space is exhausted"))?;
+        if pair[1].0 != expected {
+            bail!(
+                "WAL segment numbering gap between {} and {}",
+                pair[0].0,
+                pair[1].0
+            );
+        }
+    }
+    Ok(segments)
 }
 
-fn find_last_sequence_in_segment(path: &Path) -> u64 {
-    Wal::read_from(path, 0)
-        .unwrap_or_default()
-        .last()
-        .map(|e| e.sequence)
-        .unwrap_or(0)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WalRecoveryState {
+    pub has_prior_evidence: bool,
+    pub has_entries: bool,
+    pub last_sequence: u64,
+    pub checkpoint_sequence: u64,
+    pub checkpoint_snapshot_path: Option<String>,
+    pub clean_shutdown: bool,
 }
 
 impl Wal {
     pub fn new(dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(dir)?;
 
-        let segment_number = find_max_segment_sync(dir).unwrap_or(0);
+        let recovery = Self::inspect(dir)?;
+        let segments = list_segments_sync(dir)?;
+        let segment_number = segments.last().map(|(number, _)| *number).unwrap_or(0);
         let path = segment_path(dir, segment_number);
 
         let existing_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-
-        let last_seq = if existing_size > 0 {
-            find_last_sequence_in_segment(&path)
-        } else if segment_number > 0 {
-            let prev_path = segment_path(dir, segment_number - 1);
-            find_last_sequence_in_segment(&prev_path)
-        } else {
-            0
-        };
 
         let std_file = std::fs::OpenOptions::new()
             .create(true)
@@ -222,7 +239,7 @@ impl Wal {
                 last_checkpoint_time_ms: 0,
                 last_engine_start_reason: "clean".to_string(),
             }),
-            sequence: Arc::new(AtomicU64::new(last_seq + 1)),
+            sequence: Arc::new(AtomicU64::new(recovery.last_sequence.saturating_add(1))),
             max_segment_size: DEFAULT_MAX_SEGMENT_SIZE,
         })
     }
@@ -235,6 +252,9 @@ impl Wal {
     }
 
     pub async fn append<T: Serialize>(&self, entry_type: u32, payload: &T) -> Result<u64> {
+        if !(ORDER_POST..=ENGINE_STOP).contains(&entry_type) {
+            bail!("unsupported WAL entry type {entry_type}");
+        }
         let payload_bytes = match rmp_serde::to_vec(payload) {
             Ok(b) => b,
             Err(e) => {
@@ -243,7 +263,15 @@ impl Wal {
             }
         };
 
-        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
+        if payload_bytes.len() > MAX_PAYLOAD_SIZE as usize {
+            bail!("WAL payload exceeds maximum size");
+        }
+
+        let mut inner = self.inner.lock().await;
+        let seq = self.sequence.load(Ordering::SeqCst);
+        let next_sequence = seq
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("WAL sequence space is exhausted"))?;
 
         let ts_ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -267,14 +295,13 @@ impl Wal {
 
         let entry_len = data.len() as u64;
 
-        let mut inner = self.inner.lock().await;
-
         if let Err(e) = inner.file.write_all(&data).await {
             tracing::error!("WAL write error: {e}");
             return Err(e.into());
         }
 
         inner.segment_size += entry_len;
+        self.sequence.store(next_sequence, Ordering::SeqCst);
 
         if entry_type == CHECKPOINT {
             inner.last_checkpoint_sequence = seq;
@@ -305,7 +332,15 @@ impl Wal {
     pub async fn rotate(&self) -> Result<()> {
         let mut inner = self.inner.lock().await;
 
-        let new_num = inner.segment_number + 1;
+        inner
+            .file
+            .sync_all()
+            .await
+            .context("sync WAL before rotation")?;
+        let new_num = inner
+            .segment_number
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("WAL segment number space is exhausted"))?;
         let new_path = segment_path(&self.dir, new_num);
 
         let std_file = std::fs::OpenOptions::new()
@@ -335,53 +370,61 @@ impl Wal {
     }
 
     pub fn read_from(path: &Path, after_sequence: u64) -> Result<Vec<WalEntry>> {
-        use std::io::Read;
-
-        let mut file = match std::fs::File::open(path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-            Err(e) => return Err(e.into()),
-        };
+        let bytes =
+            std::fs::read(path).with_context(|| format!("read WAL segment {}", path.display()))?;
 
         let mut entries = Vec::new();
-
-        loop {
-            let mut header = [0u8; 24];
-            match file.read_exact(&mut header) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                Err(e) => {
-                    tracing::warn!("WAL read header error: {e}");
-                    break;
-                }
+        let mut cursor = 0usize;
+        let mut previous_sequence: Option<u64> = None;
+        while cursor < bytes.len() {
+            let remaining = bytes.len() - cursor;
+            if remaining < 24 {
+                bail!("truncated WAL header at byte {cursor}");
             }
+            let header: [u8; 24] = bytes[cursor..cursor + 24]
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("invalid WAL header at byte {cursor}"))?;
+            cursor += 24;
 
-            let seq = u64::from_be_bytes(header[0..8].try_into().unwrap());
-            let ts_ns = u64::from_be_bytes(header[8..16].try_into().unwrap());
-            let entry_type = u32::from_be_bytes(header[16..20].try_into().unwrap());
-            let payload_len = u32::from_be_bytes(header[20..24].try_into().unwrap());
+            let seq = u64::from_be_bytes(
+                header[0..8]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid WAL sequence"))?,
+            );
+            let ts_ns = u64::from_be_bytes(
+                header[8..16]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid WAL timestamp"))?,
+            );
+            let entry_type = u32::from_be_bytes(
+                header[16..20]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid WAL entry type"))?,
+            );
+            if !(ORDER_POST..=ENGINE_STOP).contains(&entry_type) {
+                bail!("unsupported WAL entry type {entry_type} at sequence {seq}");
+            }
+            let payload_len = u32::from_be_bytes(
+                header[20..24]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid WAL payload length"))?,
+            );
 
             if payload_len > MAX_PAYLOAD_SIZE {
-                tracing::warn!(
-                    "WAL: suspicious payload length {} at seq {}, stopping",
-                    payload_len,
-                    seq
-                );
-                break;
+                bail!("WAL payload length {payload_len} exceeds maximum at sequence {seq}");
             }
-
-            let mut payload = vec![0u8; payload_len as usize];
-            if let Err(e) = file.read_exact(&mut payload) {
-                tracing::warn!("WAL: truncated payload at seq {}: {}", seq, e);
-                break;
+            let record_tail = payload_len as usize + 8;
+            if bytes.len() - cursor < record_tail {
+                bail!("truncated WAL record at sequence {seq}");
             }
-
-            let mut crc_buf = [0u8; 8];
-            if let Err(e) = file.read_exact(&mut crc_buf) {
-                tracing::warn!("WAL: truncated CRC at seq {}: {}", seq, e);
-                break;
-            }
-            let stored_crc = u64::from_be_bytes(crc_buf);
+            let payload = bytes[cursor..cursor + payload_len as usize].to_vec();
+            cursor += payload_len as usize;
+            let stored_crc = u64::from_be_bytes(
+                bytes[cursor..cursor + 8]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid WAL CRC at sequence {seq}"))?,
+            );
+            cursor += 8;
 
             let mut to_check: Vec<u8> = Vec::with_capacity(24 + payload_len as usize);
             to_check.extend_from_slice(&header);
@@ -389,9 +432,17 @@ impl Wal {
             let computed_crc = CRC64.checksum(&to_check);
 
             if stored_crc != computed_crc {
-                tracing::warn!("WAL: CRC mismatch at seq {}, skipping entry", seq);
-                continue;
+                bail!("WAL CRC mismatch at sequence {seq}");
             }
+            if let Some(previous) = previous_sequence {
+                let expected = previous
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow::anyhow!("WAL sequence overflow"))?;
+                if seq != expected {
+                    bail!("WAL sequence discontinuity: expected {expected}, found {seq}");
+                }
+            }
+            previous_sequence = Some(seq);
 
             if seq > after_sequence {
                 entries.push(WalEntry {
@@ -406,29 +457,116 @@ impl Wal {
         Ok(entries)
     }
 
+    pub fn inspect(dir: &Path) -> Result<WalRecoveryState> {
+        let segments = list_segments_sync(dir)?;
+        let mut all_entries = Vec::new();
+        let mut previous_sequence: Option<u64> = None;
+        for (_, path) in &segments {
+            for entry in Self::read_from(path, 0)? {
+                if let Some(previous) = previous_sequence {
+                    let expected = previous
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow::anyhow!("WAL sequence overflow"))?;
+                    if entry.sequence != expected {
+                        bail!(
+                            "WAL sequence discontinuity across segments: expected {expected}, found {}",
+                            entry.sequence
+                        );
+                    }
+                }
+                previous_sequence = Some(entry.sequence);
+                all_entries.push(entry);
+            }
+        }
+
+        let mut checkpoint_sequence = 0;
+        let mut checkpoint_snapshot_path = None;
+        for entry in &all_entries {
+            if entry.entry_type == CHECKPOINT {
+                let checkpoint = entry
+                    .decode::<WalCheckpoint>()
+                    .context("decode WAL checkpoint")?;
+                checkpoint_sequence = entry.sequence;
+                checkpoint_snapshot_path = Some(checkpoint.snapshot_path);
+            }
+        }
+        let clean_shutdown = match all_entries.last() {
+            Some(entry) if entry.entry_type == ENGINE_STOP => {
+                let stop = entry
+                    .decode::<WalEngineStop>()
+                    .context("decode terminal WAL stop")?;
+                stop.reason == "clean" && stop.final_sequence.saturating_add(1) == entry.sequence
+            }
+            _ => false,
+        };
+        let last_sequence = previous_sequence.unwrap_or(0);
+        if last_sequence == u64::MAX {
+            bail!("WAL sequence space is exhausted");
+        }
+        let has_entries = previous_sequence.is_some();
+        let has_prior_evidence = has_entries
+            || segments.len() > 1
+            || segments.first().is_some_and(|(number, _)| *number != 0);
+        if has_prior_evidence && !has_entries {
+            bail!("WAL segment history exists but contains no recoverable entries");
+        }
+        Ok(WalRecoveryState {
+            has_prior_evidence,
+            has_entries,
+            last_sequence,
+            checkpoint_sequence,
+            checkpoint_snapshot_path,
+            clean_shutdown,
+        })
+    }
+
+    pub fn read_all_from(dir: &Path, after_sequence: u64) -> Result<Vec<WalEntry>> {
+        let segments = list_segments_sync(dir)?;
+        let mut entries = Vec::new();
+        let mut previous_sequence: Option<u64> = None;
+        for (_, path) in segments {
+            for entry in Self::read_from(&path, 0)? {
+                if let Some(previous) = previous_sequence {
+                    let expected = previous
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow::anyhow!("WAL sequence overflow"))?;
+                    if entry.sequence != expected {
+                        bail!(
+                            "WAL sequence discontinuity across segments: expected {expected}, found {}",
+                            entry.sequence
+                        );
+                    }
+                }
+                previous_sequence = Some(entry.sequence);
+                if entry.sequence > after_sequence {
+                    if entries.is_empty() {
+                        let expected = after_sequence
+                            .checked_add(1)
+                            .ok_or_else(|| anyhow::anyhow!("WAL replay sequence overflow"))?;
+                        if entry.sequence != expected {
+                            bail!(
+                                "WAL replay history gap: expected sequence {expected}, found {}",
+                                entry.sequence
+                            );
+                        }
+                    }
+                    entries.push(entry);
+                }
+            }
+        }
+        Ok(entries)
+    }
+
     pub async fn find_last_checkpoint(dir: &Path) -> Result<Option<(u64, WalCheckpoint)>> {
         let dir = dir.to_path_buf();
         tokio::task::spawn_blocking(move || {
-            let mut segments: Vec<u32> = std::fs::read_dir(&dir)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .filter_map(|e| {
-                    let name = e.file_name();
-                    parse_segment_number(&name.to_string_lossy())
-                })
-                .collect();
-            segments.sort_unstable();
-
+            Wal::inspect(&dir)?;
             let mut last_checkpoint: Option<(u64, WalCheckpoint)> = None;
-            for seg_num in segments {
-                let path = segment_path(&dir, seg_num);
-                let entries = Wal::read_from(&path, 0).unwrap_or_default();
-                for entry in entries {
+            for (_, path) in list_segments_sync(&dir)? {
+                for entry in Wal::read_from(&path, 0)? {
                     if entry.entry_type == CHECKPOINT {
-                        if let Ok(cp) = entry.decode::<WalCheckpoint>() {
-                            last_checkpoint = Some((entry.sequence, cp));
-                        }
+                        let cp = entry.decode::<WalCheckpoint>()?;
+                        last_checkpoint = Some((entry.sequence, cp));
                     }
                 }
             }
@@ -438,51 +576,16 @@ impl Wal {
         .map_err(|e| anyhow::anyhow!("spawn_blocking: {e}"))?
     }
 
-    pub fn was_clean_shutdown_sync(dir: &Path) -> bool {
-        let max_seg = match find_max_segment_sync(dir) {
-            Some(n) => n,
-            None => return false,
-        };
-
-        let path = segment_path(dir, max_seg);
-        let entries = Wal::read_from(&path, 0).unwrap_or_default();
-        entries.iter().rev().any(|e| {
-            if e.entry_type == ENGINE_STOP {
-                if let Ok(stop) = e.decode::<WalEngineStop>() {
-                    return stop.reason == "clean";
-                }
-            }
-            false
-        })
+    pub fn was_clean_shutdown_sync(dir: &Path) -> Result<bool> {
+        Ok(Self::inspect(dir)?.clean_shutdown)
     }
 
-    pub fn find_checkpoint_sequence_sync(dir: &Path) -> u64 {
-        let mut segments: Vec<u32> = std::fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| {
-                let name = e.file_name();
-                parse_segment_number(&name.to_string_lossy())
-            })
-            .collect();
-        segments.sort_unstable();
-
-        let mut last_seq = 0u64;
-        for seg_num in segments {
-            let path = segment_path(dir, seg_num);
-            let entries = Wal::read_from(&path, 0).unwrap_or_default();
-            for entry in &entries {
-                if entry.entry_type == CHECKPOINT {
-                    last_seq = entry.sequence;
-                }
-            }
-        }
-        last_seq
+    pub fn find_checkpoint_sequence_sync(dir: &Path) -> Result<u64> {
+        Ok(Self::inspect(dir)?.checkpoint_sequence)
     }
 
-    pub fn wal_files_exist(dir: &Path) -> bool {
-        find_max_segment_sync(dir).is_some()
+    pub fn wal_files_exist(dir: &Path) -> Result<bool> {
+        Ok(!list_segments_sync(dir)?.is_empty())
     }
 
     pub fn current_sequence(&self) -> u64 {

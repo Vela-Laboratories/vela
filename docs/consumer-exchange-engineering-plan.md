@@ -280,7 +280,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Persist immutable reconciliation snapshots with exact finalized block, dual-provider, deployment, bytecode, custody, and ledger-projection evidence.
 - [x] Automatically halt deposit credits, trading, and new withdrawals for deficits or indeterminate evidence; services never automatically unhalt.
 - [x] Add independent reconciliation execution outside the matcher process as a leased, restart-safe worker.
-- [ ] Remove temporary WAL fallback behavior.
+- [x] Remove temporary WAL fallback behavior in every runtime mode; startup uses only the configured durable directory.
 - [ ] Fail closed on corrupt or unavailable financial storage.
 - [ ] Replicate ledger and journal storage across failure domains.
 - [ ] Create encrypted offsite backups.
@@ -540,6 +540,16 @@ Work should begin in this order. Each item should land as a small, independently
     - Atomically activate a full asset halt for deficits and indeterminate results; provider-level failures halt every registered deployment asset, surpluses remain explicitly surplus, and no path automatically resolves a halt.
     - Verify balanced, surplus, deficit, indeterminate, empty-account, replay, changed-projection, changed-custody, lease-fencing, failure-idempotency, and database halt-guard behavior against PostgreSQL 16.
     - Keep the worker source-only, opt-in, and unconfigured. Readiness integration, external paging, processor-aware orchestration, daily reports, hosted RPC credentials, deployment, and real-funds claims remain open.
+30. [x] **EX-030: Fail-closed local engine recovery integrity**
+    - Remove the development/testnet temporary WAL fallback and reject an unavailable configured recovery directory before binding the API listener.
+    - Validate every retained WAL segment and record at open and replay time, rejecting truncation, oversized payloads, CRC mismatch, unsupported types, unreadable or missing segments, and duplicate, regressed, or gapped sequences.
+    - Serialize sequence allocation with file writes and advance the in-memory sequence only after a successful write so concurrent writers cannot reorder durable records or manufacture a gap after a failed append.
+    - Require a matched snapshot/WAL recovery set whenever prior evidence exists; allow a genuinely fresh start only when neither source contains prior evidence.
+    - Make snapshot read, parse, version, market/order consistency, next-order sequence, and restoration failures fatal in every runtime mode; migrate the deployed version-1 format only when a clean checkpoint/stop boundary makes its replay sequence unambiguous.
+    - Make WAL replay return typed failure context for corrupt or undecodable required entries instead of skipping the record or segment; automatic unclean replay remains disabled until snapshot publication and request/WAL persistence share an atomic boundary.
+    - Verify unavailable initialization, CRC corruption, truncation, oversized records, sequence gaps, terminal clean-shutdown semantics, concurrent append ordering, missing/corrupt/unsupported snapshots, invalid order-market restoration, undecodable replay, and valid recovery.
+    - Document an evidence-preserving operator recovery procedure and preserve the ledger-first boundary: WAL/snapshots assist local engine recovery but are not authoritative financial storage.
+    - Remaining work includes atomic snapshot/checkpoint publication and request/WAL fencing, automatic unclean recovery, cryptographic snapshot integrity and signing, deployed-code identity, replication, encrypted backups, PITR/lost-machine/in-flight rehearsals, write-failure traffic fencing, readiness health, and paging.
 
 ## Parallel nonengineering work
 

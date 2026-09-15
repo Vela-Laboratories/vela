@@ -1,9 +1,10 @@
 use crate::types::{Decision, Incident, OrderFillRecord, RegisteredMM, StoredFill, StoredOrder};
 use crate::wal;
 use crate::wal::{
-    Wal, WalCheckpoint, WalDeposit, WalFillCreated, WalOrderPost, WalWithdrawalRequest,
+    Wal, WalBalanceChange, WalCheckpoint, WalDeposit, WalEngineStart, WalEngineStop,
+    WalFillCreated, WalOrderCancel, WalOrderPost, WalOrderProcessed, WalWithdrawalRequest,
 };
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use engine::MatchingEngine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,11 +12,13 @@ use std::path::Path;
 use std::sync::Arc;
 use tee::AttestationRecord;
 use types::{
-    AssetId, Balance, DepositRequest, Market, Order, UserId, UserMetadata, WithdrawalRequest,
+    AssetId, Balance, DepositRequest, Market, Order, Response, UserId, UserMetadata,
+    WithdrawalRequest,
 };
 use zkvm::BatchProof;
 
 const SNAPSHOT_INTERVAL_SECS: u64 = 60;
+pub const CURRENT_SNAPSHOT_VERSION: u32 = 2;
 
 fn snapshot_path() -> String {
     let dir = std::env::var("SNAPSHOT_DIR").unwrap_or_else(|_| "/data".to_string());
@@ -36,6 +39,8 @@ pub struct EngineSnapshot {
     pub orders: HashMap<String, Vec<Order>>,
     pub markets: Vec<Market>,
     pub sequence: u64,
+    #[serde(default)]
+    pub wal_sequence: u64,
     pub metadata: HashMap<String, UserMetadata>,
     #[serde(default)]
     pub fee_balances: HashMap<String, u64>,
@@ -110,12 +115,13 @@ pub async fn save_snapshot(state: Arc<crate::AppState>, clean_shutdown: bool) ->
     let attestations = state.attestations.lock().await.clone();
 
     let snapshot = EngineSnapshot {
-        version: 1,
+        version: CURRENT_SNAPSHOT_VERSION,
         timestamp,
         balances,
         orders,
         markets,
         sequence,
+        wal_sequence: state.wal.current_sequence(),
         metadata,
         fee_balances,
         clean_shutdown,
@@ -146,24 +152,108 @@ pub async fn save_snapshot(state: Arc<crate::AppState>, clean_shutdown: bool) ->
         total_fills: n_fills as u64,
         total_users: n_users as u64,
     };
-    if let Err(e) = state.wal.append(wal::CHECKPOINT, &checkpoint).await {
-        tracing::error!("WAL CHECKPOINT write failed: {e}");
-    } else if let Err(e) = state.wal.rotate().await {
-        tracing::error!("WAL rotate failed: {e}");
-    }
+    state
+        .wal
+        .append(wal::CHECKPOINT, &checkpoint)
+        .await
+        .context("append snapshot WAL checkpoint")?;
+    state.wal.rotate().await.context("rotate WAL checkpoint")?;
 
     Ok(())
 }
 
 pub async fn load_snapshot() -> Result<Option<EngineSnapshot>> {
     let path = snapshot_path();
-    match tokio::fs::try_exists(&path).await {
-        Ok(true) => {}
-        _ => return Ok(None),
+    load_snapshot_from(Path::new(&path)).await
+}
+
+pub async fn load_recovery_snapshot_default(
+    recovery: &crate::wal::WalRecoveryState,
+) -> Result<Option<EngineSnapshot>> {
+    let path = snapshot_path();
+    load_recovery_snapshot(Path::new(&path), recovery).await
+}
+
+pub async fn load_snapshot_from(path: &Path) -> Result<Option<EngineSnapshot>> {
+    let snapshot = read_snapshot_from(path).await?;
+    if let Some(snapshot) = &snapshot {
+        validate_snapshot(snapshot)?;
     }
-    let data = tokio::fs::read(&path).await?;
-    let snapshot = serde_json::from_slice(&data)?;
+    Ok(snapshot)
+}
+
+async fn read_snapshot_from(path: &Path) -> Result<Option<EngineSnapshot>> {
+    match tokio::fs::try_exists(path).await {
+        Ok(true) => {}
+        Ok(false) => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| format!("inspect snapshot {}", path.display()));
+        }
+    }
+    let data = tokio::fs::read(path)
+        .await
+        .with_context(|| format!("read snapshot {}", path.display()))?;
+    let snapshot: EngineSnapshot = serde_json::from_slice(&data)
+        .with_context(|| format!("parse snapshot {}", path.display()))?;
     Ok(Some(snapshot))
+}
+
+pub async fn load_recovery_snapshot(
+    path: &Path,
+    recovery: &crate::wal::WalRecoveryState,
+) -> Result<Option<EngineSnapshot>> {
+    let mut snapshot = read_snapshot_from(path).await?;
+    if let Some(snapshot) = &mut snapshot {
+        if snapshot.version == 1 {
+            if !recovery.clean_shutdown {
+                bail!(
+                    "version-1 snapshot migration requires a clean terminal WAL boundary; operator recovery is required"
+                );
+            }
+            snapshot.wal_sequence = recovery
+                .checkpoint_sequence
+                .checked_sub(1)
+                .ok_or_else(|| anyhow::anyhow!("version-1 snapshot has no WAL checkpoint"))?;
+            snapshot.version = CURRENT_SNAPSHOT_VERSION;
+        }
+        validate_snapshot(snapshot)?;
+    }
+    match (&snapshot, recovery.has_prior_evidence) {
+        (None, true) => bail!(
+            "snapshot is missing while prior WAL recovery evidence exists; operator recovery is required"
+        ),
+        (Some(_), false) => bail!(
+            "snapshot exists without corresponding WAL recovery evidence; operator recovery is required"
+        ),
+        (Some(snapshot), true) => {
+            if !recovery.clean_shutdown || !snapshot.clean_shutdown {
+                bail!(
+                    "automatic recovery from an unclean snapshot/WAL set is disabled until snapshot publication is atomic; operator recovery is required"
+                );
+            }
+            let expected_checkpoint = snapshot
+                .wal_sequence
+                .checked_add(1)
+                .ok_or_else(|| anyhow::anyhow!("snapshot WAL sequence is exhausted"))?;
+            let expected_stop = expected_checkpoint
+                .checked_add(1)
+                .ok_or_else(|| anyhow::anyhow!("snapshot WAL sequence is exhausted"))?;
+            if recovery.checkpoint_sequence != expected_checkpoint
+                || recovery.last_sequence != expected_stop
+            {
+                bail!(
+                    "clean snapshot/WAL boundary is inconsistent; operator recovery is required"
+                );
+            }
+            if recovery.checkpoint_snapshot_path.as_deref().map(Path::new) != Some(path) {
+                bail!(
+                    "clean WAL checkpoint references a different snapshot; operator recovery is required"
+                );
+            }
+        }
+        _ => {}
+    }
+    Ok(snapshot)
 }
 
 pub async fn run_snapshot_task(state: Arc<crate::AppState>) {
@@ -187,6 +277,7 @@ pub fn restore_engine_from_snapshot(
     engine: &mut MatchingEngine,
     snapshot: EngineSnapshot,
 ) -> Result<()> {
+    validate_snapshot(&snapshot)?;
     for market in snapshot.markets {
         engine.add_market(market);
     }
@@ -213,11 +304,13 @@ pub fn restore_engine_from_snapshot(
     }
 
     for (market_id_str, orders) in snapshot.orders {
-        let market_id = types::MarketId(market_id_str);
-        if let Some(book) = engine.order_books.get_mut(&market_id) {
-            for order in orders {
-                let _ = book.insert_resting(order);
-            }
+        let market_id = types::MarketId(market_id_str.clone());
+        let book = engine.order_books.get_mut(&market_id).ok_or_else(|| {
+            anyhow::anyhow!("snapshot orders reference unknown market {market_id_str}")
+        })?;
+        for order in orders {
+            book.insert_resting(order)
+                .with_context(|| format!("restore order into market {market_id_str}"))?;
         }
     }
 
@@ -227,6 +320,49 @@ pub fn restore_engine_from_snapshot(
 
     tracing::info!("Engine restored from snapshot: {}", snapshot.timestamp);
 
+    Ok(())
+}
+
+fn validate_snapshot(snapshot: &EngineSnapshot) -> Result<()> {
+    if snapshot.version != CURRENT_SNAPSHOT_VERSION {
+        bail!(
+            "unsupported snapshot version {}; expected {}",
+            snapshot.version,
+            CURRENT_SNAPSHOT_VERSION
+        );
+    }
+
+    let mut market_ids = std::collections::HashSet::new();
+    for market in &snapshot.markets {
+        if !market_ids.insert(market.id.0.clone()) {
+            bail!("duplicate snapshot market {}", market.id.0);
+        }
+    }
+
+    let mut order_ids = std::collections::HashSet::new();
+    for (market_id, orders) in &snapshot.orders {
+        if !market_ids.contains(market_id) {
+            bail!("snapshot orders reference unknown market {market_id}");
+        }
+        for order in orders {
+            if order.market.0 != *market_id {
+                bail!(
+                    "snapshot order {} market does not match container {market_id}",
+                    order.id
+                );
+            }
+            if !order_ids.insert(order.id) {
+                bail!("duplicate snapshot order {}", order.id);
+            }
+        }
+    }
+    if order_ids
+        .iter()
+        .max()
+        .is_some_and(|maximum_order_id| snapshot.sequence <= *maximum_order_id)
+    {
+        bail!("snapshot next order sequence does not exceed every restored order ID");
+    }
     Ok(())
 }
 
@@ -244,167 +380,198 @@ pub fn replay_wal_entries(
     engine: &mut MatchingEngine,
     wal_dir: &Path,
     after_sequence: u64,
-) -> (Vec<StoredFill>, HashMap<u64, StoredOrder>) {
-    let mut segments: Vec<u32> = std::fs::read_dir(wal_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name();
-            let s = name.to_string_lossy().into_owned();
-            s.strip_prefix("engine_wal_")
-                .and_then(|s| s.strip_suffix(".log"))
-                .and_then(|s| s.parse::<u32>().ok())
-        })
-        .collect();
-    segments.sort_unstable();
-
+) -> Result<(Vec<StoredFill>, HashMap<u64, StoredOrder>)> {
     let mut recovered_fills: Vec<StoredFill> = Vec::new();
     let mut recovered_orders: HashMap<u64, StoredOrder> = HashMap::new();
     let mut fill_ids_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut replayed = 0usize;
 
-    for seg_num in segments {
-        let seg_path = wal_dir.join(format!("engine_wal_{:04}.log", seg_num));
-        let entries = match Wal::read_from(&seg_path, after_sequence) {
-            Ok(e) => e,
-            Err(err) => {
-                tracing::warn!("WAL replay: failed to read segment {seg_num}: {err}");
-                continue;
+    for entry in Wal::read_all_from(wal_dir, after_sequence)? {
+        replayed += 1;
+        match entry.entry_type {
+            wal::ORDER_POST => {
+                let post = entry.decode::<WalOrderPost>().with_context(|| {
+                    format!("decode ORDER_POST at WAL sequence {}", entry.sequence)
+                })?;
+                let order_id = post.order_id;
+                recovered_orders.entry(order_id).or_insert_with(|| {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_micros() as u64;
+                    StoredOrder {
+                        id: order_id,
+                        market_id: post.market_id,
+                        user: post.user,
+                        side: post.side,
+                        price: post.price,
+                        quantity: post.quantity,
+                        filled_quantity: 0,
+                        status: "open".to_string(),
+                        order_type: post.order_type,
+                        time_in_force: post.time_in_force,
+                        nonce: post.nonce,
+                        client_order_id: post.client_order_id,
+                        signature: String::new(),
+                        created_at: now,
+                        updated_at: now,
+                        fills: vec![],
+                        da_hash: None,
+                        reasoning_trace_hash: None,
+                        agent_id: None,
+                    }
+                });
             }
-        };
-
-        for entry in entries {
-            replayed += 1;
-            match entry.entry_type {
-                wal::ORDER_POST => {
-                    if let Ok(post) = entry.decode::<WalOrderPost>() {
-                        let order_id = post.order_id;
-                        recovered_orders.entry(order_id).or_insert_with(|| {
-                            let now = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_micros() as u64;
-                            StoredOrder {
-                                id: order_id,
-                                market_id: post.market_id,
-                                user: post.user,
-                                side: post.side,
-                                price: post.price,
-                                quantity: post.quantity,
-                                filled_quantity: 0,
-                                status: "open".to_string(),
-                                order_type: post.order_type,
-                                time_in_force: post.time_in_force,
-                                nonce: post.nonce,
-                                client_order_id: post.client_order_id,
-                                signature: String::new(),
-                                created_at: now,
-                                updated_at: now,
-                                fills: vec![],
-                                da_hash: None,
-                                reasoning_trace_hash: None,
-                                agent_id: None,
-                            }
+            wal::ORDER_PROCESSED => {
+                let processed = entry.decode::<WalOrderProcessed>().with_context(|| {
+                    format!("decode ORDER_PROCESSED at WAL sequence {}", entry.sequence)
+                })?;
+                if let Some(order) = recovered_orders.get_mut(&processed.order_id) {
+                    order.filled_quantity = processed.filled_quantity;
+                    order.status = processed.result.clone();
+                }
+            }
+            wal::ORDER_CANCEL => {
+                let cancel = entry.decode::<WalOrderCancel>().with_context(|| {
+                    format!("decode ORDER_CANCEL at WAL sequence {}", entry.sequence)
+                })?;
+                if let Some(order) = recovered_orders.get_mut(&cancel.order_id) {
+                    order.status = "canceled".to_string();
+                    order.updated_at = entry.timestamp_ns / 1_000_000;
+                }
+            }
+            wal::FILL_CREATED => {
+                let fill = entry.decode::<WalFillCreated>().with_context(|| {
+                    format!("decode FILL_CREATED at WAL sequence {}", entry.sequence)
+                })?;
+                if !fill_ids_seen.contains(&fill.fill_id) {
+                    fill_ids_seen.insert(fill.fill_id.clone());
+                    let fill_id = fill.fill_id.clone();
+                    let sf = StoredFill {
+                        id: fill.fill_id,
+                        market_id: fill.market_id,
+                        price: fill.price,
+                        quantity: fill.quantity,
+                        maker_order_id: fill.maker_order_id,
+                        taker_order_id: fill.taker_order_id,
+                        maker_address: fill.maker_address.clone(),
+                        taker_address: fill.taker_address.clone(),
+                        timestamp: entry.timestamp_ns / 1_000_000,
+                        side: String::new(),
+                        synthetic: false,
+                        toxicity_score: 0.0,
+                    };
+                    if let Some(order) = recovered_orders.get_mut(&fill.taker_order_id) {
+                        order.fills.push(OrderFillRecord {
+                            fill_id: fill_id.clone(),
+                            counterparty_order_id: fill.maker_order_id,
+                            counterparty_address: fill.maker_address,
+                            price: fill.price,
+                            quantity: fill.quantity,
+                            timestamp: entry.timestamp_ns / 1_000_000,
                         });
                     }
-                }
-                wal::ORDER_PROCESSED => {
-                    if let Ok(processed) = entry.decode::<crate::wal::WalOrderProcessed>() {
-                        if let Some(order) = recovered_orders.get_mut(&processed.order_id) {
-                            order.filled_quantity = processed.filled_quantity;
-                            order.status = processed.result.clone();
-                        }
+                    if let Some(order) = recovered_orders.get_mut(&fill.maker_order_id) {
+                        order.fills.push(OrderFillRecord {
+                            fill_id,
+                            counterparty_order_id: fill.taker_order_id,
+                            counterparty_address: fill.taker_address,
+                            price: fill.price,
+                            quantity: fill.quantity,
+                            timestamp: entry.timestamp_ns / 1_000_000,
+                        });
                     }
+                    recovered_fills.push(sf);
                 }
-                wal::FILL_CREATED => {
-                    if let Ok(fill) = entry.decode::<WalFillCreated>() {
-                        if !fill_ids_seen.contains(&fill.fill_id) {
-                            fill_ids_seen.insert(fill.fill_id.clone());
-                            let fill_id = fill.fill_id.clone();
-                            let sf = StoredFill {
-                                id: fill.fill_id,
-                                market_id: fill.market_id,
-                                price: fill.price,
-                                quantity: fill.quantity,
-                                maker_order_id: fill.maker_order_id,
-                                taker_order_id: fill.taker_order_id,
-                                maker_address: fill.maker_address.clone(),
-                                taker_address: fill.taker_address.clone(),
-                                timestamp: entry.timestamp_ns / 1_000_000,
-                                side: String::new(),
-                                synthetic: false,
-                                toxicity_score: 0.0,
-                            };
-                            if let Some(order) = recovered_orders.get_mut(&fill.taker_order_id) {
-                                order.fills.push(OrderFillRecord {
-                                    fill_id: fill_id.clone(),
-                                    counterparty_order_id: fill.maker_order_id,
-                                    counterparty_address: fill.maker_address,
-                                    price: fill.price,
-                                    quantity: fill.quantity,
-                                    timestamp: entry.timestamp_ns / 1_000_000,
-                                });
-                            }
-                            if let Some(order) = recovered_orders.get_mut(&fill.maker_order_id) {
-                                order.fills.push(OrderFillRecord {
-                                    fill_id,
-                                    counterparty_order_id: fill.taker_order_id,
-                                    counterparty_address: fill.taker_address,
-                                    price: fill.price,
-                                    quantity: fill.quantity,
-                                    timestamp: entry.timestamp_ns / 1_000_000,
-                                });
-                            }
-                            recovered_fills.push(sf);
-                        }
-                    }
-                }
-                wal::DEPOSIT => {
-                    if let Ok(dep) = entry.decode::<WalDeposit>() {
-                        if let Ok(user) = types::UserId::from_hex(&dep.user) {
-                            let asset = types::AssetId::from_str(&dep.asset);
-                            let mut hash = [0u8; 32];
-                            if let Some(tx) = &dep.tx_hash {
-                                let hex_str = tx.strip_prefix("0x").unwrap_or(tx);
-                                if let Ok(bytes) = hex::decode(hex_str) {
-                                    let len = bytes.len().min(32);
-                                    hash[..len].copy_from_slice(&bytes[..len]);
-                                }
-                            }
-                            engine.process(
-                                types::Request::Deposit(DepositRequest {
-                                    user,
-                                    asset,
-                                    amount: dep.amount,
-                                    l1_tx_hash: hash,
-                                    source_chain: Default::default(),
-                                    bridge_id: None,
-                                }),
-                                0,
-                            );
-                        }
-                    }
-                }
-                wal::WITHDRAWAL_REQUEST => {
-                    if let Ok(wr) = entry.decode::<WalWithdrawalRequest>() {
-                        if let Ok(user) = types::UserId::from_hex(&wr.user) {
-                            let asset = types::AssetId::from_str(&wr.asset);
-                            engine.process(
-                                types::Request::Withdrawal(WithdrawalRequest {
-                                    user,
-                                    asset,
-                                    amount: wr.amount,
-                                    nonce: wr.nonce,
-                                    signature: vec![],
-                                }),
-                                0,
-                            );
-                        }
-                    }
-                }
-                _ => {}
             }
+            wal::DEPOSIT => {
+                let dep = entry.decode::<WalDeposit>().with_context(|| {
+                    format!("decode DEPOSIT at WAL sequence {}", entry.sequence)
+                })?;
+                let user = types::UserId::from_hex(&dep.user).with_context(|| {
+                    format!("decode DEPOSIT user at WAL sequence {}", entry.sequence)
+                })?;
+                let asset = types::AssetId::from_str(&dep.asset);
+                let mut hash = [0u8; 32];
+                if let Some(tx) = &dep.tx_hash {
+                    let hex_str = tx.strip_prefix("0x").unwrap_or(tx);
+                    let bytes = hex::decode(hex_str).with_context(|| {
+                        format!(
+                            "decode DEPOSIT transaction hash at WAL sequence {}",
+                            entry.sequence
+                        )
+                    })?;
+                    if bytes.len() != 32 {
+                        bail!(
+                            "DEPOSIT transaction hash at WAL sequence {} is not 32 bytes",
+                            entry.sequence
+                        );
+                    }
+                    hash.copy_from_slice(&bytes);
+                }
+                let responses = engine.process(
+                    types::Request::Deposit(DepositRequest {
+                        user,
+                        asset,
+                        amount: dep.amount,
+                        l1_tx_hash: hash,
+                        source_chain: Default::default(),
+                        bridge_id: None,
+                    }),
+                    0,
+                );
+                reject_replay_errors(&responses, entry.sequence, "DEPOSIT")?;
+            }
+            wal::WITHDRAWAL_REQUEST => {
+                let wr = entry.decode::<WalWithdrawalRequest>().with_context(|| {
+                    format!(
+                        "decode WITHDRAWAL_REQUEST at WAL sequence {}",
+                        entry.sequence
+                    )
+                })?;
+                let user = types::UserId::from_hex(&wr.user).with_context(|| {
+                    format!(
+                        "decode WITHDRAWAL_REQUEST user at WAL sequence {}",
+                        entry.sequence
+                    )
+                })?;
+                let asset = types::AssetId::from_str(&wr.asset);
+                let responses = engine.process(
+                    types::Request::Withdrawal(WithdrawalRequest {
+                        user,
+                        asset,
+                        amount: wr.amount,
+                        nonce: wr.nonce,
+                        signature: vec![],
+                    }),
+                    0,
+                );
+                reject_replay_errors(&responses, entry.sequence, "WITHDRAWAL_REQUEST")?;
+            }
+            wal::BALANCE_CHANGE => {
+                entry.decode::<WalBalanceChange>().with_context(|| {
+                    format!("decode BALANCE_CHANGE at WAL sequence {}", entry.sequence)
+                })?;
+            }
+            wal::CHECKPOINT => {
+                entry.decode::<WalCheckpoint>().with_context(|| {
+                    format!("decode CHECKPOINT at WAL sequence {}", entry.sequence)
+                })?;
+            }
+            wal::ENGINE_START => {
+                entry.decode::<WalEngineStart>().with_context(|| {
+                    format!("decode ENGINE_START at WAL sequence {}", entry.sequence)
+                })?;
+            }
+            wal::ENGINE_STOP => {
+                entry.decode::<WalEngineStop>().with_context(|| {
+                    format!("decode ENGINE_STOP at WAL sequence {}", entry.sequence)
+                })?;
+            }
+            unsupported => bail!(
+                "unsupported WAL entry type {unsupported} at sequence {}",
+                entry.sequence
+            ),
         }
     }
 
@@ -412,5 +579,18 @@ pub fn replay_wal_entries(
         "WAL replay complete: replayed {replayed} entries, recovered {} orders",
         recovered_orders.len()
     );
-    (recovered_fills, recovered_orders)
+    Ok((recovered_fills, recovered_orders))
+}
+
+fn reject_replay_errors(responses: &[Response], sequence: u64, entry_type: &str) -> Result<()> {
+    if let Some(Response::Error(error)) = responses
+        .iter()
+        .find(|response| matches!(response, Response::Error(_)))
+    {
+        bail!(
+            "{entry_type} at WAL sequence {sequence} could not be restored: {:?}",
+            error.code
+        );
+    }
+    Ok(())
 }

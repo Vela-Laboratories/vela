@@ -254,24 +254,11 @@ async fn main() {
         std::env::var("SNAPSHOT_DIR").unwrap_or_else(|_| "/data".to_string()),
     );
 
-    let wal = Arc::new(match Wal::new(&wal_dir) {
-        Ok(w) => w,
-        Err(error) if runtime.mode.is_production() => {
-            panic!("production WAL initialization failed: {error}")
-        }
-        Err(e) => {
-            eprintln!("WAL init failed: {e}; using temporary fallback storage");
-            Wal::new(&std::env::temp_dir().join("vela_wal_fallback"))
-                .unwrap_or_else(|_| panic!("Cannot initialize WAL even in temp dir"))
-        }
-    });
-
-    let was_clean = Wal::was_clean_shutdown_sync(&wal_dir);
-    let checkpoint_seq = if !was_clean && Wal::wal_files_exist(&wal_dir) {
-        Wal::find_checkpoint_sequence_sync(&wal_dir)
-    } else {
-        0
-    };
+    let recovery = Wal::inspect(&wal_dir)
+        .unwrap_or_else(|error| panic!("WAL recovery validation failed: {error}"));
+    let wal = Arc::new(
+        Wal::new(&wal_dir).unwrap_or_else(|error| panic!("WAL initialization failed: {error}")),
+    );
 
     let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
 
@@ -283,51 +270,40 @@ async fn main() {
     let mut loaded_attestations: std::collections::HashMap<u64, tee::AttestationRecord> =
         std::collections::HashMap::new();
     let mut need_restart_incident = false;
+    let snapshot_wal_sequence;
 
-    match api::snapshot::load_snapshot().await {
+    match api::snapshot::load_recovery_snapshot_default(&recovery).await {
         Ok(Some(snapshot)) => {
-            if !snapshot.clean_shutdown {
+            if !snapshot.clean_shutdown || !recovery.clean_shutdown {
                 need_restart_incident = true;
+            }
+            snapshot_wal_sequence = snapshot.wal_sequence;
+            if snapshot_wal_sequence > recovery.last_sequence {
+                panic!("snapshot references WAL sequence newer than durable WAL evidence");
             }
             loaded_incidents = snapshot.incidents.clone();
             loaded_decisions = snapshot.decisions.clone();
             loaded_mms = snapshot.registered_mms.clone();
             loaded_proofs = api::snapshot::extract_proofs_from_snapshot(&snapshot);
             loaded_attestations = api::snapshot::extract_attestations_from_snapshot(&snapshot);
-            match api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot) {
-                Ok(()) => println!("Restored from snapshot"),
-                Err(e) => {
-                    if runtime.mode.is_production() {
-                        panic!("production snapshot restore failed: {e}");
-                    }
-                    eprintln!("Snapshot restore failed: {e}; starting fresh");
-                    engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-                    initialize_fresh_engine(&mut engine, runtime.mode);
-                    loaded_incidents.clear();
-                    loaded_decisions.clear();
-                    loaded_mms.clear();
-                    loaded_proofs.clear();
-                    loaded_attestations.clear();
-                    need_restart_incident = false;
-                }
-            }
+            api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot)
+                .unwrap_or_else(|error| panic!("snapshot restore failed: {error}"));
+            tracing::info!("engine restored from snapshot");
         }
         Ok(None) => {
+            snapshot_wal_sequence = 0;
             initialize_fresh_engine(&mut engine, runtime.mode);
         }
         Err(e) => {
-            if runtime.mode.is_production() {
-                panic!("production snapshot load failed: {e}");
-            }
-            eprintln!("Snapshot load failed: {e}; starting fresh");
-            initialize_fresh_engine(&mut engine, runtime.mode);
+            panic!("snapshot recovery validation failed: {e}");
         }
     }
 
     let (recovery_reason, recovered_fills, recovered_orders) =
-        if !was_clean && Wal::wal_files_exist(&wal_dir) {
+        if !recovery.clean_shutdown && recovery.has_entries {
             let (fills, orders) =
-                api::snapshot::replay_wal_entries(&mut engine, &wal_dir, checkpoint_seq);
+                api::snapshot::replay_wal_entries(&mut engine, &wal_dir, snapshot_wal_sequence)
+                    .unwrap_or_else(|error| panic!("WAL replay failed: {error}"));
             tracing::info!(
                 "WAL replay complete: replayed entries, recovered {} orders {} fills",
                 orders.len(),
@@ -395,10 +371,7 @@ async fn main() {
         },
     )
     .await
-    .unwrap_or_else(|e| {
-        tracing::error!("WAL ENGINE_START write failed: {e}");
-        0
-    });
+    .unwrap_or_else(|error| panic!("WAL ENGINE_START write failed: {error}"));
 
     if let Some((anchors, count)) = api::anchor::load_anchors().await {
         let last = anchors.last().map(|a| (a.tx_hash.clone(), a.timestamp));
@@ -497,24 +470,30 @@ async fn main() {
         }
     }
 
-    // Write clean-shutdown snapshot before the final WAL entry so recovery
-    // can detect a clean exit via snapshot.clean_shutdown == true.
-    if let Err(e) = api::snapshot::save_snapshot(shutdown_state, true).await {
-        tracing::error!("Final snapshot save failed: {e}");
-    }
+    // Only label the terminal WAL record clean when the final snapshot and
+    // its checkpoint were both published successfully.
+    let stop_reason = match api::snapshot::save_snapshot(shutdown_state, true).await {
+        Ok(()) => "clean",
+        Err(error) => {
+            tracing::error!("Final snapshot save failed: {error}");
+            "snapshot_failed"
+        }
+    };
 
-    wal.append(
-        api::wal::ENGINE_STOP,
-        &WalEngineStop {
-            reason: "clean".to_string(),
-            final_sequence: wal.current_sequence(),
-        },
-    )
-    .await
-    .unwrap_or_else(|e| {
-        tracing::error!("WAL ENGINE_STOP write failed: {e}");
-        0
-    });
+    let stop_written = wal
+        .append(
+            api::wal::ENGINE_STOP,
+            &WalEngineStop {
+                reason: stop_reason.to_string(),
+                final_sequence: wal.current_sequence(),
+            },
+        )
+        .await;
+    if let Err(error) = stop_written {
+        tracing::error!("WAL ENGINE_STOP write failed: {error}");
+    } else if let Err(error) = wal.flush().await {
+        tracing::error!("WAL ENGINE_STOP flush failed: {error}");
+    }
 }
 
 #[cfg(test)]

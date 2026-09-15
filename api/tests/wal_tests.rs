@@ -130,7 +130,7 @@ async fn test_wal_write_read_roundtrip() {
 }
 
 #[tokio::test]
-async fn test_wal_crc_corruption_skip() {
+async fn test_wal_crc_corruption_fails_closed() {
     let dir = temp_wal_dir("crc");
     let wal = Arc::new(Wal::new(&dir).unwrap());
 
@@ -186,14 +186,9 @@ async fn test_wal_crc_corruption_skip() {
     raw[corrupt_offset] ^= 0xFF;
     std::fs::write(&seg_path, &raw).unwrap();
 
-    let entries = Wal::read_from(&seg_path, 0).unwrap();
-    assert!(
-        !entries.is_empty(),
-        "at least one valid entry should be readable after corruption"
-    );
-    let total_valid = entries.len();
-    assert!(total_valid < 3, "corrupted entry should be skipped");
-    assert!(total_valid >= 1, "at least one entry should be readable");
+    let error = Wal::read_from(&seg_path, 0).unwrap_err();
+    assert!(error.to_string().contains("CRC mismatch"));
+    assert!(Wal::new(&dir).is_err(), "startup must reject a corrupt WAL");
 }
 
 #[tokio::test]
@@ -364,7 +359,7 @@ async fn test_wal_clean_shutdown_detection() {
     let wal = Arc::new(Wal::new(&dir).unwrap());
 
     assert!(
-        !Wal::was_clean_shutdown_sync(&dir),
+        !Wal::was_clean_shutdown_sync(&dir).unwrap(),
         "no ENGINE_STOP yet — not clean"
     );
 
@@ -379,7 +374,10 @@ async fn test_wal_clean_shutdown_detection() {
     .await
     .unwrap();
 
-    assert!(!Wal::was_clean_shutdown_sync(&dir), "still no ENGINE_STOP");
+    assert!(
+        !Wal::was_clean_shutdown_sync(&dir).unwrap(),
+        "still no ENGINE_STOP"
+    );
 
     wal.append(
         ENGINE_STOP,
@@ -400,7 +398,7 @@ async fn test_wal_clean_shutdown_detection() {
     drop(wal);
 
     assert!(
-        Wal::was_clean_shutdown_sync(&dir),
+        Wal::was_clean_shutdown_sync(&dir).unwrap(),
         "ENGINE_STOP with reason=clean should be detected"
     );
 
@@ -422,7 +420,178 @@ async fn test_wal_clean_shutdown_detection() {
     drop(wal2);
 
     assert!(
-        !Wal::was_clean_shutdown_sync(&dir2),
+        !Wal::was_clean_shutdown_sync(&dir2).unwrap(),
         "no ENGINE_STOP should be detected as unclean"
     );
+}
+
+#[test]
+fn test_wal_initialization_rejects_unusable_directory() {
+    let dir = temp_wal_dir("init_failure");
+    let file_path = dir.join("not-a-directory");
+    std::fs::write(&file_path, b"occupied").unwrap();
+    assert!(Wal::new(&file_path).is_err());
+}
+
+#[tokio::test]
+async fn test_wal_truncated_record_fails_closed() {
+    let dir = temp_wal_dir("truncated");
+    let wal = Wal::new(&dir).unwrap();
+    wal.append(
+        ENGINE_START,
+        &WalEngineStart {
+            version: "0.2.0".to_string(),
+            reason: "clean".to_string(),
+            previous_sequence: 0,
+        },
+    )
+    .await
+    .unwrap();
+    wal.flush().await.unwrap();
+    drop(wal);
+
+    let path = dir.join("engine_wal_0000.log");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.pop();
+    std::fs::write(&path, bytes).unwrap();
+    assert!(Wal::read_from(&path, 0).is_err());
+    assert!(Wal::new(&dir).is_err());
+}
+
+#[tokio::test]
+async fn test_wal_oversized_record_fails_closed() {
+    let dir = temp_wal_dir("oversized");
+    let wal = Wal::new(&dir).unwrap();
+    wal.append(
+        ENGINE_START,
+        &WalEngineStart {
+            version: "0.2.0".to_string(),
+            reason: "clean".to_string(),
+            previous_sequence: 0,
+        },
+    )
+    .await
+    .unwrap();
+    wal.flush().await.unwrap();
+    drop(wal);
+
+    let path = dir.join("engine_wal_0000.log");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes[20..24].copy_from_slice(&(10_u32 * 1024 * 1024 + 1).to_be_bytes());
+    std::fs::write(&path, bytes).unwrap();
+    let error = Wal::read_from(&path, 0).unwrap_err();
+    assert!(error.to_string().contains("exceeds maximum"));
+}
+
+#[tokio::test]
+async fn test_wal_sequence_gap_fails_closed() {
+    let dir = temp_wal_dir("sequence_gap");
+    let wal = Wal::new(&dir).unwrap();
+    for previous_sequence in [0, 1] {
+        wal.append(
+            ENGINE_START,
+            &WalEngineStart {
+                version: "0.2.0".to_string(),
+                reason: "clean".to_string(),
+                previous_sequence,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    wal.flush().await.unwrap();
+    drop(wal);
+
+    let path = dir.join("engine_wal_0000.log");
+    let mut bytes = std::fs::read(&path).unwrap();
+    let first_payload_len = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
+    let second_offset = 24 + first_payload_len + 8;
+    bytes[second_offset..second_offset + 8].copy_from_slice(&3_u64.to_be_bytes());
+    let second_payload_len = u32::from_be_bytes(
+        bytes[second_offset + 20..second_offset + 24]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let second_crc_offset = second_offset + 24 + second_payload_len;
+    let checksum = crc::Crc::<u64>::new(&crc::CRC_64_ECMA_182)
+        .checksum(&bytes[second_offset..second_crc_offset]);
+    bytes[second_crc_offset..second_crc_offset + 8].copy_from_slice(&checksum.to_be_bytes());
+    std::fs::write(&path, bytes).unwrap();
+
+    let error = Wal::read_from(&path, 0).unwrap_err();
+    assert!(error.to_string().contains("sequence discontinuity"));
+}
+
+#[tokio::test]
+async fn test_only_terminal_engine_stop_counts_as_clean() {
+    let dir = temp_wal_dir("terminal_stop");
+    let wal = Wal::new(&dir).unwrap();
+    wal.append(
+        ENGINE_STOP,
+        &WalEngineStop {
+            reason: "clean".to_string(),
+            final_sequence: 0,
+        },
+    )
+    .await
+    .unwrap();
+    wal.append(
+        ENGINE_START,
+        &WalEngineStart {
+            version: "0.2.0".to_string(),
+            reason: "crash_recovery".to_string(),
+            previous_sequence: 1,
+        },
+    )
+    .await
+    .unwrap();
+    wal.flush().await.unwrap();
+    assert!(!Wal::was_clean_shutdown_sync(&dir).unwrap());
+}
+
+#[tokio::test]
+async fn concurrent_appends_remain_strictly_ordered() {
+    let dir = temp_wal_dir("concurrent_ordering");
+    let wal = Arc::new(Wal::new(&dir).unwrap());
+    let mut tasks = Vec::new();
+    for n in 0..64_u64 {
+        let wal = Arc::clone(&wal);
+        tasks.push(tokio::spawn(async move {
+            wal.append(
+                ENGINE_START,
+                &WalEngineStart {
+                    version: "0.2.0".to_string(),
+                    reason: "concurrent-test".to_string(),
+                    previous_sequence: n,
+                },
+            )
+            .await
+            .unwrap()
+        }));
+    }
+    for task in tasks {
+        task.await.unwrap();
+    }
+    wal.flush().await.unwrap();
+
+    let entries = Wal::read_from(&dir.join("engine_wal_0000.log"), 0).unwrap();
+    assert_eq!(entries.len(), 64);
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.sequence)
+            .collect::<Vec<_>>(),
+        (1..=64).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn unsupported_entry_type_is_rejected_before_write() {
+    let dir = temp_wal_dir("unsupported_type");
+    let wal = Wal::new(&dir).unwrap();
+    assert!(wal.append(999, &"unsupported").await.is_err());
+    wal.flush().await.unwrap();
+    assert!(Wal::read_from(&dir.join("engine_wal_0000.log"), 0)
+        .unwrap()
+        .is_empty());
 }

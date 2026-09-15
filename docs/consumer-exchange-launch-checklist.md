@@ -185,26 +185,26 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Persistence and financial data integrity
 
-- [ ] Stop falling back to a temporary WAL directory.
-- [ ] Fail closed if the WAL cannot be initialized.
-- [ ] Stop starting from a fresh seeded state when snapshot restoration fails.
-- [ ] Fail closed when a financial snapshot is corrupt.
-- [ ] Require explicit operator recovery procedures for corrupted state.
+- [x] Stop falling back to a temporary WAL directory in every runtime mode.
+- [x] Fail closed if the configured WAL cannot be initialized or validated.
+- [x] Stop starting from a fresh seeded state when snapshot restoration fails; a fresh start now requires no prior snapshot or WAL evidence.
+- [x] Fail closed when the local engine snapshot or WAL recovery set is corrupt; PostgreSQL remains the authoritative financial journal when configured.
+- [x] Require an explicit, evidence-preserving operator recovery procedure for corrupted or incomplete local engine state.
 - [ ] Store the financial journal in replicated durable storage.
 - [x] Treat matching-engine customer balances and platform fees as a cache rebuilt from the authoritative journal whenever the ledger is configured.
 - [ ] Rebuild complete engine state from authoritative records; financial balances and fees replay now, while complete order-book and nonfinancial state recovery still depends on snapshots/WAL.
 - [ ] Add cryptographic checksums to snapshots and journal segments.
 - [ ] Sign production snapshots.
 - [ ] Store snapshot version and deployed code version.
-- [ ] Verify snapshot compatibility before loading.
+- [x] Verify snapshot format compatibility and internal market/order sequencing before loading; deployed-code identity remains open.
 - [ ] Replicate WAL and ledger data across failure domains.
 - [ ] Create encrypted offsite backups.
 - [x] Define recovery point objectives.
 - [x] Define recovery time objectives.
 - [ ] Test point-in-time recovery.
 - [ ] Test recovery from a lost engine machine.
-- [ ] Test recovery from corrupted snapshots.
-- [ ] Test recovery from incomplete journal writes.
+- [x] Test fail-closed handling of corrupt and unsupported local engine snapshots.
+- [x] Test fail-closed handling of incomplete, oversized, checksum-invalid, and sequence-invalid local WAL records.
 - [ ] Test recovery while chain deposits or withdrawals are in flight.
 - [ ] Add fencing so two engine leaders cannot process orders simultaneously.
 - [x] Define an active-passive or consensus-backed availability design.
@@ -431,7 +431,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Separate process liveness and service readiness endpoints.
 - [x] Include ledger connectivity and exact schema version in readiness.
 - [ ] Include matcher storage, chain indexer, signer, custody RPC, and reconciler health in readiness.
-- [ ] Prevent the service from accepting traffic while recovery is incomplete.
+- [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
 - [ ] Add alerts for failed WAL writes.
 - [ ] Add alerts for failed snapshots.
 - [ ] Add alerts for reconciliation differences.
