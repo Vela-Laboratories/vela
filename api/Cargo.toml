@@ -9,6 +9,10 @@ license.workspace = true
 name = "api"
 path = "src/main.rs"
 
+[[bin]]
+name = "engine-recovery"
+path = "src/bin/engine_recovery.rs"
+
 [dependencies]
 types = { workspace = true }
 engine = { workspace = true }

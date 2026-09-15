@@ -14,6 +14,14 @@ env:
   ADMIN_TOKEN: ci-admin-token
 
 jobs:
+  postgres-pitr:
+    name: PostgreSQL 16 - PITR rehearsal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore physical backup to named WAL point
+        run: ./scripts/rehearse_postgres_pitr.sh
+
   rust:
     name: Rust — build, test, clippy, fmt
     runs-on: ubuntu-latest

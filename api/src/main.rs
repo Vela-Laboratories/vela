@@ -324,6 +324,9 @@ async fn main() {
         api::AppState::new_with_runtime_and_ledger(engine, Arc::clone(&wal), runtime.mode, ledger)
             .await
             .unwrap_or_else(|error| {
+                if error.starts_with("engine recovery replication") {
+                    panic!("engine recovery replication initialization failed")
+                }
                 if error.starts_with("engine leadership") || error.starts_with("another engine") {
                     panic!("authoritative engine leadership initialization failed")
                 }
@@ -378,6 +381,29 @@ async fn main() {
     .await
     .unwrap_or_else(|error| panic!("WAL ENGINE_START write failed: {error}"));
 
+    // A configured replica is a production durability requirement, so prove
+    // one complete publication before any listener can accept traffic.
+    if state.recovery_replica.is_some() {
+        if api::snapshot::save_snapshot(Arc::clone(&state), false)
+            .await
+            .is_err()
+        {
+            if let Some(leadership) = &state.engine_leadership {
+                if let Err(release_error) = leadership.release().await {
+                    tracing::error!(error = %release_error, generation = leadership.token().generation, "failed to release engine leadership after initial recovery replication failure");
+                }
+            }
+            panic!("initial engine recovery replication failed");
+        }
+        state.last_snapshot_ts.store(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
     if let Some((anchors, count)) = api::anchor::load_anchors().await {
         let last = anchors.last().map(|a| (a.tx_hash.clone(), a.timestamp));
         *state.anchors.lock().await = anchors;
@@ -428,7 +454,7 @@ async fn main() {
     }
 
     let snapshot_state = Arc::clone(&state);
-    tokio::spawn(async move {
+    let snapshot_task = tokio::spawn(async move {
         api::snapshot::run_snapshot_task(snapshot_state).await;
     });
 
@@ -475,6 +501,12 @@ async fn main() {
         }
     }
 
+    // Stop the periodic publisher before creating the one final recovery
+    // boundary. Otherwise it could interleave an unclean snapshot between the
+    // final checkpoint and ENGINE_STOP.
+    snapshot_task.abort();
+    let _ = snapshot_task.await;
+
     // Only label the terminal WAL record clean when the final snapshot and
     // its checkpoint were both published successfully.
     let shutdown_health = Arc::clone(&shutdown_state.storage_health);
@@ -497,10 +529,26 @@ async fn main() {
             },
         )
         .await;
-    if let Err(error) = stop_written {
-        tracing::error!("WAL ENGINE_STOP write failed: {error}");
-    } else if let Err(error) = wal.flush().await {
-        tracing::error!("WAL ENGINE_STOP flush failed: {error}");
+    let stop_succeeded = match stop_written {
+        Err(error) => {
+            tracing::error!("WAL ENGINE_STOP write failed: {error}");
+            false
+        }
+        Ok(_) => match wal.flush().await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::error!("WAL ENGINE_STOP flush failed: {error}");
+                false
+            }
+        },
+    };
+
+    if snapshot_succeeded && stop_succeeded && shutdown_health.is_healthy() {
+        if let Err(error) =
+            api::snapshot::replicate_clean_shutdown(Arc::clone(&shutdown_state)).await
+        {
+            tracing::error!("final engine recovery replication failed: {error}");
+        }
     }
 
     if let Some(leadership) = &shutdown_state.engine_leadership {

@@ -23,6 +23,8 @@ pub struct RuntimeSettings {
     pub database_acquire_timeout_ms: u64,
     pub database_statement_timeout_ms: u64,
     pub database_serializable_retries: u32,
+    pub engine_replica_configured: bool,
+    pub build_id: Option<String>,
 }
 
 impl RuntimeSettings {
@@ -59,6 +61,8 @@ impl RuntimeSettings {
                 2_000,
             )?,
             database_serializable_retries: parse_env("VELA_DATABASE_SERIALIZABLE_RETRIES", 3)?,
+            engine_replica_configured: nonempty_env("VELA_ENGINE_REPLICA_DIR").is_some(),
+            build_id: nonempty_env("VELA_BUILD_ID"),
         })
     }
 
@@ -115,6 +119,16 @@ impl RuntimeSettings {
         if !self.database_url_configured {
             problems.push("DATABASE_URL is not configured".to_string());
         }
+        if !self.engine_replica_configured {
+            problems.push("VELA_ENGINE_REPLICA_DIR is not configured".to_string());
+        }
+        match self.build_id.as_deref() {
+            None => problems.push("VELA_BUILD_ID is not configured".to_string()),
+            Some(value) if is_placeholder_build_id(value) => {
+                problems.push("VELA_BUILD_ID is not a specific deployed build identity".to_string())
+            }
+            Some(_) => {}
+        }
 
         if self.zkvm_provider.eq_ignore_ascii_case("placeholder")
             || self.zkvm_provider.trim().is_empty()
@@ -149,6 +163,8 @@ impl RuntimeSettings {
             database_acquire_timeout_ms = self.database_acquire_timeout_ms,
             database_statement_timeout_ms = self.database_statement_timeout_ms,
             database_serializable_retries = self.database_serializable_retries,
+            engine_replica_configured = self.engine_replica_configured,
+            build_id = self.build_id.as_deref().unwrap_or("not_configured"),
             "resolved startup configuration"
         );
     }
@@ -254,6 +270,13 @@ fn is_placeholder_rpc(url: &str) -> bool {
         || normalized.contains("your-api-key")
 }
 
+fn is_placeholder_build_id(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "" | "unknown" | "latest" | "dev"
+    )
+}
+
 fn is_temporary_path(path: &Path) -> bool {
     path.starts_with(std::env::temp_dir())
 }
@@ -277,6 +300,8 @@ mod tests {
             database_acquire_timeout_ms: 2_000,
             database_statement_timeout_ms: 2_000,
             database_serializable_retries: 3,
+            engine_replica_configured: true,
+            build_id: Some("0123456789abcdef".to_owned()),
         }
     }
 
@@ -301,6 +326,8 @@ mod tests {
             database_acquire_timeout_ms: 2_000,
             database_statement_timeout_ms: 2_000,
             database_serializable_retries: 3,
+            engine_replica_configured: false,
+            build_id: None,
         };
 
         let error = settings.validate().expect_err("configuration must fail");
@@ -373,6 +400,21 @@ mod tests {
                 "missing database",
                 |s| s.database_url_configured = false,
                 "DATABASE_URL is not configured",
+            ),
+            (
+                "missing engine replica",
+                |s| s.engine_replica_configured = false,
+                "VELA_ENGINE_REPLICA_DIR is not configured",
+            ),
+            (
+                "missing build identity",
+                |s| s.build_id = None,
+                "VELA_BUILD_ID is not configured",
+            ),
+            (
+                "placeholder build identity",
+                |s| s.build_id = Some("latest".to_owned()),
+                "not a specific deployed build identity",
             ),
         ];
 

@@ -195,16 +195,17 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Store the financial journal in replicated durable storage.
 - [x] Treat matching-engine customer balances and platform fees as a cache rebuilt from the authoritative journal whenever the ledger is configured.
 - [ ] Rebuild complete engine state from authoritative records; financial balances and fees replay now, while complete order-book and nonfinancial state recovery still depends on snapshots/WAL.
-- [ ] Add cryptographic checksums to snapshots and journal segments.
+- [x] Add SHA-256 integrity metadata for the snapshot and every WAL segment in each immutable recovery bundle; raw WAL records retain CRC64 for local corruption detection.
 - [ ] Sign production snapshots.
-- [ ] Store snapshot version and deployed code version.
-- [x] Verify snapshot format compatibility and internal market/order sequencing before loading; deployed-code identity remains open.
+- [x] Store snapshot format, exact deployed build identity, leadership generation, WAL boundary, byte lengths, and SHA-256 hashes in the recovery manifest.
+- [x] Verify snapshot format compatibility and internal market/order sequencing before loading, and bind each recovery bundle to an exact deployed build identity.
 - [ ] Replicate WAL and ledger data across failure domains.
 - [ ] Create encrypted offsite backups.
 - [x] Define recovery point objectives.
 - [x] Define recovery time objectives.
-- [ ] Test point-in-time recovery.
+- [x] Test PostgreSQL 16 physical base-backup plus archived-WAL recovery to a named restore point in an isolated container; managed-provider PITR rehearsal remains open.
 - [ ] Test recovery from a lost engine machine.
+- [x] Test a clean, cryptographically verified restore after removing the original local engine directory; a hosted lost-machine rehearsal remains open.
 - [x] Test fail-closed handling of corrupt and unsupported local engine snapshots.
 - [x] Test fail-closed handling of incomplete, oversized, checksum-invalid, and sequence-invalid local WAL records.
 - [ ] Test recovery while chain deposits or withdrawals are in flight.
@@ -432,8 +433,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add internal health monitoring.
 - [x] Separate process liveness and service readiness endpoints.
 - [x] Include ledger connectivity and exact schema version in readiness.
-- [ ] Include matcher storage, engine leadership, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage and configured engine leadership now fail readiness after a latched failure, while the other dependencies remain open.
+- [ ] Include matcher storage, engine leadership, recovery replication, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage plus configured leadership and recovery replication now fail readiness after a latched failure, while the other dependencies remain open.
 - [x] Report redacted PostgreSQL engine-leadership state and generation in readiness/status and separate configured/active metrics without exposing the lease owner identity.
+- [x] Report redacted recovery-replication health, last success, checkpoint sequence, and failures without exposing filesystem paths.
 - [x] Latch a process-lifetime matcher-storage fence after ledger/WAL/snapshot durability failure, reject current and queued matching proposals, and reject new non-GET HTTP traffic while preserving liveness diagnostics.
 - [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
 - [ ] Add alerts for failed WAL writes.

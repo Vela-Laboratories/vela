@@ -160,6 +160,8 @@ reconciliation, or incident-response rehearsal.
 
 ## Managed-environment completion gate
 
+The repository also runs `scripts/rehearse_postgres_pitr.sh` in CI. It creates a PostgreSQL 16 physical base backup, archives WAL, restores to a named point before a later probe write, and proves only the pre-target row is present. This validates the mechanics of physical PITR in an isolated container. It does not prove a managed provider's retention, encryption, regional durability, access controls, or recovery time.
+
 Before marking managed database provisioning complete:
 
 1. Provision isolated staging and production PostgreSQL 16 databases.

@@ -41,6 +41,9 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 | `VELA_DATABASE_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pooled connection. Must be greater than zero. |
 | `VELA_DATABASE_STATEMENT_TIMEOUT_MS` | `2000` | PostgreSQL statement timeout applied to each API connection. Must be greater than zero. |
 | `VELA_DATABASE_SERIALIZABLE_RETRIES` | `3` | Maximum retries after PostgreSQL serialization failures or deadlocks. |
+| `VELA_BUILD_ID` | Container Git SHA | Exact nonsecret deployed-code identity stored in recovery manifests. Required and must not be a placeholder when `VELA_ENGINE_REPLICA_DIR` is configured. |
+| `VELA_ENGINE_REPLICA_DIR` | — | Optional separately mounted recovery target. It must not equal, contain, or be contained by `SNAPSHOT_DIR`. When configured, publication failure fences matcher mutations. |
+| `VELA_ENGINE_REPLICA_TIMEOUT_MS` | `30000` | Bounded recovery-bundle publication time. Minimum 1000 ms. |
 
 ## Base deposit indexer
 

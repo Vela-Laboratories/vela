@@ -215,7 +215,51 @@ async fn save_snapshot_to_path(
         return Err(error).context("rotate WAL checkpoint");
     }
 
+    // A clean recovery bundle is published only after ENGINE_STOP has been
+    // flushed. Periodic checkpoints can be replicated here while the mutation
+    // gate still proves that the snapshot and WAL boundary cannot move.
+    if !clean_shutdown {
+        publish_recovery_replica(&state, path).await?;
+    }
+
     Ok(())
+}
+
+pub async fn replicate_clean_shutdown(state: Arc<crate::AppState>) -> Result<()> {
+    let _mutation_guard = state.mutation_gate.lock().await;
+    if !state.storage_health.is_healthy() {
+        bail!("durable storage is fenced; refusing to replicate clean recovery state");
+    }
+    let path = snapshot_path();
+    publish_recovery_replica(&state, Path::new(&path)).await
+}
+
+async fn publish_recovery_replica(state: &crate::AppState, path: &Path) -> Result<()> {
+    let Some(replica) = &state.recovery_replica else {
+        return Ok(());
+    };
+    let generation = state
+        .engine_leadership
+        .as_ref()
+        .map(|leadership| leadership.token().generation);
+    match replica
+        .publish(path, state.wal.directory(), generation)
+        .await
+    {
+        Ok(manifest) => {
+            tracing::info!(
+                bundle_id = %manifest.bundle_id,
+                checkpoint_sequence = manifest.checkpoint_sequence,
+                clean_shutdown = manifest.clean_shutdown,
+                "engine recovery bundle replicated"
+            );
+            Ok(())
+        }
+        Err(error) => {
+            state.storage_health.fence("recovery_replication", &error);
+            Err(error).context("replicate engine recovery bundle")
+        }
+    }
 }
 
 pub async fn load_snapshot() -> Result<Option<EngineSnapshot>> {
@@ -379,7 +423,7 @@ pub fn restore_engine_from_snapshot(
     Ok(())
 }
 
-fn validate_snapshot(snapshot: &EngineSnapshot) -> Result<()> {
+pub(crate) fn validate_snapshot(snapshot: &EngineSnapshot) -> Result<()> {
     if snapshot.version != CURRENT_SNAPSHOT_VERSION {
         bail!(
             "unsupported snapshot version {}; expected {}",

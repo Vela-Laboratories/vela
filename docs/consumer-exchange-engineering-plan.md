@@ -570,6 +570,19 @@ Work should begin in this order. Each item should land as a small, independently
     - Verify concurrent exclusion, monotonic takeover, stale financial-commit rejection, lost renewal, old-owner release rejection, API startup contention, and durability fencing against PostgreSQL 16.
     - Keep no-ledger development/demo operation available without claiming multi-process safety. The live Fly testnet has no ledger configured, so deployment alone does not activate this control.
     - Remaining work includes replicated engine state, automatic takeover recovery, managed-database failover and long-pause rehearsals, cross-resource PostgreSQL/WAL recovery, and external paging.
+33. [x] **EX-033: Verifiable engine recovery replication and controlled restore**
+    - Publish immutable, versioned recovery bundles containing one exact snapshot/checkpoint boundary and every retained WAL segment, with SHA-256, byte length, build identity, leadership generation, and clean-shutdown state in a canonical manifest.
+    - Require an explicit, non-placeholder build identity and a separate, non-nested replica path whenever replication is enabled; keep the feature disabled when no replica target is configured.
+    - Serialize periodic publication under the matcher mutation gate, use private permissions plus file and directory sync, atomically rename completed bundles, and publish a checksummed `LATEST.json` pointer only after the bundle is durable.
+    - Bound replication time and latch the irreversible matcher-storage fence on failure or indeterminate timeout so configured replication cannot silently fall behind while order entry continues.
+    - Require one complete initial recovery bundle before listener binding whenever replication is configured.
+    - Stop the periodic snapshot task before final checkpoint publication, flush the exact terminal `ENGINE_STOP`, and only then publish a clean failover bundle.
+    - Add an `engine-recovery` CLI that verifies every artifact and recovery invariant before atomically restoring only into an absent or empty directory at the original snapshot path.
+    - Reject corruption, symlinks, path traversal, mismatched manifests, non-adjacent checkpoints, false clean boundaries, overlapping source/replica paths, and nonempty restore targets.
+    - Expose redacted configured/healthy/last-success/checkpoint/failure state through readiness, status, and Prometheus metrics; never expose replica filesystem paths.
+    - Verify periodic replication, SHA-256 corruption detection, and a clean lost-directory restore in automated tests. Embed the Git commit as the container build identity.
+    - Rehearse PostgreSQL 16 physical base backup plus archived-WAL recovery to an exact named restore point in CI, proving post-target writes are excluded.
+    - This provider-neutral chapter does not provision a second Fly volume, object store, managed PostgreSQL, multi-zone replication, encrypted offsite backups, managed-provider PITR, automatic failover, or external paging. Those remain deployment gates before real funds.
 
 ## Parallel nonengineering work
 

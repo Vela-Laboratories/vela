@@ -117,6 +117,7 @@ async fn test_development_readiness_allows_unconfigured_ledger() {
     let body: Value = response.json();
     assert_eq!(body["ok"], true);
     assert_eq!(body["ledger"], "not_configured");
+    assert!(body["recovery_replication"].is_null());
 }
 
 #[tokio::test]
@@ -244,7 +245,7 @@ async fn superseded_engine_latches_mutation_fence(pool: sqlx::PgPool) {
         .validate_at_commit()
         .await
         .unwrap_err();
-    assert!(error.contains("absent, expired, or superseded"));
+    assert!(error.contains("engine leadership"));
     assert!(!state.storage_health.is_healthy());
     assert_eq!(
         state.storage_health.snapshot().failure_code.as_deref(),

@@ -464,6 +464,10 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .engine_leadership
         .as_ref()
         .map(|guard| guard.snapshot());
+    let recovery_replication = state
+        .recovery_replica
+        .as_ref()
+        .map(|replica| replica.snapshot());
     if !storage.healthy {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -473,6 +477,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "runtime_mode": state.runtime_mode.as_str(),
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
+                "recovery_replication": recovery_replication,
             })),
         );
     }
@@ -492,6 +497,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "ledger": "not_configured",
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
+                "recovery_replication": recovery_replication,
             })),
         );
     };
@@ -507,6 +513,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "ledger_schema_version": ledger::Ledger::EXPECTED_SCHEMA_VERSION,
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
+                "recovery_replication": recovery_replication,
             })),
         ),
         Ok(Err(error)) => {
@@ -520,6 +527,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "ledger": "unavailable",
                     "matcher_storage": storage,
                     "engine_leadership": leadership,
+                    "recovery_replication": recovery_replication,
                 })),
             )
         }
@@ -534,6 +542,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "ledger": "timeout",
                     "matcher_storage": storage,
                     "engine_leadership": leadership,
+                    "recovery_replication": recovery_replication,
                 })),
             )
         }
@@ -655,6 +664,10 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .engine_leadership
         .as_ref()
         .is_some_and(|guard| guard.is_active());
+    let recovery_replication = state
+        .recovery_replica
+        .as_ref()
+        .map(|replica| replica.snapshot());
     let _ = writeln!(
         out,
         "# HELP vela_matcher_storage_healthy 1 while durable matching mutations can be accepted."
@@ -685,6 +698,63 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         out,
         "vela_engine_leadership_active {}",
         u8::from(leadership_healthy)
+    );
+    let _ = writeln!(out, "# HELP vela_engine_recovery_replication_configured 1 when a separate recovery replica target is configured.");
+    let _ = writeln!(
+        out,
+        "# TYPE vela_engine_recovery_replication_configured gauge"
+    );
+    let _ = writeln!(out, "# HELP vela_engine_recovery_replication_healthy 1 while configured recovery replication remains healthy.");
+    let _ = writeln!(out, "# TYPE vela_engine_recovery_replication_healthy gauge");
+    let _ = writeln!(out, "# HELP vela_engine_recovery_replication_last_success_timestamp_ms Last successful recovery bundle publication time.");
+    let _ = writeln!(
+        out,
+        "# TYPE vela_engine_recovery_replication_last_success_timestamp_ms gauge"
+    );
+    let _ = writeln!(out, "# HELP vela_engine_recovery_replication_checkpoint_sequence Last replicated WAL checkpoint sequence.");
+    let _ = writeln!(
+        out,
+        "# TYPE vela_engine_recovery_replication_checkpoint_sequence gauge"
+    );
+    let _ = writeln!(out, "# HELP vela_engine_recovery_replication_failures_total Recovery bundle publication failures observed by this process.");
+    let _ = writeln!(
+        out,
+        "# TYPE vela_engine_recovery_replication_failures_total counter"
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_replication_configured {}",
+        u8::from(recovery_replication.is_some())
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_replication_healthy {}",
+        u8::from(
+            recovery_replication
+                .as_ref()
+                .is_some_and(|replication| replication.healthy)
+        )
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_replication_last_success_timestamp_ms {}",
+        recovery_replication
+            .as_ref()
+            .map_or(0, |replication| replication.last_success_at_ms)
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_replication_checkpoint_sequence {}",
+        recovery_replication
+            .as_ref()
+            .map_or(0, |replication| replication.last_checkpoint_sequence)
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_replication_failures_total {}",
+        recovery_replication
+            .as_ref()
+            .map_or(0, |replication| replication.failure_count)
     );
 
     let _ = writeln!(
@@ -4165,6 +4235,10 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         .engine_leadership
         .as_ref()
         .map(|guard| guard.snapshot());
+    let recovery_replication = state
+        .recovery_replica
+        .as_ref()
+        .map(|replica| replica.snapshot());
     let status = if !storage_health.healthy {
         "fenced"
     } else if uptime_secs < 30 {
@@ -4197,6 +4271,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "last_restart_reason": restart_reason,
         "matcher_storage": storage_health,
         "engine_leadership": engine_leadership,
+        "recovery_replication": recovery_replication,
     })))
 }
 

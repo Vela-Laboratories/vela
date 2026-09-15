@@ -50,6 +50,7 @@ pub mod prompt_firewall;
 pub mod pyth;
 pub mod rate_limit;
 pub mod reasoning_attest;
+pub mod recovery_replication;
 pub mod reputation;
 pub mod rfq;
 pub mod runtime;
@@ -132,6 +133,7 @@ pub struct AppState {
     pub storage_health: Arc<durability::StorageHealth>,
     pub mutation_gate: Arc<tokio::sync::Mutex<()>>,
     pub engine_leadership: Option<Arc<leadership::EngineLeadershipGuard>>,
+    pub recovery_replica: Option<Arc<recovery_replication::RecoveryReplica>>,
     // TEOB: threshold encrypted order book
     pub pending_encrypted: PendingEncryptedOrders,
     pub threshold_decryptor: Arc<Mutex<ThresholdDecryptor>>,
@@ -229,6 +231,7 @@ impl AppState {
             None,
             crate::durability::StorageHealth::new(),
             None,
+            None,
         )
     }
 
@@ -239,6 +242,10 @@ impl AppState {
         ledger: Option<Arc<ledger::Ledger>>,
     ) -> Result<Arc<Self>, String> {
         let storage_health = crate::durability::StorageHealth::new();
+        let recovery_replica = crate::recovery_replication::RecoveryReplica::from_env(
+            wal.directory(),
+        )
+        .map_err(|error| format!("engine recovery replication initialization failed: {error}"))?;
         let leadership = match ledger.as_ref() {
             Some(authoritative_ledger) => Some(
                 crate::leadership::EngineLeadershipGuard::acquire(
@@ -281,6 +288,7 @@ impl AppState {
             ledger,
             storage_health,
             leadership,
+            recovery_replica,
         ))
     }
 
@@ -291,6 +299,7 @@ impl AppState {
         ledger: Option<Arc<ledger::Ledger>>,
         storage_health: Arc<crate::durability::StorageHealth>,
         leadership: Option<Arc<crate::leadership::EngineLeadershipGuard>>,
+        recovery_replica: Option<Arc<crate::recovery_replication::RecoveryReplica>>,
     ) -> Arc<Self> {
         let window_us: u64 = std::env::var("VELA_BATCH_WINDOW_US")
             .ok()
@@ -452,6 +461,7 @@ impl AppState {
             storage_health,
             mutation_gate: Arc::clone(&mutation_gate),
             engine_leadership: leadership,
+            recovery_replica,
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,

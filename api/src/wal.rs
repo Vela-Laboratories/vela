@@ -220,6 +220,17 @@ pub struct WalRecoveryState {
 }
 
 impl Wal {
+    pub fn recovery_segment_paths(dir: &Path) -> Result<Vec<PathBuf>> {
+        Ok(list_segments_sync(dir)?
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect())
+    }
+
+    pub fn directory(&self) -> &Path {
+        &self.dir
+    }
+
     pub fn new(dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(dir)?;
 
