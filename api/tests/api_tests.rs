@@ -159,7 +159,9 @@ async fn test_production_readiness_fails_without_ledger() {
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]
-async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx::PgPool) {
+async fn test_production_readiness_requires_operational_dependencies_with_current_ledger_schema(
+    pool: sqlx::PgPool,
+) {
     if std::env::var("ADMIN_TOKEN").is_err() {
         std::env::set_var("ADMIN_TOKEN", "test-admin-token");
     }
@@ -176,14 +178,21 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     let server = TestServer::new(api::build_router(state)).unwrap();
 
     let response = server.get("/ready").await;
-    response.assert_status_ok();
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json();
-    assert_eq!(body["ok"], true);
+    assert_eq!(body["ok"], false);
     assert_eq!(body["ledger"], "ready");
     assert_eq!(body["ledger_schema_version"], 13);
     assert_eq!(body["engine_leadership"]["configured"], true);
     assert_eq!(body["engine_leadership"]["state"], "active");
     assert!(body["engine_leadership"].get("owner_id").is_none());
+    assert_eq!(body["operational_dependencies"]["healthy"], false);
+    for dependency in ["indexer", "signer", "custody_rpc", "reconciler"] {
+        assert_eq!(
+            body["operational_dependencies"]["dependencies"][dependency]["failure_code"],
+            "not_configured"
+        );
+    }
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

@@ -1,6 +1,6 @@
 # Vela contracts — external audit scope
 
-**Version:** v1.1 (post-hardening pass — commit `e49fd9b`, 2026-09-02)
+**Version:** v1.2 (EX-038 allowlist and reproducible-deployment boundary)
 **Contact:** engineering@monolithsystematic.com
 **Repository:** https://github.com/Monolith-Investments-LP/vela
 
@@ -84,12 +84,10 @@ not on this list is out of scope but flagging in the report is welcome.
 
 ### 6. Malicious ERC20 (fee-on-transfer, reverting, malicious return)
 
-- **VelaSettlement:** `depositToken` credits the *requested* amount,
-  not the amount actually received. Fee-on-transfer tokens leave the
-  contract short by the fee — deposits over-credit. See
-  `test_depositTokenOverCreditsFeeOnTransfer`. **Operationally
-  mitigated by asset allowlist; no on-chain guard.** Flag if the
-  auditor wants a `balanceOf` diff check.
+- **VelaSettlement:** normal deposit and withdrawal paths require an
+  owner-managed on-chain allowlist. `depositToken` measures the vault's
+  balance delta and rejects any transfer where the received amount differs
+  from the requested amount. Disabling an asset does not block emergency exit.
 - **All contracts:** SafeERC20 is used for every ERC20 interaction, so
   a token that returns `false` from `transfer` still reverts the tx.
 
@@ -124,6 +122,10 @@ should verify these and propose additions.
    second call extends the timelock but does not remove funds.
 6. `executeEmergencyExit` is callable while paused (deliberate — pause
    must never trap user funds).
+7. Normal ERC20 deposits and withdrawals require the asset allowlist,
+   while emergency exits remain available after an asset is disabled.
+8. Fee-on-transfer deposits revert atomically without credit or custody
+   imbalance.
 
 ### InsuranceFund
 
@@ -193,9 +195,10 @@ should verify these and propose additions.
 5. **No slashing conditions enforced on-chain.** SequencerRegistry
    trusts governance to compute the slashing offence off-chain; the
    contract only applies the debit.
-6. **Malicious ERC20 (fee-on-transfer)**: VelaSettlement's
-   `depositToken` over-credits FoT tokens. Operationally mitigated by
-   asset allowlist; not fixed in-contract.
+6. **Asset review remains operational.** The on-chain allowlist and exact
+   transfer check prevent accidental use, but governance must still review
+   token upgradeability, pause/blacklist powers, and return behavior before
+   enabling an ERC20.
 
 ---
 

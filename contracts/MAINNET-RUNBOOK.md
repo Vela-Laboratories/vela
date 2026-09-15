@@ -33,6 +33,9 @@ Nothing here is meant to be discovered under time pressure.
 
 - [ ] `contracts/deployments.json` template pre-filled (chain, name,
       commit SHA, deployer address) but not signed.
+- [ ] `./scripts/reproducible_build.sh` output reviewed and attached to
+      the deploy ticket; source commit, creation-bytecode hash, and runtime
+      template hash match CI.
 - [ ] `.env.deploy` staged with `PRIVATE_KEY`, `ETHERSCAN_API_KEY`,
       `RPC_URL` (from Alchemy / QuickNode — no public RPC).
 - [ ] `flyctl status --app vela-engine` — engine is on the same
@@ -46,9 +49,14 @@ Nothing here is meant to be discovered under time pressure.
 
 ```bash
 cd contracts
-export PRIVATE_KEY=<hardware-signer>
 export ETHERSCAN_API_KEY=<...>
 export RPC_URL=<alchemy mainnet>
+export VELA_EXPECTED_CHAIN_ID=1
+export VELA_OPERATOR_ADDRESS=<custody-operator>
+export VELA_OWNER_ADDRESS=<safe-multisig>
+export VELA_GUARDIAN_ADDRESS=<independent-guardian>
+export VELA_USDC_ADDRESS=<canonical-chain-usdc>
+export VELA_SOURCE_COMMIT=0x<64-hex-byte-padded-git-commit>
 
 forge script script/Deploy.s.sol \
   --rpc-url $RPC_URL \
@@ -59,10 +67,15 @@ forge script script/Deploy.s.sol \
 ```
 
 - [ ] Record the deployed address in `deployments.json`.
+- [ ] Verify on-chain `sourceCommit`, `supportedAssets(ETH)`, and
+      `supportedAssets(USDC)` against the reviewed deployment manifest.
+- [ ] Record and independently verify the final on-chain code hash printed by
+      the deployment script; immutable constructor data makes it deployment-specific.
 - [ ] Etherscan verification succeeded (source verified, ABI visible).
-- [ ] Deployer immediately calls `transferOwnership(gnosisSafe)` and
-      the safe calls `acceptOwnership()` (Ownable2Step).
-- [ ] Deployer calls `setGuardian(guardianAddress)` from the safe.
+- [ ] The safe calls `acceptOwnership()` (Ownable2Step) if the deployment
+      script left it as pending owner.
+- [ ] Operator, owner, and guardian addresses are distinct and match the
+      reviewed configuration.
 
 ## Deploy — InsuranceFund + PerpEngine
 

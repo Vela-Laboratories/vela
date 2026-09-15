@@ -35,8 +35,9 @@ contract VelaSettlementTest is Test {
 
     function setUp() public {
         operator = vm.addr(operatorKey);
-        settlement = new VelaSettlement(operator);
+        settlement = new VelaSettlement(operator, keccak256("test-source-commit"));
         token = new MockERC20();
+        settlement.setSupportedAsset(address(token), true);
 
         vm.deal(user, 10 ether);
         token.transfer(user, 1000e18);
@@ -103,7 +104,7 @@ contract VelaSettlementTest is Test {
         Vm.Log[] memory firstLogs = vm.getRecordedLogs();
         assertNotEq(firstLogs[0].topics[1], firstLogs[1].topics[1]);
 
-        VelaSettlement other = new VelaSettlement(operator);
+        VelaSettlement other = new VelaSettlement(operator, keccak256("other-source-commit"));
         vm.recordLogs();
         vm.prank(user);
         other.depositETH{ value: 1 ether }();
@@ -335,7 +336,7 @@ contract VelaSettlementTest is Test {
     function test_crossContractReplayIsRejectedByDomain() public {
         vm.prank(user);
         settlement.depositETH{ value: 1 ether }();
-        VelaSettlement other = new VelaSettlement(operator);
+        VelaSettlement other = new VelaSettlement(operator, keccak256("other-source-commit-2"));
         vm.prank(user);
         other.depositETH{ value: 1 ether }();
         VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 42);
@@ -376,7 +377,11 @@ contract VelaSettlementTest is Test {
     function test_withdrawalDigestFixedVector() public {
         vm.chainId(84_532);
         address fixedDeployment = address(bytes20(hex"111122223333444455556666777788889999aaaa"));
-        deployCodeTo("VelaSettlement.sol:VelaSettlement", abi.encode(operator), fixedDeployment);
+        deployCodeTo(
+            "VelaSettlement.sol:VelaSettlement",
+            abi.encode(operator, keccak256("fixed-vector-source-commit")),
+            fixedDeployment
+        );
         VelaSettlement fixedSettlement = VelaSettlement(payable(fixedDeployment));
         VelaSettlement.Withdrawal memory w = VelaSettlement.Withdrawal({
             requestId: hex"00112233445566778899aabbccddeeff",

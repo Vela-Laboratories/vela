@@ -55,11 +55,14 @@ contract VelaSettlementHardeningTest is Test {
 
     function setUp() public {
         operator = vm.addr(operatorKey);
-        settlement = new VelaSettlement(operator);
+        settlement = new VelaSettlement(operator, keccak256("test-source-commit"));
         guardian = address(this); // deployer defaults to guardian
         token = new MockERC20();
         fot = new FeeOnTransferToken();
         rev = new RevertingToken();
+        settlement.setSupportedAsset(address(token), true);
+        settlement.setSupportedAsset(address(fot), true);
+        settlement.setSupportedAsset(address(rev), true);
 
         vm.deal(user, 100 ether);
         token.transfer(user, 1000e18);
@@ -140,20 +143,69 @@ contract VelaSettlementHardeningTest is Test {
     // ERC20 edge cases
     // ---------------------------------------------------------------
 
-    /// Credits and emits the amount the vault actually received, not the
-    /// caller-provided transfer amount.
-    function test_depositTokenUsesActualFeeOnTransferAmount() public {
-        vm.recordLogs();
+    function test_deploymentIdentityAndNativeAssetDefaults() public view {
+        assertEq(settlement.sourceCommit(), keccak256("test-source-commit"));
+        assertTrue(settlement.supportedAssets(address(0)));
+    }
+
+    function test_zeroSourceCommitIsRejected() public {
+        vm.expectRevert(VelaSettlement.ZeroSourceCommit.selector);
+        new VelaSettlement(operator, bytes32(0));
+    }
+
+    function test_nonContractAssetCannotBeAllowlisted() public {
+        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
+        settlement.setSupportedAsset(address(0xBEEF), true);
+    }
+
+    function test_depositTokenRejectsFeeOnTransferAssetWithoutCrediting() public {
         vm.startPrank(user);
         fot.approve(address(settlement), 100e18);
+        vm.expectRevert(VelaSettlement.UnsupportedTransferBehavior.selector);
         settlement.depositToken(address(fot), 100e18);
         vm.stopPrank();
-        assertEq(settlement.getBalance(user, address(fot)), 99e18);
-        assertEq(fot.balanceOf(address(settlement)), 99e18);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        Vm.Log memory deposited = logs[logs.length - 1];
-        assertEq(deposited.topics[0], keccak256("Deposited(bytes32,address,address,uint256)"));
-        assertEq(abi.decode(deposited.data, (uint256)), 99e18);
+        assertEq(settlement.getBalance(user, address(fot)), 0);
+        assertEq(fot.balanceOf(address(settlement)), 0);
+    }
+
+    function test_unlistedTokenCannotDeposit() public {
+        MockERC20 unlisted = new MockERC20();
+        unlisted.transfer(user, 10e18);
+        vm.startPrank(user);
+        unlisted.approve(address(settlement), 10e18);
+        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
+        settlement.depositToken(address(unlisted), 10e18);
+        vm.stopPrank();
+    }
+
+    function test_disabledTokenStillAllowsEmergencyExit() public {
+        vm.startPrank(user);
+        token.approve(address(settlement), 10e18);
+        settlement.depositToken(address(token), 10e18);
+        vm.stopPrank();
+        settlement.setSupportedAsset(address(token), false);
+
+        VelaSettlement.Withdrawal memory withdrawal = VelaSettlement.Withdrawal({
+            requestId: bytes16(keccak256("disabled-token-withdrawal")),
+            user: user,
+            destination: user,
+            asset: address(token),
+            amount: 10e18,
+            nonce: 1,
+            deadline: block.timestamp + 1 hours,
+            policyHash: keccak256("policy"),
+            approverHash: keccak256("approval")
+        });
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, settlement.withdrawalDigest(withdrawal));
+        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
+        settlement.executeWithdrawal(withdrawal, abi.encodePacked(r, s, v));
+
+        vm.prank(user);
+        settlement.initiateEmergencyExit(address(token));
+        vm.warp(block.timestamp + settlement.EMERGENCY_DELAY());
+        vm.prank(user);
+        settlement.executeEmergencyExit(address(token));
+        assertEq(token.balanceOf(user), 1000e18);
     }
 
     /// A reverting ERC20 must not corrupt state — the whole tx reverts.
@@ -213,8 +265,9 @@ contract VelaSettlementInvariantTest is Test {
     address[] users;
 
     function setUp() public {
-        settlement = new VelaSettlement(address(this));
+        settlement = new VelaSettlement(address(this), keccak256("invariant-source-commit"));
         token = new MockERC20();
+        settlement.setSupportedAsset(address(token), true);
 
         users = new address[](3);
         users[0] = address(0x1111);

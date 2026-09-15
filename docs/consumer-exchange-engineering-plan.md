@@ -246,17 +246,17 @@ The implementation and tests must preserve these invariants at all times:
 
 - [ ] Replace the current disconnected per-user deposit ledger.
 - [ ] Implement the custody model selected in ADR-002.
-- [ ] Add an explicit supported-asset allowlist.
-- [ ] Account for actual token amounts received.
-- [ ] Reject unsupported and fee-on-transfer assets.
-- [ ] Define contract pause and withdrawal-halt behavior.
-- [ ] Define owner, operator, guardian, and signer powers.
-- [ ] Define safe role rotation and recovery.
+- [x] Add an explicit owner-managed on-chain supported-asset allowlist with ETH enabled at construction and reviewed ERC20 activation.
+- [x] Account for actual token amounts received and require the exact received amount to equal the requested amount.
+- [x] Reject unsupported and fee-on-transfer assets atomically while preserving emergency exit after disablement.
+- [x] Define contract pause and withdrawal-halt behavior, including emergency exit while paused or delisted.
+- [x] Define owner, operator, guardian, and signer powers.
+- [x] Define two-step owner rotation, delayed operator rotation, guardian rotation, and emergency recovery behavior.
 - [ ] Implement replay-safe withdrawal authorization.
 - [ ] Define a safe migration path if contracts remain immutable.
 - [ ] Add deposit, trade, withdrawal, pause, migration, and recovery invariants.
-- [ ] Add a mainnet-fork integration harness.
-- [ ] Update deployment scripts and make them reproducible.
+- [x] Add an opt-in Ethereum mainnet-fork integration harness for canonical USDC deposit and exact authorized withdrawal; hosted RPC execution evidence remains open.
+- [x] Update the settlement deployment script to require explicit chain, role, USDC, and source-commit configuration and emit reproducible build plus final on-chain code-hash metadata.
 - [ ] Remove unused contract deployments from the initial runbook.
 
 ### M5 acceptance criteria
@@ -265,7 +265,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] A buyer can withdraw a finalized acquired asset.
 - [ ] Contract assets cover reconciled ledger liabilities.
 - [ ] All fund-moving paths are tested under pause, failure, and replay conditions.
-- [ ] Deployment artifacts identify chain, bytecode, configuration, and source commit.
+- [x] Deployment tooling emits chain, pinned compiler configuration, creation/runtime-template hashes, final on-chain code hash, role/asset configuration, and source commit; an actual mainnet artifact remains a deploy gate.
 - [ ] The complete contract and off-chain settlement surface is ready for external audit.
 
 ## Milestone 6: reconciliation, recovery, and high availability
@@ -615,6 +615,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Drive the withdrawal page from backend semantics instead of duplicating a potentially stale frontend state map, and expose operator-review conditions explicitly.
     - Add ETH parity coverage for atomic reservation and cancellation/release while retaining the full USDC authorization, broadcast-observation, replacement, revert, finalization, and expiry suites.
     - The broadcaster remains disabled and unconfigured: live custody signing, gas relay, hosted dual-provider observation, and a deployed ETH/USDC end-to-end test remain launch gates before real funds.
+38. [x] **EX-038: Settlement allowlist, invariants, and reproducible deployment harness**
+    - Enforce an owner-managed on-chain asset allowlist across normal ERC20 deposit and withdrawal paths, with ETH enabled at construction and emergency exit deliberately independent of later delisting.
+    - Reject fee-on-transfer deposits unless the vault balance delta exactly equals the requested amount, preserving atomic custody/liability conservation.
+    - Store and emit a nonzero source-commit identity in every new settlement deployment and require explicit chain, operator, owner, guardian, and canonical-USDC configuration in the deployment script.
+    - Emit provider-neutral JSON build evidence containing the Git commit, pinned compiler/EVM/optimizer settings, creation-bytecode hash, and runtime-template hash, verify the metadata generator in CI, and print the immutable-specific final on-chain code hash during deployment.
+    - Extend unit and invariant coverage for unlisted assets, fee-on-transfer rejection, disabled-asset emergency exit, replay/domain separation, conservation, and role controls.
+    - Add an opt-in mainnet-fork harness against canonical USDC. It is skipped without `MAINNET_RPC_URL`, so a recorded hosted fork run, deployed bytecode verification, and external audit remain launch gates.
 
 ## Parallel nonengineering work
 

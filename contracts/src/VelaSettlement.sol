@@ -46,6 +46,9 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     );
 
     address public operator;
+    /// Exact source commit supplied by the reproducible deployment script.
+    /// This is metadata, not an audit attestation.
+    bytes32 public immutable sourceCommit;
     /// Address permitted to `pause()` without owner intervention.
     /// Distinct from `operator` so a stolen matching-engine key cannot
     /// halt withdrawals, and distinct from `owner()` so pausing does
@@ -92,6 +95,10 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     // Prevents replay of a valid operator withdrawal signature.
     mapping(address => mapping(uint256 => bool)) public usedWithdrawNonces;
 
+    /// Assets accepted by normal deposit and withdrawal paths. ETH is enabled
+    /// at construction. Disabling an ERC20 never blocks emergency exit.
+    mapping(address => bool) public supportedAssets;
+
     // requestId => used
     // Request IDs are globally unique ledger identities and prevent the same
     // authorization from being executed under a different user nonce.
@@ -128,6 +135,9 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     error NoPendingOperator();
     error OperatorTimelockActive();
     error ZeroAddress();
+    error ZeroSourceCommit();
+    error AssetNotSupported();
+    error UnsupportedTransferBehavior();
 
     event Deposited(bytes32 indexed depositId, address indexed user, address indexed asset, uint256 amount);
     event WithdrawalExecuted(
@@ -148,13 +158,20 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     event OperatorRotated(address indexed previousOperator, address indexed newOperator);
     event GuardianRotated(address indexed previousGuardian, address indexed newGuardian);
     event SequencerFeedUpdated(address indexed feed);
+    event SupportedAssetUpdated(address indexed asset, bool supported);
+    event DeploymentIdentity(uint256 indexed chainId, bytes32 indexed sourceCommit);
 
-    constructor(address _operator) Ownable(msg.sender) EIP712("VelaSettlement", "2") {
+    constructor(address _operator, bytes32 _sourceCommit) Ownable(msg.sender) EIP712("VelaSettlement", "2") {
         if (_operator == address(0)) revert ZeroAddress();
+        if (_sourceCommit == bytes32(0)) revert ZeroSourceCommit();
         operator = _operator;
+        sourceCommit = _sourceCommit;
+        supportedAssets[ETH] = true;
         // Default the guardian to the deployer. Owner can rotate later
         // (e.g. to a multisig / on-call rota).
         guardian = msg.sender;
+        emit SupportedAssetUpdated(ETH, true);
+        emit DeploymentIdentity(block.chainid, _sourceCommit);
     }
 
     modifier onlyOperator() {
@@ -190,10 +207,11 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
     function depositToken(address asset, uint256 amount) external nonReentrant whenNotPaused {
         if (amount == 0) revert ZeroAmount();
         if (asset == ETH) revert UseDepositETHForNative();
+        if (!supportedAssets[asset]) revert AssetNotSupported();
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
         uint256 actualAmount = IERC20(asset).balanceOf(address(this)) - balanceBefore;
-        if (actualAmount == 0) revert ZeroAmount();
+        if (actualAmount != amount) revert UnsupportedTransferBehavior();
         balances[msg.sender][asset].amount += actualAmount;
         emit Deposited(_nextDepositId(msg.sender, asset), msg.sender, asset, actualAmount);
     }
@@ -240,6 +258,7 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
         sequencerUp
     {
         if (withdrawal.amount == 0) revert ZeroAmount();
+        if (!supportedAssets[withdrawal.asset]) revert AssetNotSupported();
         if (withdrawal.requestId == bytes16(0)) revert InvalidWithdrawalRequestId();
         if (withdrawal.destination == address(0)) revert ZeroAddress();
         if (block.timestamp > withdrawal.deadline) revert WithdrawalExpired();
@@ -408,6 +427,15 @@ contract VelaSettlement is ReentrancyGuard, Ownable2Step, Pausable, EIP712 {
         address previous = guardian;
         guardian = _guardian;
         emit GuardianRotated(previous, guardian);
+    }
+
+    /// @notice Enable or disable a reviewed ERC20. ETH remains permanently
+    /// enabled. Emergency exits intentionally ignore this allowlist so an
+    /// incident response cannot trap previously deposited funds.
+    function setSupportedAsset(address asset, bool supported) external onlyOwner {
+        if (asset == ETH || asset.code.length == 0) revert AssetNotSupported();
+        supportedAssets[asset] = supported;
+        emit SupportedAssetUpdated(asset, supported);
     }
 
     // -----------------------------------------------------------------

@@ -149,6 +149,9 @@ jobs:
       - name: Forge build
         run: forge build --sizes
 
+      - name: Verify reproducible deployment metadata
+        run: ./scripts/reproducible_build.sh
+
       - name: Forge test
         run: forge test -vvv
 

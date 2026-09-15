@@ -222,6 +222,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 ## Security and key management
 
 - [ ] Commission an external smart-contract audit after redesigning settlement.
+- [x] Enforce the initial ETH/USDC scope with an on-chain allowlist and reject fee-on-transfer deposits without blocking emergency exit after delisting.
+- [x] Require reproducible deployment inputs and emit source-commit, creation-bytecode, runtime-template, and final on-chain code-hash evidence; actual deployed artifacts still require review and signature.
+- [x] Add a canonical-USDC mainnet-fork harness; a hosted run with an authenticated RPC remains open.
 - [ ] Commission an external Rust engine and API security review.
 - [ ] Commission a frontend and wallet-interaction security review.
 - [ ] Commission an independent penetration test.
