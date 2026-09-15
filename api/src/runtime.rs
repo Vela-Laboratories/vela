@@ -29,6 +29,11 @@ pub struct RuntimeSettings {
     pub recovery_verifying_key_configured: bool,
     pub engine_offsite_configured: bool,
     pub recovery_age_recipient_configured: bool,
+    pub indexer_readiness_configured: bool,
+    pub signer_readiness_configured: bool,
+    pub custody_rpc_readiness_configured: bool,
+    pub reconciler_readiness_configured: bool,
+    pub alert_webhook_configured: bool,
 }
 
 impl RuntimeSettings {
@@ -74,6 +79,13 @@ impl RuntimeSettings {
             engine_offsite_configured: nonempty_env("VELA_ENGINE_OFFSITE_DIR").is_some(),
             recovery_age_recipient_configured: nonempty_env("VELA_RECOVERY_AGE_RECIPIENT")
                 .is_some(),
+            indexer_readiness_configured: nonempty_env("VELA_INDEXER_READINESS_URL").is_some(),
+            signer_readiness_configured: nonempty_env("VELA_SIGNER_READINESS_URL").is_some(),
+            custody_rpc_readiness_configured: nonempty_env("VELA_CUSTODY_RPC_READINESS_URL")
+                .is_some(),
+            reconciler_readiness_configured: nonempty_env("VELA_RECONCILER_READINESS_URL")
+                .is_some(),
+            alert_webhook_configured: nonempty_env("VELA_ALERT_WEBHOOK_URL").is_some(),
         })
     }
 
@@ -145,6 +157,29 @@ impl RuntimeSettings {
         if !self.recovery_age_recipient_configured {
             problems.push("VELA_RECOVERY_AGE_RECIPIENT is not configured".to_string());
         }
+        for (configured, name) in [
+            (
+                self.indexer_readiness_configured,
+                "VELA_INDEXER_READINESS_URL",
+            ),
+            (
+                self.signer_readiness_configured,
+                "VELA_SIGNER_READINESS_URL",
+            ),
+            (
+                self.custody_rpc_readiness_configured,
+                "VELA_CUSTODY_RPC_READINESS_URL",
+            ),
+            (
+                self.reconciler_readiness_configured,
+                "VELA_RECONCILER_READINESS_URL",
+            ),
+            (self.alert_webhook_configured, "VELA_ALERT_WEBHOOK_URL"),
+        ] {
+            if !configured {
+                problems.push(format!("{name} is not configured"));
+            }
+        }
         match self.build_id.as_deref() {
             None => problems.push("VELA_BUILD_ID is not configured".to_string()),
             Some(value) if is_placeholder_build_id(value) => {
@@ -192,6 +227,11 @@ impl RuntimeSettings {
             recovery_verifying_key_configured = self.recovery_verifying_key_configured,
             engine_offsite_configured = self.engine_offsite_configured,
             recovery_age_recipient_configured = self.recovery_age_recipient_configured,
+            indexer_readiness_configured = self.indexer_readiness_configured,
+            signer_readiness_configured = self.signer_readiness_configured,
+            custody_rpc_readiness_configured = self.custody_rpc_readiness_configured,
+            reconciler_readiness_configured = self.reconciler_readiness_configured,
+            alert_webhook_configured = self.alert_webhook_configured,
             "resolved startup configuration"
         );
     }
@@ -333,6 +373,11 @@ mod tests {
             recovery_verifying_key_configured: true,
             engine_offsite_configured: true,
             recovery_age_recipient_configured: true,
+            indexer_readiness_configured: true,
+            signer_readiness_configured: true,
+            custody_rpc_readiness_configured: true,
+            reconciler_readiness_configured: true,
+            alert_webhook_configured: true,
         }
     }
 
@@ -363,6 +408,11 @@ mod tests {
             recovery_verifying_key_configured: false,
             engine_offsite_configured: false,
             recovery_age_recipient_configured: false,
+            indexer_readiness_configured: false,
+            signer_readiness_configured: false,
+            custody_rpc_readiness_configured: false,
+            reconciler_readiness_configured: false,
+            alert_webhook_configured: false,
         };
 
         let error = settings.validate().expect_err("configuration must fail");

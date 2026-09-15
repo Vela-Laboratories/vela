@@ -436,19 +436,19 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add internal health monitoring.
 - [x] Separate process liveness and service readiness endpoints.
 - [x] Include ledger connectivity and exact schema version in readiness.
-- [ ] Include matcher storage, engine leadership, recovery replication, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage plus configured leadership and recovery replication now fail readiness after a latched failure, while the other dependencies remain open.
+- [x] Include matcher storage, engine leadership, recovery replication, chain indexer, signer, custody RPC, and reconciler health in readiness; production requires redacted bounded endpoints for all dependencies.
 - [x] Report redacted PostgreSQL engine-leadership state and generation in readiness/status and separate configured/active metrics without exposing the lease owner identity.
 - [x] Report redacted recovery-replication health, last success, checkpoint sequence, and failures without exposing filesystem paths.
 - [x] Report only redacted recovery-signing and encrypted-offsite configuration state without exposing keys, recipients, or destinations.
 - [x] Latch a process-lifetime matcher-storage fence after ledger/WAL/snapshot durability failure, reject current and queued matching proposals, and reject new non-GET HTTP traffic while preserving liveness diagnostics.
 - [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
-- [ ] Add alerts for failed WAL writes.
-- [ ] Add alerts for failed snapshots.
+- [x] Add provider-neutral state-change alerts for failed WAL writes through the latched matcher-storage health boundary; a real paging receiver remains to be provisioned.
+- [x] Add provider-neutral state-change alerts for failed snapshots and recovery replication; a real paging receiver remains to be provisioned.
 - [ ] Add alerts for reconciliation differences.
 - [ ] Add alerts for delayed deposits.
 - [ ] Add alerts for stuck withdrawals.
 - [ ] Add alerts for unusual withdrawal volume.
-- [ ] Add alerts for signer failures.
+- [x] Add provider-neutral readiness and state-change alerts for signer and custody-RPC failures; a real paging receiver remains to be provisioned.
 - [ ] Add alerts for stale market data.
 - [ ] Add alerts for market-maker disappearance.
 - [ ] Add alerts for placeholder prover or TEE activation.

@@ -289,7 +289,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Test recovery while deposits, orders, trades, and withdrawals are in flight.
 - [ ] Define and measure RPO and RTO.
 - [x] Add ledger connectivity and schema-version readiness checks.
-- [ ] Add readiness checks for indexer, signer, custody RPC, and reconciler.
+- [x] Add bounded, redacted readiness checks for indexer, signer, custody RPC, and reconciler; production requires all four endpoints.
 - [ ] Add paging for failed writes, divergence, stuck withdrawals, and unhealthy dependencies.
 
 ### M6 acceptance criteria
@@ -601,6 +601,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Require reviewed recovery when a ledger-backed engine artifact predates watermarking or when an artifact that requires PostgreSQL is started without it.
     - Verify exact-prefix matching, later in-flight journal commits, wrong-database rejection, and projection divergence against PostgreSQL 16. Existing deposit, matcher-trade restart, withdrawal lifecycle, WAL replay, and PITR suites cover each independently advancing state machine.
     - This closes cross-resource restore selection without claiming a distributed transaction, automatic failover, hosted lost-machine rehearsal, or provider-level replication. A combined hosted in-flight disaster exercise remains a launch gate.
+36. [x] **EX-036: Operational dependency readiness and alert boundary**
+    - Add bounded live probes for the chain indexer, custody signer, custody RPC adapter, and reconciliation worker; missing dependencies fail production configuration and unhealthy dependencies fail `/ready`.
+    - Keep `/health` as process liveness, return only redacted configured/healthy/failure-code state, and export one labeled Prometheus health gauge per dependency.
+    - Run an independent periodic monitor that combines dependency, matcher-storage, and recovery-replication health and emits a versioned state-change alert through a provider-neutral webhook.
+    - Deduplicate identical alerts, retry undelivered state on the next poll, bound every request, and never expose endpoint or webhook URLs in status, readiness, metrics, logs, or payloads.
+    - Verify production-required versus development-optional dependency behavior and preserve the unconfigured testnet-demo boundary.
+    - Actual paging-provider provisioning, 24/7 ownership, escalation policy, and hosted delivery exercises remain launch gates.
 
 ## Parallel nonengineering work
 

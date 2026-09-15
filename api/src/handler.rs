@@ -460,6 +460,10 @@ async fn health() -> &'static str {
 
 async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = state.storage_health.snapshot();
+    let operational = state
+        .operational_health
+        .probe(state.runtime_mode.is_production())
+        .await;
     let leadership = state
         .engine_leadership
         .as_ref()
@@ -468,16 +472,18 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .recovery_replica
         .as_ref()
         .map(|replica| replica.snapshot());
-    if !storage.healthy {
+    if !storage.healthy || !operational.healthy {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "ok": false,
                 "status": "not_ready",
                 "runtime_mode": state.runtime_mode.as_str(),
+                "ledger": if state.ledger.is_some() { "configured" } else { "not_configured" },
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
                 "recovery_replication": recovery_replication,
+                "operational_dependencies": operational,
             })),
         );
     }
@@ -498,6 +504,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
                 "recovery_replication": recovery_replication,
+                "operational_dependencies": operational,
             })),
         );
     };
@@ -514,6 +521,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "matcher_storage": storage,
                 "engine_leadership": leadership,
                 "recovery_replication": recovery_replication,
+                "operational_dependencies": operational,
             })),
         ),
         Ok(Err(error)) => {
@@ -528,6 +536,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "matcher_storage": storage,
                     "engine_leadership": leadership,
                     "recovery_replication": recovery_replication,
+                    "operational_dependencies": operational,
                 })),
             )
         }
@@ -543,6 +552,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "matcher_storage": storage,
                     "engine_leadership": leadership,
                     "recovery_replication": recovery_replication,
+                    "operational_dependencies": operational,
                 })),
             )
         }
@@ -668,6 +678,10 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .recovery_replica
         .as_ref()
         .map(|replica| replica.snapshot());
+    let operational = state
+        .operational_health
+        .probe(state.runtime_mode.is_production())
+        .await;
     let _ = writeln!(
         out,
         "# HELP vela_matcher_storage_healthy 1 while durable matching mutations can be accepted."
@@ -725,6 +739,16 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let _ = writeln!(out, "# TYPE vela_engine_recovery_signing_configured gauge");
     let _ = writeln!(out, "# HELP vela_engine_recovery_offsite_configured 1 when encrypted offsite archive export is configured.");
     let _ = writeln!(out, "# TYPE vela_engine_recovery_offsite_configured gauge");
+    let _ = writeln!(out, "# HELP vela_operational_dependency_healthy Readiness of required chain and custody dependencies.");
+    let _ = writeln!(out, "# TYPE vela_operational_dependency_healthy gauge");
+    for (name, health) in &operational.dependencies {
+        let _ = writeln!(
+            out,
+            "vela_operational_dependency_healthy{{dependency=\"{}\"}} {}",
+            name,
+            u8::from(health.healthy)
+        );
+    }
     let _ = writeln!(
         out,
         "vela_engine_recovery_replication_configured {}",

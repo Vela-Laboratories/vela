@@ -43,6 +43,7 @@ pub mod listings;
 pub mod mcp;
 pub mod mm;
 pub mod openapi;
+pub mod operational_health;
 pub mod oracle;
 pub mod perp_service;
 pub mod portfolio_margin;
@@ -134,6 +135,7 @@ pub struct AppState {
     pub mutation_gate: Arc<tokio::sync::Mutex<()>>,
     pub engine_leadership: Option<Arc<leadership::EngineLeadershipGuard>>,
     pub recovery_replica: Option<Arc<recovery_replication::RecoveryReplica>>,
+    pub operational_health: Arc<operational_health::OperationalHealth>,
     // TEOB: threshold encrypted order book
     pub pending_encrypted: PendingEncryptedOrders,
     pub threshold_decryptor: Arc<Mutex<ThresholdDecryptor>>,
@@ -462,6 +464,7 @@ impl AppState {
             mutation_gate: Arc::clone(&mutation_gate),
             engine_leadership: leadership,
             recovery_replica,
+            operational_health: operational_health::OperationalHealth::from_env(),
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,
