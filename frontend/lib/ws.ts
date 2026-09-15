@@ -110,6 +110,12 @@ export class VelaWsClient {
 
   connect(): void {
     if (typeof window === 'undefined') return
+    if (
+      this.ws?.readyState === WebSocket.CONNECTING ||
+      this.ws?.readyState === WebSocket.OPEN
+    ) {
+      return
+    }
     this.shouldReconnect = true
     this.setStatus('connecting')
     this.openSocket()

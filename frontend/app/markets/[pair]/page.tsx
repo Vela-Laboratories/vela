@@ -23,7 +23,7 @@ import {
 import { signOrder, signCancel } from '@/lib/signing'
 import { useAuth } from '@/lib/auth'
 import { velaWs } from '@/lib/ws'
-import { ORDERED_PAIRS, getMarketInfo, pairChange, getPriceDecimals } from '@/lib/markets'
+import { ORDERED_PAIRS, getMarketInfo, getPriceDecimals } from '@/lib/markets'
 
 type OrderSide = 'buy' | 'sell'
 type OrderEntryType = 'limit' | 'market' | 'stop'
@@ -42,7 +42,6 @@ const TIMEFRAME_SECONDS: Record<Timeframe, number> = {
 
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
-const PF = "'Playfair Display', serif"
 
 function generateCandles(midPrice: number, timeframe: Timeframe, count = 80): CandlestickData<Time>[] {
   const tfSeconds = TIMEFRAME_SECONDS[timeframe]
@@ -125,71 +124,53 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
 
 function StatGroup({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>
+    <div className="terminal-stat">
+      <span>
         {label}
       </span>
-      <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: 'rgba(232,228,216,0.55)' }}>
+      <strong>
         {value}
-      </span>
+      </strong>
     </div>
   )
 }
 
 function TopBar({ pair, market }: { pair: string; market: MarketResponse | undefined }) {
   const info = getMarketInfo(pair)
-  const change = pairChange(pair)
-  const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
-  const isPositive = change >= 0
+  const decimals = getPriceDecimals(pair)
 
   const bid = market?.best_bid ? parseFloat(market.best_bid) : null
   const ask = market?.best_ask ? parseFloat(market.best_ask) : null
   const mid = bid && ask ? (bid + ask) / 2 : bid ?? ask ?? null
 
-  const midStr = mid ? mid.toFixed(2) : '—'
-  const high = mid ? (mid * 1.02).toFixed(2) : '—'
-  const low = mid ? (mid * 0.98).toFixed(2) : '—'
-  const volMultiplier = pair.startsWith('BTC') ? 1800 : pair.startsWith('ETH') ? 8500 : 45000
-  const vol = mid ? `${((mid * volMultiplier) / 1_000_000).toFixed(2)}M` : '—'
+  const midStr = mid ? mid.toFixed(decimals) : '—'
+  const spread = market?.spread ? fmtPrice(market.spread, decimals) : '—'
 
   return (
-    <div style={{
-      height: 44,
-      flexShrink: 0,
-      borderBottom: '1px solid rgba(232,228,216,0.07)',
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 16px',
-      gap: 16,
-    }}>
-      <Link href="/markets" style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.28)', letterSpacing: '0.05em', textDecoration: 'none' }}>
-        ←
-      </Link>
+    <div className="terminal-market-bar">
+      <div className="terminal-market-identity">
+        <Link href="/markets" aria-label="All markets">‹</Link>
+        <div className="asset-mark">{info.ticker.slice(0, 1)}</div>
+        <div>
+          <div className="terminal-pair">{info.ticker}<span>/ {info.quoteTicker}</span></div>
+          <div className="terminal-product">Spot · Sepolia</div>
+        </div>
+      </div>
 
-      <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 13, color: '#E8E4D8' }}>
-        {info.ticker} / USDC
-      </span>
+      <div className="terminal-mark-price">
+        <span>Mark price</span>
+        {market === undefined ? <Skeleton className="w-24 h-5 inline-block" /> : <strong>{midStr}</strong>}
+      </div>
 
-      {market === undefined
-        ? <Skeleton className="w-24 h-4 inline-block" />
-        : <span style={{ fontFamily: CN, fontWeight: 700, fontSize: 14, color: '#E8E4D8' }}>{midStr}</span>
-      }
+      <div className="terminal-stats">
+        <StatGroup label="Best bid" value={bid ? bid.toFixed(decimals) : '—'} />
+        <StatGroup label="Best ask" value={ask ? ask.toFixed(decimals) : '—'} />
+        <StatGroup label="Spread" value={spread} />
+      </div>
 
-      <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: isPositive ? '#6B8A5A' : '#CC3333' }}>
-        {changeStr}
-      </span>
-
-      <div style={{ width: 1, height: 18, background: 'rgba(232,228,216,0.07)', flexShrink: 0 }} />
-
-      <StatGroup label="24H VOL" value={vol} />
-      <StatGroup label="HIGH" value={high} />
-      <StatGroup label="LOW" value={low} />
-
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
-        <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.14em', color: 'rgba(232,228,216,0.18)', textTransform: 'uppercase' }}>
-          SEPOLIA
-        </span>
+      <div className="terminal-connection">
+        <span />
+        Live
       </div>
     </div>
   )
@@ -206,7 +187,7 @@ function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; o
     isLive === 'data' || isLive === 'prices' ? '#6B8A5A' : 'rgba(232,228,216,0.25)'
 
   return (
-    <div style={{ display: 'flex', padding: '8px 16px 0', borderBottom: '1px solid rgba(232,228,216,0.06)', flexShrink: 0, alignItems: 'center' }}>
+    <div className="terminal-timeframes">
       {TIMEFRAMES.map((tf) => (
         <button
           key={tf}
@@ -214,10 +195,10 @@ function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; o
           style={{
             background: 'transparent',
             border: 'none',
-            borderBottom: timeframe === tf ? '2px solid #E8E4D8' : '2px solid transparent',
-            color: timeframe === tf ? '#E8E4D8' : 'rgba(232,228,216,0.28)',
+            borderBottom: timeframe === tf ? '2px solid #9C9CF6' : '2px solid transparent',
+            color: timeframe === tf ? '#F4F4F5' : '#777789',
             fontFamily: IN,
-            fontSize: 10,
+            fontSize: 12,
             letterSpacing: '0.07em',
             padding: '6px 10px',
             cursor: 'pointer',
@@ -233,7 +214,7 @@ function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; o
           marginLeft: 'auto',
           marginBottom: 8,
           fontFamily: IN,
-          fontSize: 8,
+          fontSize: 11,
           textTransform: 'uppercase',
           letterSpacing: '0.1em',
           color: liveColor,
@@ -288,32 +269,32 @@ function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; 
 
       const chart = createChart(container, {
         layout: {
-          background: { color: '#0C0C0C' },
-          textColor: 'rgba(232,228,216,0.3)',
+          background: { color: '#09090E' },
+          textColor: '#7F7F91',
           fontFamily: IN,
-          fontSize: 10,
+          fontSize: 11,
         },
         grid: {
-          vertLines: { color: 'rgba(232,228,216,0.04)' },
-          horzLines: { color: 'rgba(232,228,216,0.04)' },
+          vertLines: { color: '#15151D' },
+          horzLines: { color: '#15151D' },
         },
         crosshair: {
-          vertLine: { color: 'rgba(232,228,216,0.15)', width: 1, style: 3 },
-          horzLine: { color: 'rgba(232,228,216,0.15)', width: 1, style: 3 },
+          vertLine: { color: '#4A4A5D', width: 1, style: 3 },
+          horzLine: { color: '#4A4A5D', width: 1, style: 3 },
         },
-        rightPriceScale: { borderColor: 'rgba(232,228,216,0.06)' },
-        timeScale: { borderColor: 'rgba(232,228,216,0.06)', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: '#242431' },
+        timeScale: { borderColor: '#242431', timeVisible: true, secondsVisible: false },
         width: container.clientWidth,
         height: container.clientHeight,
       })
 
       const series = chart.addSeries(CandlestickSeries, {
-        upColor: '#6B8A5A',
-        downColor: '#CC3333',
-        borderUpColor: '#6B8A5A',
-        borderDownColor: '#CC3333',
-        wickUpColor: '#6B8A5A',
-        wickDownColor: '#CC3333',
+        upColor: '#2ED67B',
+        downColor: '#FF5C67',
+        borderUpColor: '#2ED67B',
+        borderDownColor: '#FF5C67',
+        wickUpColor: '#2ED67B',
+        wickDownColor: '#FF5C67',
       })
 
       chartRef.current = chart
@@ -479,16 +460,16 @@ function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: strin
     : 'No open orders'
 
   return (
-    <div style={{ height: 150, flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="terminal-orders" style={{ height: 176, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
+        <span style={{ fontFamily: IN, fontSize: 11, fontWeight: 600, color: '#D6D6DF' }}>
           OPEN ORDERS{isConnected ? ` (${openOrders.length})` : ''}
         </span>
       </div>
 
       {showEmpty ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.18)', fontWeight: 300 }}>
+          <span style={{ fontFamily: IN, fontSize: 12, color: '#69697A', fontWeight: 400 }}>
             {emptyMsg}
           </span>
         </div>
@@ -534,7 +515,7 @@ function ChartColumn({ pair, midPrice, onToast }: { pair: string; midPrice: numb
   const handleLiveChange = useCallback((live: LiveMode) => setIsLive(live), [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(232,228,216,0.07)', overflow: 'hidden' }}>
+    <div className="terminal-chart-column" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <TimeframeRow timeframe={timeframe} onChange={setTimeframe} isLive={isLive} />
       <ChartArea pair={pair} midPrice={midPrice} timeframe={timeframe} onLiveChange={handleLiveChange} />
       <OpenOrdersPanel pair={pair} onToast={onToast} />
@@ -574,16 +555,16 @@ function OrderBookPanel({
   }, [bids, asks])
 
   return (
-    <div style={{ width: 200, borderRight: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="terminal-orderbook" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
+        <span style={{ fontFamily: IN, fontSize: 12, fontWeight: 600, color: '#D6D6DF' }}>
           ORDER BOOK
         </span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '5px 12px', flexShrink: 0 }}>
         {['PRICE', 'SIZE'].map((h) => (
-          <span key={h} style={{ fontFamily: IN, fontSize: 7, textTransform: 'uppercase', color: 'rgba(232,228,216,0.18)', letterSpacing: '0.1em' }}>
+          <span key={h} style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', color: '#69697A', letterSpacing: '0.08em' }}>
             {h}
           </span>
         ))}
@@ -602,8 +583,8 @@ function OrderBookPanel({
               return (
                 <div key={`ask-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(204,51,51,0.08)' }} />
-                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
-                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#FF5C67', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#C4C4CE', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
                 </div>
               )
             })
@@ -631,8 +612,8 @@ function OrderBookPanel({
               return (
                 <div key={`bid-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(107,138,90,0.08)' }} />
-                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
-                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#2ED67B', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#C4C4CE', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
                 </div>
               )
             })
@@ -648,22 +629,20 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
   const marketsById = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets])
 
   return (
-    <div style={{ width: 180, borderRight: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="terminal-market-list" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
-          MARKETS
+        <span style={{ fontFamily: IN, fontSize: 12, fontWeight: 600, color: '#D6D6DF' }}>
+          Markets
         </span>
       </div>
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {ORDERED_PAIRS.map((pair) => {
           const market = marketsById[pair]
           const info = getMarketInfo(pair)
-          const change = pairChange(pair)
-          const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
-          const isPositive = change >= 0
           const isActive = pair === currentPair
           const bid = market?.best_bid ? parseFloat(market.best_bid) : null
           const decimals = getPriceDecimals(pair)
+          const spread = market?.spread ? fmtPrice(market.spread, decimals) : '—'
 
           return (
             <div
@@ -672,8 +651,8 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
               style={{
                 padding: '9px 12px',
                 borderBottom: '1px solid rgba(232,228,216,0.03)',
-                borderLeft: isActive ? '2px solid #E8E4D8' : '2px solid transparent',
-                background: isActive ? 'rgba(232,228,216,0.04)' : 'transparent',
+                borderLeft: isActive ? '2px solid #9C9CF6' : '2px solid transparent',
+                background: isActive ? '#15151F' : 'transparent',
                 cursor: 'pointer',
                 transition: 'background 0.1s',
                 paddingLeft: isActive ? 10 : 12,
@@ -682,14 +661,14 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
               onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 11, color: '#E8E4D8' }}>{info.ticker}</span>
-                <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 12, color: '#F4F4F5' }}>{info.ticker}</span>
+                <span style={{ fontFamily: CN, fontSize: 11, color: '#F4F4F5' }}>
                   {bid ? bid.toFixed(decimals) : '—'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.2)' }}>USDC</span>
-                <span style={{ fontFamily: IN, fontSize: 9, color: isPositive ? '#6B8A5A' : '#CC3333' }}>{changeStr}</span>
+                <span style={{ fontFamily: IN, fontSize: 10, color: '#69697A' }}>USDC</span>
+                <span style={{ fontFamily: IN, fontSize: 10, color: '#777789' }}>Spread {spread}</span>
               </div>
             </div>
           )
@@ -806,7 +785,7 @@ function OrderEntryPanel({
   }, [address, isAuthenticated, isConnected, pair, orderType, price, size, side, onToast])
 
   return (
-    <div style={{ width: 240, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="terminal-order-ticket" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderBottom: '1px solid rgba(232,228,216,0.07)', flexShrink: 0 }}>
         {(['limit', 'market', 'stop'] as OrderEntryType[]).map((t) => (
           <button
@@ -817,9 +796,9 @@ function OrderEntryPanel({
               background: 'transparent',
               border: 'none',
               borderBottom: orderType === t ? '2px solid #E8E4D8' : '2px solid transparent',
-              color: orderType === t ? '#E8E4D8' : 'rgba(232,228,216,0.25)',
+              color: orderType === t ? '#F4F4F5' : '#69697A',
               fontFamily: IN,
-              fontSize: 9,
+              fontSize: 11,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               cursor: 'pointer',
@@ -838,24 +817,24 @@ function OrderEntryPanel({
             key={s}
             onClick={() => setSide(s)}
             style={{
-              padding: 9,
+              padding: 11,
               textAlign: 'center',
               fontFamily: IN,
               fontWeight: 600,
-              fontSize: 10,
+              fontSize: 12,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               cursor: 'pointer',
               borderRadius: 0,
               border: side === s
-                ? s === 'buy' ? '1px solid rgba(107,138,90,0.3)' : '1px solid rgba(204,51,51,0.3)'
-                : '1px solid rgba(232,228,216,0.06)',
+                ? s === 'buy' ? '1px solid rgba(46,214,123,0.45)' : '1px solid rgba(255,92,103,0.45)'
+                : '1px solid #242431',
               background: side === s
-                ? s === 'buy' ? 'rgba(107,138,90,0.18)' : 'rgba(204,51,51,0.18)'
-                : 'transparent',
+                ? s === 'buy' ? 'rgba(46,214,123,0.14)' : 'rgba(255,92,103,0.14)'
+                : '#101018',
               color: side === s
-                ? s === 'buy' ? '#6B8A5A' : '#CC3333'
-                : 'rgba(232,228,216,0.2)',
+                ? s === 'buy' ? '#2ED67B' : '#FF5C67'
+                : '#777789',
             }}
           >
             {s}
@@ -863,16 +842,16 @@ function OrderEntryPanel({
         ))}
       </div>
 
-      <div style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+      <div style={{ padding: 14, flex: 1, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 8, borderBottom: '1px solid rgba(232,228,216,0.05)' }}>
-          <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>AVAILABLE</span>
-          <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.5)' }}>{availableBalance} {availableAsset}</span>
+          <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#69697A' }}>Available</span>
+          <span style={{ fontFamily: CN, fontSize: 12, color: '#D6D6DF' }}>{availableBalance} {availableAsset}</span>
         </div>
 
         {(orderType === 'limit' || orderType === 'stop') && (
           <div>
             <div style={{ marginBottom: 4 }}>
-              <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>
+              <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#777789' }}>
                 PRICE (USDC)
               </span>
             </div>
@@ -881,7 +860,7 @@ function OrderEntryPanel({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="0.00"
-              style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: CN, fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', background: '#101018', border: '1px solid #2B2B38', color: '#F4F4F5', fontFamily: CN, fontSize: 14, padding: '11px 12px', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.2)' }}
               onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.08)' }}
             />
@@ -894,7 +873,7 @@ function OrderEntryPanel({
                 <button
                   key={label}
                   onClick={() => val && setPrice(parseFloat(val).toFixed(4))}
-                  style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.25)', padding: '2px 7px', border: '1px solid rgba(232,228,216,0.06)', background: 'transparent', cursor: 'pointer', borderRadius: 0 }}
+                  style={{ flex: 1, fontFamily: IN, fontSize: 10, color: '#8B8B9C', padding: '5px 7px', border: '1px solid #242431', background: '#0D0D13', cursor: 'pointer', borderRadius: 5 }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = '#E8E4D8'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.15)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(232,228,216,0.25)'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.06)' }}
                 >
@@ -906,7 +885,7 @@ function OrderEntryPanel({
         )}
 
         <div>
-          <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', display: 'block', marginBottom: 4 }}>
+          <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#777789', display: 'block', marginBottom: 5 }}>
             SIZE ({info.ticker})
           </span>
           <input
@@ -914,7 +893,7 @@ function OrderEntryPanel({
             value={size}
             onChange={(e) => setSize(e.target.value)}
             placeholder="0.0000"
-            style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: CN, fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', background: '#101018', border: '1px solid #2B2B38', color: '#F4F4F5', fontFamily: CN, fontSize: 14, padding: '11px 12px', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }}
             onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.2)' }}
             onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.08)' }}
           />
@@ -923,7 +902,7 @@ function OrderEntryPanel({
               <button
                 key={label}
                 onClick={() => handlePctClick(pct)}
-                style={{ fontFamily: IN, fontSize: 8, padding: 4, border: '1px solid rgba(232,228,216,0.06)', color: 'rgba(232,228,216,0.25)', background: 'transparent', textAlign: 'center', cursor: 'pointer', borderRadius: 0 }}
+                style={{ fontFamily: IN, fontSize: 10, padding: 6, border: '1px solid #242431', color: '#8B8B9C', background: '#0D0D13', textAlign: 'center', cursor: 'pointer', borderRadius: 5 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#E8E4D8'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.15)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(232,228,216,0.25)'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.06)' }}
               >
@@ -936,12 +915,16 @@ function OrderEntryPanel({
         {orderType === 'limit' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div
+              role="checkbox"
+              aria-checked={postOnly}
+              tabIndex={0}
               onClick={() => setPostOnly(!postOnly)}
-              style={{ width: 16, height: 16, border: '1px solid rgba(232,228,216,0.15)', background: postOnly ? 'rgba(232,228,216,0.1)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setPostOnly(!postOnly) }}
+              style={{ width: 18, height: 18, border: '1px solid #3A3A49', borderRadius: 4, background: postOnly ? '#9C9CF6' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
             >
               {postOnly && <span style={{ color: '#E8E4D8', fontSize: 10, lineHeight: 1 }}>✓</span>}
             </div>
-            <span style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.35)' }}>Post-only</span>
+            <span style={{ fontFamily: IN, fontSize: 12, color: '#A1A1AE' }}>Post-only</span>
           </div>
         )}
 
@@ -951,8 +934,8 @@ function OrderEntryPanel({
             { label: 'FEE', value: '0.00 USDC' },
           ].map(({ label, value }) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>{label}</span>
-              <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{value}</span>
+              <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#69697A' }}>{label}</span>
+              <span style={{ fontFamily: CN, fontSize: 12, color: '#D6D6DF' }}>{value}</span>
             </div>
           ))}
         </div>
@@ -962,22 +945,22 @@ function OrderEntryPanel({
         onClick={isConnected && isAuthenticated ? handleSubmit : connect}
         disabled={isConnected && isAuthenticated && submitting}
         style={{
-          margin: '0 12px 12px',
-          padding: 12,
+          margin: '0 14px 14px',
+          padding: 13,
           fontFamily: IN,
           fontWeight: 600,
-          fontSize: 10,
+          fontSize: 12,
           textTransform: 'uppercase',
           letterSpacing: '0.14em',
-          borderRadius: 0,
+          borderRadius: 7,
           border: 'none',
           cursor: 'pointer',
           background: !isConnected || !isAuthenticated
-            ? 'rgba(232,228,216,0.07)'
+            ? '#20202A'
             : side === 'buy'
-            ? 'rgba(107,138,90,0.9)'
-            : 'rgba(204,51,51,0.9)',
-          color: !isConnected || !isAuthenticated ? 'rgba(232,228,216,0.3)' : 'white',
+            ? '#159A5A'
+            : '#D84752',
+          color: !isConnected || !isAuthenticated ? '#777789' : 'white',
           flexShrink: 0,
           opacity: isConnected && isAuthenticated && submitting ? 0.6 : 1,
         }}
@@ -996,130 +979,40 @@ function OrderEntryPanel({
   )
 }
 
-function MobileGate({
+function MobileTerminal({
   pair,
   midPrice,
   market,
+  bids,
+  asks,
+  loading,
+  onToast,
 }: {
   pair: string
   midPrice: number | null
   market: MarketResponse | undefined
+  bids: { price: string; quantity: string }[]
+  asks: { price: string; quantity: string }[]
+  loading: boolean
+  onToast: (msg: string, v: 'success' | 'error') => void
 }) {
-  const fmtMid = midPrice
-    ? midPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })
-    : '—'
+  const [panel, setPanel] = useState<'trade' | 'book'>('trade')
+
   return (
-    <div
-      style={{
-        background: '#0C0C0C',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '20px',
-        padding: '40px 24px',
-        textAlign: 'center',
-      }}
-    >
-      <span style={{ fontFamily: PF, fontStyle: 'italic', fontSize: '28px', color: '#E8E4D8' }}>Vela</span>
-
-      {/* Snapshot so mobile visitors get *something* useful. */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontFamily: IN, fontSize: '10px', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.35)', textTransform: 'uppercase' }}>
-          {pair}
-        </span>
-        <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '40px', color: '#E8E4D8', lineHeight: 1 }}>
-          ${fmtMid}
-        </span>
-        {market?.spread && (
-          <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.4)' }}>
-            Spread {market.spread}
-          </span>
-        )}
+    <div className="mobile-terminal">
+      <TopBar pair={pair} market={market} />
+      <div className="mobile-terminal__chart">
+        <ChartColumn pair={pair} midPrice={midPrice} onToast={onToast} />
       </div>
-
-      <p
-        style={{
-          fontFamily: IN,
-          fontWeight: 300,
-          fontSize: '13px',
-          lineHeight: 1.7,
-          color: 'rgba(232,228,216,0.4)',
-          maxWidth: '300px',
-          margin: 0,
-        }}
-      >
-        The trading terminal needs a wider screen to render the book, chart, and order entry side-by-side. Every read-only view works on mobile.
-      </p>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '260px' }}>
-        <Link
-          href="/dashboard"
-          style={{
-            background: '#E8E4D8',
-            color: '#0C0C0C',
-            fontFamily: IN,
-            fontWeight: 600,
-            fontSize: '12px',
-            textTransform: 'uppercase',
-            padding: '14px 24px',
-            textDecoration: 'none',
-            textAlign: 'center',
-            letterSpacing: '0.08em',
-          }}
-        >
-          Dashboard
-        </Link>
-        <Link
-          href="/portfolio"
-          style={{
-            background: 'transparent',
-            color: '#E8E4D8',
-            border: '1px solid rgba(232,228,216,0.35)',
-            fontFamily: IN,
-            fontSize: '12px',
-            padding: '14px 24px',
-            textDecoration: 'none',
-            textAlign: 'center',
-            letterSpacing: '0.06em',
-          }}
-        >
-          Portfolio
-        </Link>
-        <Link
-          href="/markets"
-          style={{
-            background: 'transparent',
-            color: 'rgba(232,228,216,0.55)',
-            border: '1px solid rgba(232,228,216,0.15)',
-            fontFamily: IN,
-            fontSize: '12px',
-            padding: '14px 24px',
-            textDecoration: 'none',
-            textAlign: 'center',
-          }}
-        >
-          All markets
-        </Link>
-        <Link
-          href="/"
-          style={{
-            background: 'transparent',
-            color: 'rgba(232,228,216,0.3)',
-            fontFamily: IN,
-            fontSize: '11px',
-            padding: '10px 24px',
-            textDecoration: 'none',
-            textAlign: 'center',
-          }}
-        >
-          Back to home
-        </Link>
+      <div className="mobile-terminal__tabs" role="tablist" aria-label="Trading panel">
+        <button type="button" role="tab" aria-selected={panel === 'trade'} onClick={() => setPanel('trade')}>Trade</button>
+        <button type="button" role="tab" aria-selected={panel === 'book'} onClick={() => setPanel('book')}>Order book</button>
       </div>
-      <span style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.15)', marginTop: '20px' }}>
-        vela.monolithsystematic.com
-      </span>
+      <div className="mobile-terminal__panel">
+        {panel === 'trade'
+          ? <OrderEntryPanel pair={pair} bids={bids} asks={asks} onToast={onToast} />
+          : <OrderBookPanel bids={bids} asks={asks} pair={pair} loading={loading} />}
+      </div>
     </div>
   )
 }
@@ -1128,7 +1021,7 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
   const params = use(props.params);
   const pair = decodeURIComponent(params.pair)
   const { toasts, addToast } = useToasts()
-  const [isMobile, setIsMobile] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
 
   const [bids, setBids] = useState<{ price: string; quantity: string }[]>([])
   const [asks, setAsks] = useState<{ price: string; quantity: string }[]>([])
@@ -1169,17 +1062,28 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
   }, [])
 
   useEffect(() => {
-    // Trading terminal needs at least ~768px to render the four-column
-    // grid without horizontal scroll. Tablets in landscape (iPad 810,
-    // Chromebook 1080) now get the real UI; phones still see the
-    // useful summary card in MobileGate.
-    const check = () => setIsMobile(window.innerWidth < 768)
+    const check = () => setIsMobile(window.innerWidth < 700)
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  if (isMobile) return <MobileGate pair={pair} midPrice={midPrice} market={market} />
+  if (isMobile) {
+    return (
+      <>
+        <MobileTerminal
+          pair={pair}
+          midPrice={midPrice}
+          market={market}
+          bids={bids}
+          asks={asks}
+          loading={!bookLoaded}
+          onToast={addToast}
+        />
+        <ToastContainer toasts={toasts} />
+      </>
+    )
+  }
 
   return (
     <>
@@ -1193,10 +1097,10 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
         ::-webkit-scrollbar-thumb { background: rgba(232,228,216,0.1); }
       `}</style>
 
-      <div style={{ height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', background: '#0C0C0C', overflow: 'hidden' }}>
+      <div className="trade-terminal" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar pair={pair} market={market} />
 
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '180px 1fr 200px 240px', overflow: 'hidden' }}>
+        <div className="trade-terminal__grid">
           <MarketSelectorColumn currentPair={pair} markets={markets} />
           <ChartColumn pair={pair} midPrice={midPrice} onToast={addToast} />
           <OrderBookPanel bids={bids} asks={asks} pair={pair} loading={!bookLoaded} />

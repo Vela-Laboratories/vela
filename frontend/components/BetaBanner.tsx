@@ -44,7 +44,7 @@ export default function BetaBanner() {
       style={{
         background: '#0C0C0C',
         borderBottom: '1px solid rgba(232,228,216,0.08)',
-        padding: '8px 24px',
+        padding: '0 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -53,11 +53,11 @@ export default function BetaBanner() {
         top: 0,
         left: 0,
         right: 0,
-        height: '36px',
+        height: '30px',
         zIndex: 200,
         fontFamily: 'var(--font-inter-sans), sans-serif',
-        fontSize: '0.72rem',
-        letterSpacing: '0.08em',
+        fontSize: '0.68rem',
+        letterSpacing: '0.06em',
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: engineStatus === 'degraded' ? '#CC3333' : 'rgba(232,228,216,0.5)' }}>
@@ -82,8 +82,8 @@ export default function BetaBanner() {
         )}
         {statusText}
       </span>
-      <span style={{ color: 'rgba(232,228,216,0.25)' }}>
-        TESTNET DEMO ONLY · NO REAL FUNDS · NOT PRODUCTION CUSTODY
+      <span className="beta-banner__detail" style={{ color: 'rgba(232,228,216,0.38)' }}>
+        SEPOLIA TESTNET · NO REAL FUNDS · NOT PRODUCTION CUSTODY
       </span>
       <a
         href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"
