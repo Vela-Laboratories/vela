@@ -52,10 +52,38 @@ impl MarketShards {
         metrics: Arc<BatchMetrics>,
         committer: Option<Arc<dyn FinancialCommitter>>,
     ) -> BatchResult {
+        Self::dispatch_sharded_batch_with_committer_and_gate(
+            shards,
+            pending,
+            window_open,
+            metrics,
+            committer,
+            None,
+        )
+        .await
+    }
+
+    pub async fn dispatch_sharded_batch_with_committer_and_gate(
+        shards: Arc<MarketShards>,
+        pending: Vec<BatchedRequest>,
+        window_open: Instant,
+        metrics: Arc<BatchMetrics>,
+        committer: Option<Arc<dyn FinancialCommitter>>,
+        mutation_gate: Option<Arc<TokioMutex<()>>>,
+    ) -> BatchResult {
         let Some(committer) = committer else {
             return Self::dispatch_sharded_batch_in_place(shards, pending, window_open, metrics)
                 .await;
         };
+
+        let _gate_guard = match mutation_gate.as_ref() {
+            Some(gate) => Some(gate.lock().await),
+            None => None,
+        };
+        let request_batch: Vec<(Request, Timestamp)> = pending
+            .iter()
+            .map(|item| (item.request.clone(), item.ts))
+            .collect();
 
         // Hold the committed state locks for the complete proposal lifecycle.
         // Readers cannot observe speculative order-book or balance changes, and
@@ -116,15 +144,26 @@ impl MarketShards {
         }
 
         let proposed_user_guard = proposed_user_state.read().await;
-        let commit_result = match FinancialEffectSet::between(
-            &committed_user_state,
-            &proposed_user_guard,
-            &batch_result.responses,
-            batch_result.batch_size,
-        ) {
-            Ok(Some(effects)) => committer.commit(&effects).await,
-            Ok(None) => Ok(()),
-            Err(error) => Err(error),
+        let effects = if committer.requires_financial_effects() {
+            FinancialEffectSet::between(
+                &committed_user_state,
+                &proposed_user_guard,
+                &batch_result.responses,
+                batch_result.batch_size,
+            )
+        } else {
+            Ok(None)
+        };
+        let commit_result = match effects {
+            Ok(effects) => {
+                committer
+                    .commit_mutation(&request_batch, &proposed_responses, effects.as_ref())
+                    .await
+            }
+            Err(error) => {
+                committer.reject_mutation(&error);
+                Err(error)
+            }
         };
 
         if let Err(error) = commit_result {
@@ -134,7 +173,7 @@ impl MarketShards {
                 .map(|_| {
                     vec![Response::Error(types::ErrorResponse {
                         code: types::ErrorCode::InternalError,
-                        message: "financial commit failed".to_owned(),
+                        message: "durable mutation commit failed".to_owned(),
                     })]
                 })
                 .collect();
@@ -459,6 +498,7 @@ impl MarketShards {
     }
 
     /// Infinite run loop (mirrors BatchDispatcher::run but uses sharded dispatch).
+    #[allow(clippy::too_many_arguments)]
     pub async fn run(
         shards: Arc<Self>,
         mut rx: tokio::sync::mpsc::Receiver<BatchedRequest>,
@@ -467,6 +507,7 @@ impl MarketShards {
         metrics: Arc<BatchMetrics>,
         result_tx: Option<tokio::sync::mpsc::Sender<BatchResult>>,
         financial_committer: Option<Arc<dyn FinancialCommitter>>,
+        mutation_gate: Option<Arc<TokioMutex<()>>>,
     ) {
         loop {
             let first = match rx.recv().await {
@@ -487,12 +528,13 @@ impl MarketShards {
                 }
             }
 
-            let batch_result = Self::dispatch_sharded_batch_with_committer(
+            let batch_result = Self::dispatch_sharded_batch_with_committer_and_gate(
                 Arc::clone(&shards),
                 pending,
                 window_open,
                 Arc::clone(&metrics),
                 financial_committer.clone(),
+                mutation_gate.clone(),
             )
             .await;
 

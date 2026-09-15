@@ -472,13 +472,15 @@ async fn main() {
 
     // Only label the terminal WAL record clean when the final snapshot and
     // its checkpoint were both published successfully.
-    let stop_reason = match api::snapshot::save_snapshot(shutdown_state, true).await {
-        Ok(()) => "clean",
+    let shutdown_health = Arc::clone(&shutdown_state.storage_health);
+    let snapshot_succeeded = match api::snapshot::save_snapshot(shutdown_state, true).await {
+        Ok(()) => true,
         Err(error) => {
             tracing::error!("Final snapshot save failed: {error}");
-            "snapshot_failed"
+            false
         }
     };
+    let stop_reason = api::durability::shutdown_stop_reason(snapshot_succeeded, &shutdown_health);
 
     let stop_written = wal
         .append(

@@ -281,7 +281,7 @@ The implementation and tests must preserve these invariants at all times:
 - [x] Automatically halt deposit credits, trading, and new withdrawals for deficits or indeterminate evidence; services never automatically unhalt.
 - [x] Add independent reconciliation execution outside the matcher process as a leased, restart-safe worker.
 - [x] Remove temporary WAL fallback behavior in every runtime mode; startup uses only the configured durable directory.
-- [ ] Fail closed on corrupt or unavailable financial storage.
+- [x] Fail closed on corrupt or unavailable local matcher storage and authoritative-ledger commit failures; cross-resource reconciliation remains operator-gated.
 - [ ] Replicate ledger and journal storage across failure domains.
 - [ ] Create encrypted offsite backups.
 - [ ] Implement point-in-time recovery.
@@ -298,7 +298,7 @@ The implementation and tests must preserve these invariants at all times:
 - [ ] Recovery from the journal produces identical balances and financial states.
 - [ ] Two engine leaders cannot process financially effective orders simultaneously.
 - [ ] Backup restoration and point-in-time recovery pass a documented rehearsal.
-- [ ] The API cannot report ready while a required financial dependency is unhealthy.
+- [x] The API cannot report ready while the authoritative ledger or latched matcher-storage fence is unhealthy; indexer, signer, custody RPC, and reconciler readiness remain open.
 
 ## Milestone 7: constrained consumer product
 
@@ -549,7 +549,16 @@ Work should begin in this order. Each item should land as a small, independently
     - Make WAL replay return typed failure context for corrupt or undecodable required entries instead of skipping the record or segment; automatic unclean replay remains disabled until snapshot publication and request/WAL persistence share an atomic boundary.
     - Verify unavailable initialization, CRC corruption, truncation, oversized records, sequence gaps, terminal clean-shutdown semantics, concurrent append ordering, missing/corrupt/unsupported snapshots, invalid order-market restoration, undecodable replay, and valid recovery.
     - Document an evidence-preserving operator recovery procedure and preserve the ledger-first boundary: WAL/snapshots assist local engine recovery but are not authoritative financial storage.
-    - Remaining work includes atomic snapshot/checkpoint publication and request/WAL fencing, automatic unclean recovery, cryptographic snapshot integrity and signing, deployed-code identity, replication, encrypted backups, PITR/lost-machine/in-flight rehearsals, write-failure traffic fencing, readiness health, and paging.
+    - Remaining work includes single-transaction snapshot/checkpoint publication, automatic unclean recovery, cryptographic snapshot integrity and signing, deployed-code identity, replication, encrypted backups, PITR/lost-machine/in-flight rehearsals, and external paging.
+31. [x] **EX-031: Durable matching publication gate and storage fence**
+    - Move mutation WAL persistence from post-response HTTP bookkeeping into the sharded dispatcher's private proposal lifecycle; append and fsync one typed request/response batch before committed matching state is published or success is delivered.
+    - Keep a concrete WAL committer active even when PostgreSQL is not configured, while committing authoritative financial effects to PostgreSQL before the local WAL when it is configured.
+    - Latch an irreversible process-lifetime fence on financial-effect validation, ledger commit, WAL append/fsync, snapshot publication/checkpoint, or WAL rotation failure; discard the current proposal and prevent queued proposals from publishing.
+    - Reject new non-GET HTTP traffic after the fence, retain liveness, return readiness `503`, report a stable redacted failure code through readiness/status, and export matcher-storage health/failure metrics.
+    - Serialize matching mutation publication and snapshot/checkpoint publication with one gate, and build snapshots from committed sharded order books and `UserState` rather than the stale bootstrap engine copy.
+    - Sync the snapshot file and containing directory before checkpointing, then append and fsync the checkpoint before WAL rotation; refuse periodic and shutdown snapshot publication after a fence so no false clean recovery boundary is emitted.
+    - Verify irreversible fencing, redacted public health, liveness/readiness separation, non-GET rejection, proposal rollback, success-after-commit ordering, and a mutation already queued when the first storage failure trips the fence.
+    - Document the cross-resource limit: PostgreSQL and local WAL do not share a distributed transaction. A failure after PostgreSQL commit requires an unclean, evidence-preserving operator recovery; automatic unclean replay, replication, external paging, leader fencing, and full auxiliary-state durability remain open.
 
 ## Parallel nonengineering work
 

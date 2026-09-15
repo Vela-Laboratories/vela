@@ -572,3 +572,105 @@ async fn financial_commit_failure_discards_proposal_and_returns_error() {
         1
     );
 }
+
+struct LatchingFailureCommitter {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Semaphore>,
+    fenced: std::sync::atomic::AtomicBool,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl engine::FinancialCommitter for LatchingFailureCommitter {
+    fn commit<'a>(
+        &'a self,
+        _effects: &'a engine::FinancialEffectSet,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn commit_mutation<'a>(
+        &'a self,
+        _requests: &'a [(Request, types::Timestamp)],
+        _responses: &'a [Vec<types::Response>],
+        _effects: Option<&'a engine::FinancialEffectSet>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
+        Box::pin(async move {
+            let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if call == 0 {
+                self.entered.notify_one();
+                self.release.acquire().await.unwrap().forget();
+                self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+                Err("injected WAL failure".to_owned())
+            } else if self.fenced.load(std::sync::atomic::Ordering::SeqCst) {
+                Err("durability fenced".to_owned())
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn queued_mutation_cannot_publish_after_durability_fence_trips() {
+    let (shards, user_state) = build_shards(&["ETH-USDC"]).await;
+    let (first, first_rx) = resting_ask_and_crossing_bid(&shards, &user_state).await;
+    let before = user_state.read().await.balances.clone();
+
+    let mut second_request = first.request.clone();
+    if let Request::PostOrder(request) = &mut second_request {
+        request.nonce += 1;
+    }
+    let (second_tx, second_rx) = tokio::sync::oneshot::channel();
+    let second = engine::BatchedRequest {
+        request: second_request,
+        ts: first.ts + 1,
+        responder: second_tx,
+        decryption_proof: None,
+    };
+
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let committer = Arc::new(LatchingFailureCommitter {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+        fenced: std::sync::atomic::AtomicBool::new(false),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let gate = Arc::new(tokio::sync::Mutex::new(()));
+    let metrics = engine::BatchMetrics::new();
+
+    let first_task = tokio::spawn(
+        engine::MarketShards::dispatch_sharded_batch_with_committer_and_gate(
+            Arc::clone(&shards),
+            vec![first],
+            std::time::Instant::now(),
+            Arc::clone(&metrics),
+            Some(committer.clone()),
+            Some(Arc::clone(&gate)),
+        ),
+    );
+    entered.notified().await;
+    let second_task = tokio::spawn(
+        engine::MarketShards::dispatch_sharded_batch_with_committer_and_gate(
+            Arc::clone(&shards),
+            vec![second],
+            std::time::Instant::now(),
+            Arc::clone(&metrics),
+            Some(committer),
+            Some(gate),
+        ),
+    );
+
+    release.add_permits(1);
+    first_task.await.unwrap();
+    second_task.await.unwrap();
+
+    for responses in [first_rx.await.unwrap(), second_rx.await.unwrap()] {
+        assert!(responses.iter().any(|response| matches!(
+            response,
+            types::Response::Error(error) if error.code == types::ErrorCode::InternalError
+        )));
+    }
+    assert_eq!(user_state.read().await.balances, before);
+    assert_eq!(metrics.financial_commit_failures(), 2);
+}

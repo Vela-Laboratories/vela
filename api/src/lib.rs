@@ -31,6 +31,7 @@ pub mod committee_handler;
 pub mod credit;
 pub mod custody_signer;
 pub mod da;
+pub mod durability;
 pub mod feeds;
 pub mod fix_adapter;
 pub mod fix_gateway;
@@ -127,6 +128,8 @@ pub struct AppState {
     pub attestations: Arc<Mutex<HashMap<u64, AttestationRecord>>>,
     pub attester: Arc<dyn TeeAttester>,
     pub wal: Arc<wal::Wal>,
+    pub storage_health: Arc<durability::StorageHealth>,
+    pub mutation_gate: Arc<tokio::sync::Mutex<()>>,
     // TEOB: threshold encrypted order book
     pub pending_encrypted: PendingEncryptedOrders,
     pub threshold_decryptor: Arc<Mutex<ThresholdDecryptor>>,
@@ -342,11 +345,19 @@ impl AppState {
         let threshold_decryptor = Arc::new(Mutex::new(committee::ThresholdDecryptor::new(t, n)));
 
         let batch_metrics = BatchMetrics::new();
-        let financial_committer = ledger.as_ref().map(|ledger| {
+        let ledger_committer = ledger.as_ref().map(|ledger| {
             Arc::new(crate::ledger_coordinator::LedgerFinancialCommitter::new(
                 Arc::clone(ledger),
             )) as Arc<dyn engine::FinancialCommitter>
         });
+        let storage_health = crate::durability::StorageHealth::new();
+        let mutation_gate = Arc::new(tokio::sync::Mutex::new(()));
+        let financial_committer: Arc<dyn engine::FinancialCommitter> =
+            Arc::new(crate::durability::DurableMutationCommitter::new(
+                Arc::clone(&wal),
+                ledger_committer,
+                Arc::clone(&storage_health),
+            ));
 
         let oracle = crate::oracle::PriceOracle::new();
 
@@ -393,6 +404,8 @@ impl AppState {
             attestations: Arc::new(Mutex::new(HashMap::new())),
             attester,
             wal,
+            storage_health,
+            mutation_gate: Arc::clone(&mutation_gate),
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,
@@ -430,7 +443,8 @@ impl AppState {
             max_batch_size,
             Arc::clone(&batch_metrics),
             None,
-            financial_committer,
+            Some(financial_committer),
+            Some(mutation_gate),
         ));
         tokio::spawn(ws::run_background_task(Arc::clone(&state)));
         tokio::spawn(midnight_reset_task(Arc::clone(&state)));

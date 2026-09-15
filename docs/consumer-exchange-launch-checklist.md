@@ -190,6 +190,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Stop starting from a fresh seeded state when snapshot restoration fails; a fresh start now requires no prior snapshot or WAL evidence.
 - [x] Fail closed when the local engine snapshot or WAL recovery set is corrupt; PostgreSQL remains the authoritative financial journal when configured.
 - [x] Require an explicit, evidence-preserving operator recovery procedure for corrupted or incomplete local engine state.
+- [x] Gate committed sharded matching mutations and caller success on a typed local WAL batch append and fsync; PostgreSQL/local-WAL cross-resource atomicity remains unavailable.
+- [x] Serialize committed sharded-state snapshot/checkpoint publication against matching mutation publication and sync the snapshot file and directory before checkpointing.
 - [ ] Store the financial journal in replicated durable storage.
 - [x] Treat matching-engine customer balances and platform fees as a cache rebuilt from the authoritative journal whenever the ledger is configured.
 - [ ] Rebuild complete engine state from authoritative records; financial balances and fees replay now, while complete order-book and nonfinancial state recovery still depends on snapshots/WAL.
@@ -430,7 +432,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add internal health monitoring.
 - [x] Separate process liveness and service readiness endpoints.
 - [x] Include ledger connectivity and exact schema version in readiness.
-- [ ] Include matcher storage, chain indexer, signer, custody RPC, and reconciler health in readiness.
+- [ ] Include matcher storage, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage now fails readiness after a latched write failure, while the other dependencies remain open.
+- [x] Latch a process-lifetime matcher-storage fence after ledger/WAL/snapshot durability failure, reject current and queued matching proposals, and reject new non-GET HTTP traffic while preserving liveness diagnostics.
 - [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
 - [ ] Add alerts for failed WAL writes.
 - [ ] Add alerts for failed snapshots.

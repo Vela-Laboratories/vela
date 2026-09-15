@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use api::wal::{
-    Wal, WalCheckpoint, WalEngineStart, WalEngineStop, WalFillCreated, WalOrderPost,
-    WalOrderProcessed, CHECKPOINT, ENGINE_START, ENGINE_STOP, FILL_CREATED, ORDER_POST,
-    ORDER_PROCESSED,
+    Wal, WalCheckpoint, WalEngineStart, WalEngineStop, WalFillCreated, WalMutationBatch,
+    WalOrderPost, WalOrderProcessed, CHECKPOINT, ENGINE_START, ENGINE_STOP, FILL_CREATED,
+    MUTATION_BATCH, ORDER_POST, ORDER_PROCESSED,
 };
 
 /// Monotonic counter so two temp dirs created back-to-back in the same
@@ -127,6 +127,63 @@ async fn test_wal_write_read_roundtrip() {
     let fill: WalFillCreated = entries[2].decode().unwrap();
     assert_eq!(fill.fill_id, "fill_1_2");
     assert_eq!(fill.maker_fee, -5);
+}
+
+#[tokio::test]
+async fn mutation_batch_roundtrip_binds_requests_to_responses() {
+    let dir = temp_wal_dir("mutation_batch");
+    let wal = Wal::new(&dir).unwrap();
+    let request = types::Request::Deposit(types::DepositRequest {
+        user: types::UserId([3; 20]),
+        asset: types::AssetId::from_str("USDC"),
+        amount: 42,
+        l1_tx_hash: [4; 32],
+        source_chain: Default::default(),
+        bridge_id: None,
+    });
+    let response = types::Response::BalanceUpdated(types::BalanceUpdatedResponse {
+        user: types::UserId([3; 20]),
+        asset: types::AssetId::from_str("USDC"),
+        available: 42,
+        locked: 0,
+    });
+    wal.append(
+        MUTATION_BATCH,
+        &WalMutationBatch {
+            requests: vec![(request, 7)],
+            responses: vec![vec![response]],
+        },
+    )
+    .await
+    .unwrap();
+    wal.flush().await.unwrap();
+
+    let entries = Wal::read_from(&dir.join("engine_wal_0000.log"), 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entry_type, MUTATION_BATCH);
+    let decoded: WalMutationBatch = entries[0].decode().unwrap();
+    assert_eq!(decoded.requests.len(), 1);
+    assert_eq!(decoded.responses.len(), 1);
+}
+
+#[tokio::test]
+async fn malformed_mutation_batch_fails_startup_inspection() {
+    let dir = temp_wal_dir("malformed_mutation_batch");
+    let wal = Wal::new(&dir).unwrap();
+    wal.append(
+        MUTATION_BATCH,
+        &WalMutationBatch {
+            requests: vec![],
+            responses: vec![vec![]],
+        },
+    )
+    .await
+    .unwrap();
+    wal.flush().await.unwrap();
+    drop(wal);
+
+    let error = Wal::inspect(&dir).unwrap_err();
+    assert!(error.to_string().contains("mismatched request/response"));
 }
 
 #[tokio::test]

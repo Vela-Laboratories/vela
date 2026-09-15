@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
-use types::{AssetId, Fill, Response, UserId};
+use types::{AssetId, Fill, Request, Response, Timestamp, UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomerBalanceDelta {
@@ -152,8 +152,31 @@ impl FinancialEffectSet {
 }
 
 pub trait FinancialCommitter: Send + Sync {
+    fn requires_financial_effects(&self) -> bool {
+        true
+    }
+
     fn commit<'a>(
         &'a self,
         effects: &'a FinancialEffectSet,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>>;
+
+    fn commit_mutation<'a>(
+        &'a self,
+        _requests: &'a [(Request, Timestamp)],
+        _responses: &'a [Vec<Response>],
+        effects: Option<&'a FinancialEffectSet>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Some(effects) = effects {
+                self.commit(effects).await
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    /// Latch any implementation-specific safety state when a proposed
+    /// mutation cannot even be reduced to a valid financial effect set.
+    fn reject_mutation(&self, _error: &str) {}
 }

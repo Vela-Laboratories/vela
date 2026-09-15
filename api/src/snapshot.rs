@@ -2,7 +2,8 @@ use crate::types::{Decision, Incident, OrderFillRecord, RegisteredMM, StoredFill
 use crate::wal;
 use crate::wal::{
     Wal, WalBalanceChange, WalCheckpoint, WalDeposit, WalEngineStart, WalEngineStop,
-    WalFillCreated, WalOrderCancel, WalOrderPost, WalOrderProcessed, WalWithdrawalRequest,
+    WalFillCreated, WalMutationBatch, WalOrderCancel, WalOrderPost, WalOrderProcessed,
+    WalWithdrawalRequest,
 };
 use anyhow::{bail, Context, Result};
 use engine::MatchingEngine;
@@ -59,11 +60,32 @@ pub struct EngineSnapshot {
 }
 
 pub async fn save_snapshot(state: Arc<crate::AppState>, clean_shutdown: bool) -> Result<()> {
+    let path = snapshot_path();
+    let health = Arc::clone(&state.storage_health);
+    let result = save_snapshot_to_path(state, clean_shutdown, Path::new(&path)).await;
+    if let Err(error) = &result {
+        if health.is_healthy() {
+            health.fence("snapshot_save", error);
+        }
+    }
+    result
+}
+
+async fn save_snapshot_to_path(
+    state: Arc<crate::AppState>,
+    clean_shutdown: bool,
+    path: &Path,
+) -> Result<()> {
+    let _mutation_guard = state.mutation_gate.lock().await;
+    if !state.storage_health.is_healthy() {
+        bail!("durable storage is fenced; refusing to publish a snapshot");
+    }
+
     let (timestamp, balances, orders, markets, sequence, metadata, fee_balances) = {
-        let engine = state.engine.lock().await;
+        let user_state = state.shards.user_state.read().await;
 
         let mut balances: HashMap<String, HashMap<String, SerializedBalance>> = HashMap::new();
-        for ((user, asset), balance) in &engine.balances {
+        for ((user, asset), balance) in &user_state.balances {
             balances.entry(user.to_hex()).or_default().insert(
                 asset.as_str().to_string(),
                 SerializedBalance {
@@ -73,25 +95,40 @@ pub async fn save_snapshot(state: Arc<crate::AppState>, clean_shutdown: bool) ->
             );
         }
 
+        let mut shard_ids: Vec<_> = state.shards.shards.keys().cloned().collect();
+        shard_ids.sort_by(|left, right| left.0.cmp(&right.0));
         let mut orders: HashMap<String, Vec<Order>> = HashMap::new();
-        for (market_id, book) in &engine.order_books {
-            orders.insert(market_id.0.clone(), book.all_orders());
+        let mut timestamp = 0;
+        for market_id in shard_ids {
+            let shard = state
+                .shards
+                .shards
+                .get(&market_id)
+                .expect("market id came from shard map")
+                .lock()
+                .await;
+            timestamp = timestamp.max(shard.engine.timestamp);
+            let book = shard
+                .engine
+                .order_books
+                .get(&market_id)
+                .ok_or_else(|| anyhow::anyhow!("shard missing order book for {market_id}"))?;
+            orders.insert(market_id.0, book.all_orders());
         }
 
-        let markets: Vec<Market> = engine.markets.values().cloned().collect();
+        let markets: Vec<Market> = user_state.markets.values().cloned().collect();
 
         let mut metadata: HashMap<String, UserMetadata> = HashMap::new();
-        for (user, meta) in &engine.metadata {
+        for (user, meta) in &user_state.metadata {
             metadata.insert(user.to_hex(), meta.clone());
         }
 
-        let fee_balances: HashMap<String, u64> = engine
+        let fee_balances: HashMap<String, u64> = user_state
             .fee_balances
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
-        let timestamp = engine.timestamp;
-        let sequence = engine.next_order_id();
+        let sequence = user_state.next_order_id;
 
         (
             timestamp,
@@ -134,30 +171,49 @@ pub async fn save_snapshot(state: Arc<crate::AppState>, clean_shutdown: bool) ->
 
     let json = serde_json::to_vec(&snapshot)?;
 
-    let path = snapshot_path();
-    let dir = std::path::Path::new(&path)
-        .parent()
-        .unwrap_or(std::path::Path::new("/data"));
+    let dir = path.parent().unwrap_or(std::path::Path::new("/data"));
     tokio::fs::create_dir_all(dir).await?;
 
-    let tmp_path = format!("{path}.tmp");
-    tokio::fs::write(&tmp_path, &json).await?;
-    tokio::fs::rename(&tmp_path, &path).await?;
+    let tmp_path = std::path::PathBuf::from(format!("{}.tmp", path.display()));
+    let publish_result: Result<()> = async {
+        let mut file = tokio::fs::File::create(&tmp_path).await?;
+        use tokio::io::AsyncWriteExt;
+        file.write_all(&json).await?;
+        file.sync_all().await?;
+        drop(file);
+        tokio::fs::rename(&tmp_path, path).await?;
+        let dir_to_sync = dir.to_path_buf();
+        tokio::task::spawn_blocking(move || std::fs::File::open(dir_to_sync)?.sync_all())
+            .await
+            .map_err(|error| anyhow::anyhow!("snapshot directory sync task failed: {error}"))??;
+        Ok(())
+    }
+    .await;
+    if let Err(error) = publish_result {
+        state.storage_health.fence("snapshot_publish", &error);
+        return Err(error).context("publish durable engine snapshot");
+    }
 
     tracing::info!("Snapshot saved: {n_orders} orders, {n_users} users");
 
     let checkpoint = WalCheckpoint {
-        snapshot_path: path,
+        snapshot_path: path.display().to_string(),
         total_orders: n_orders as u64,
         total_fills: n_fills as u64,
         total_users: n_users as u64,
     };
-    state
-        .wal
-        .append(wal::CHECKPOINT, &checkpoint)
-        .await
-        .context("append snapshot WAL checkpoint")?;
-    state.wal.rotate().await.context("rotate WAL checkpoint")?;
+    if let Err(error) = state.wal.append(wal::CHECKPOINT, &checkpoint).await {
+        state.storage_health.fence("snapshot_checkpoint", &error);
+        return Err(error).context("append snapshot WAL checkpoint");
+    }
+    if let Err(error) = state.wal.flush().await {
+        state.storage_health.fence("snapshot_checkpoint", &error);
+        return Err(error).context("flush snapshot WAL checkpoint");
+    }
+    if let Err(error) = state.wal.rotate().await {
+        state.storage_health.fence("snapshot_rotate", &error);
+        return Err(error).context("rotate WAL checkpoint");
+    }
 
     Ok(())
 }
@@ -553,6 +609,28 @@ pub fn replay_wal_entries(
                     format!("decode BALANCE_CHANGE at WAL sequence {}", entry.sequence)
                 })?;
             }
+            wal::MUTATION_BATCH => {
+                let batch = entry.decode::<WalMutationBatch>().with_context(|| {
+                    format!("decode MUTATION_BATCH at WAL sequence {}", entry.sequence)
+                })?;
+                if batch.requests.len() != batch.responses.len() {
+                    bail!(
+                        "MUTATION_BATCH at WAL sequence {} has mismatched request/response counts",
+                        entry.sequence
+                    );
+                }
+                for ((request, timestamp), expected) in
+                    batch.requests.into_iter().zip(batch.responses)
+                {
+                    let actual = engine.process(request, timestamp);
+                    if rmp_serde::to_vec(&actual)? != rmp_serde::to_vec(&expected)? {
+                        bail!(
+                            "MUTATION_BATCH at WAL sequence {} replay diverged",
+                            entry.sequence
+                        );
+                    }
+                }
+            }
             wal::CHECKPOINT => {
                 entry.decode::<WalCheckpoint>().with_context(|| {
                     format!("decode CHECKPOINT at WAL sequence {}", entry.sequence)
@@ -593,4 +671,58 @@ fn reject_replay_errors(responses: &[Response], sequence: u64, entry_type: &str)
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use types::{FeeConfig, Market, MarketId, RuntimeMode};
+
+    #[tokio::test]
+    async fn snapshot_captures_committed_user_state_instead_of_bootstrap_engine() {
+        if std::env::var("ADMIN_TOKEN").is_err() {
+            std::env::set_var("ADMIN_TOKEN", "snapshot-test-admin-token");
+        }
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("vela_snapshot_state_{suffix}"));
+        let wal = Arc::new(Wal::new(&root.join("wal")).unwrap());
+
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        engine.add_market(Market {
+            id: MarketId::new("ETH", "USDC"),
+            base: AssetId::from_str("ETH"),
+            quote: AssetId::from_str("USDC"),
+            max_orders: 100,
+            min_order_size: 1,
+            price_tick: 1,
+            quantity_tick: 1,
+            maker_fee_bps: -1,
+            taker_fee_bps: 5,
+        });
+        let state = crate::AppState::new_with_runtime(engine, wal, RuntimeMode::Development);
+        let user = UserId([7; 20]);
+        let asset = AssetId::from_str("USDC");
+        state.shards.user_state.write().await.balances.insert(
+            (user.clone(), asset),
+            Balance {
+                user: user.clone(),
+                asset,
+                available: 42,
+                locked: 3,
+            },
+        );
+        assert!(state.engine.lock().await.balances.is_empty());
+
+        let path = root.join("engine_snapshot.json");
+        save_snapshot_to_path(Arc::clone(&state), false, &path)
+            .await
+            .unwrap();
+        let snapshot = load_snapshot_from(&path).await.unwrap().unwrap();
+        let saved = &snapshot.balances[&user.to_hex()]["USDC"];
+        assert_eq!(saved.available, 42);
+        assert_eq!(saved.locked, 3);
+    }
 }

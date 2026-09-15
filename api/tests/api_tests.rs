@@ -120,6 +120,34 @@ async fn test_development_readiness_allows_unconfigured_ledger() {
 }
 
 #[tokio::test]
+async fn storage_fence_keeps_liveness_but_disables_readiness_and_posts() {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let state = AppState::new_with_runtime(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Development,
+    );
+    state.storage_health.fence(
+        "wal_commit",
+        "/private/sensitive/path: injected write failure",
+    );
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    server.get("/health").await.assert_status_ok();
+    let readiness = server.get("/ready").await;
+    readiness.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = readiness.json();
+    assert_eq!(body["matcher_storage"]["healthy"], false);
+    assert_eq!(body["matcher_storage"]["failure_code"], "wal_commit");
+    assert!(!body.to_string().contains("sensitive"));
+
+    let post = server.post("/mcp").json(&json!({})).await;
+    post.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
 async fn test_production_readiness_fails_without_ledger() {
     let server = test_server_with_mode(engine_with_market(), types::RuntimeMode::Production);
     let response = server.get("/ready").await;

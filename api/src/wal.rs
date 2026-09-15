@@ -19,6 +19,7 @@ pub const BALANCE_CHANGE: u32 = 7;
 pub const CHECKPOINT: u32 = 8;
 pub const ENGINE_START: u32 = 9;
 pub const ENGINE_STOP: u32 = 10;
+pub const MUTATION_BATCH: u32 = 11;
 
 const DEFAULT_MAX_SEGMENT_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_PAYLOAD_SIZE: u32 = 10 * 1024 * 1024;
@@ -112,6 +113,12 @@ pub struct WalEngineStart {
 pub struct WalEngineStop {
     pub reason: String,
     pub final_sequence: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WalMutationBatch {
+    pub requests: Vec<(types::Request, types::Timestamp)>,
+    pub responses: Vec<Vec<types::Response>>,
 }
 
 #[derive(Debug)]
@@ -252,7 +259,7 @@ impl Wal {
     }
 
     pub async fn append<T: Serialize>(&self, entry_type: u32, payload: &T) -> Result<u64> {
-        if !(ORDER_POST..=ENGINE_STOP).contains(&entry_type) {
+        if !(ORDER_POST..=MUTATION_BATCH).contains(&entry_type) {
             bail!("unsupported WAL entry type {entry_type}");
         }
         let payload_bytes = match rmp_serde::to_vec(payload) {
@@ -401,7 +408,7 @@ impl Wal {
                     .try_into()
                     .map_err(|_| anyhow::anyhow!("invalid WAL entry type"))?,
             );
-            if !(ORDER_POST..=ENGINE_STOP).contains(&entry_type) {
+            if !(ORDER_POST..=MUTATION_BATCH).contains(&entry_type) {
                 bail!("unsupported WAL entry type {entry_type} at sequence {seq}");
             }
             let payload_len = u32::from_be_bytes(
@@ -488,6 +495,16 @@ impl Wal {
                     .context("decode WAL checkpoint")?;
                 checkpoint_sequence = entry.sequence;
                 checkpoint_snapshot_path = Some(checkpoint.snapshot_path);
+            } else if entry.entry_type == MUTATION_BATCH {
+                let batch = entry
+                    .decode::<WalMutationBatch>()
+                    .context("decode WAL mutation batch")?;
+                if batch.requests.len() != batch.responses.len() {
+                    bail!(
+                        "WAL mutation batch at sequence {} has mismatched request/response counts",
+                        entry.sequence
+                    );
+                }
             }
         }
         let clean_shutdown = match all_entries.last() {
