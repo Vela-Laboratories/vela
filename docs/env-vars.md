@@ -44,6 +44,10 @@ the repo root and [`frontend/.env.example`](../frontend/.env.example).
 | `VELA_BUILD_ID` | Container Git SHA | Exact nonsecret deployed-code identity stored in recovery manifests. Required and must not be a placeholder when `VELA_ENGINE_REPLICA_DIR` is configured. |
 | `VELA_ENGINE_REPLICA_DIR` | — | Optional separately mounted recovery target. It must not equal, contain, or be contained by `SNAPSHOT_DIR`. When configured, publication failure fences matcher mutations. |
 | `VELA_ENGINE_REPLICA_TIMEOUT_MS` | `30000` | Bounded recovery-bundle publication time. Minimum 1000 ms. |
+| `VELA_RECOVERY_SIGNING_KEY_HEX` | — | Secret 32-byte secp256k1 key used only to sign exact recovery-manifest bytes. Required when recovery replication is configured. Store as a platform secret and never log it. |
+| `VELA_RECOVERY_VERIFYING_KEY_HEX` | — | Matching compressed SEC1 public key used as the recovery trust anchor. Required when recovery replication is configured. |
+| `VELA_ENGINE_OFFSITE_DIR` | — | Optional provider-neutral destination for atomically published age-encrypted recovery archives. Production requires it to be configured in a separate failure domain. |
+| `VELA_RECOVERY_AGE_RECIPIENT` | — | Nonsecret age X25519 recipient used for offsite archive encryption. Required with `VELA_ENGINE_OFFSITE_DIR`; keep the matching identity offline. |
 
 ## Base deposit indexer
 

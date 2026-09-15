@@ -25,6 +25,10 @@ pub struct RuntimeSettings {
     pub database_serializable_retries: u32,
     pub engine_replica_configured: bool,
     pub build_id: Option<String>,
+    pub recovery_signing_key_configured: bool,
+    pub recovery_verifying_key_configured: bool,
+    pub engine_offsite_configured: bool,
+    pub recovery_age_recipient_configured: bool,
 }
 
 impl RuntimeSettings {
@@ -63,6 +67,13 @@ impl RuntimeSettings {
             database_serializable_retries: parse_env("VELA_DATABASE_SERIALIZABLE_RETRIES", 3)?,
             engine_replica_configured: nonempty_env("VELA_ENGINE_REPLICA_DIR").is_some(),
             build_id: nonempty_env("VELA_BUILD_ID"),
+            recovery_signing_key_configured: nonempty_env("VELA_RECOVERY_SIGNING_KEY_HEX")
+                .is_some(),
+            recovery_verifying_key_configured: nonempty_env("VELA_RECOVERY_VERIFYING_KEY_HEX")
+                .is_some(),
+            engine_offsite_configured: nonempty_env("VELA_ENGINE_OFFSITE_DIR").is_some(),
+            recovery_age_recipient_configured: nonempty_env("VELA_RECOVERY_AGE_RECIPIENT")
+                .is_some(),
         })
     }
 
@@ -122,6 +133,18 @@ impl RuntimeSettings {
         if !self.engine_replica_configured {
             problems.push("VELA_ENGINE_REPLICA_DIR is not configured".to_string());
         }
+        if !self.recovery_signing_key_configured {
+            problems.push("VELA_RECOVERY_SIGNING_KEY_HEX is not configured".to_string());
+        }
+        if !self.recovery_verifying_key_configured {
+            problems.push("VELA_RECOVERY_VERIFYING_KEY_HEX is not configured".to_string());
+        }
+        if !self.engine_offsite_configured {
+            problems.push("VELA_ENGINE_OFFSITE_DIR is not configured".to_string());
+        }
+        if !self.recovery_age_recipient_configured {
+            problems.push("VELA_RECOVERY_AGE_RECIPIENT is not configured".to_string());
+        }
         match self.build_id.as_deref() {
             None => problems.push("VELA_BUILD_ID is not configured".to_string()),
             Some(value) if is_placeholder_build_id(value) => {
@@ -165,6 +188,10 @@ impl RuntimeSettings {
             database_serializable_retries = self.database_serializable_retries,
             engine_replica_configured = self.engine_replica_configured,
             build_id = self.build_id.as_deref().unwrap_or("not_configured"),
+            recovery_signing_key_configured = self.recovery_signing_key_configured,
+            recovery_verifying_key_configured = self.recovery_verifying_key_configured,
+            engine_offsite_configured = self.engine_offsite_configured,
+            recovery_age_recipient_configured = self.recovery_age_recipient_configured,
             "resolved startup configuration"
         );
     }
@@ -302,6 +329,10 @@ mod tests {
             database_serializable_retries: 3,
             engine_replica_configured: true,
             build_id: Some("0123456789abcdef".to_owned()),
+            recovery_signing_key_configured: true,
+            recovery_verifying_key_configured: true,
+            engine_offsite_configured: true,
+            recovery_age_recipient_configured: true,
         }
     }
 
@@ -328,6 +359,10 @@ mod tests {
             database_serializable_retries: 3,
             engine_replica_configured: false,
             build_id: None,
+            recovery_signing_key_configured: false,
+            recovery_verifying_key_configured: false,
+            engine_offsite_configured: false,
+            recovery_age_recipient_configured: false,
         };
 
         let error = settings.validate().expect_err("configuration must fail");
@@ -415,6 +450,26 @@ mod tests {
                 "placeholder build identity",
                 |s| s.build_id = Some("latest".to_owned()),
                 "not a specific deployed build identity",
+            ),
+            (
+                "missing recovery signing key",
+                |s| s.recovery_signing_key_configured = false,
+                "VELA_RECOVERY_SIGNING_KEY_HEX is not configured",
+            ),
+            (
+                "missing recovery verifying key",
+                |s| s.recovery_verifying_key_configured = false,
+                "VELA_RECOVERY_VERIFYING_KEY_HEX is not configured",
+            ),
+            (
+                "missing offsite destination",
+                |s| s.engine_offsite_configured = false,
+                "VELA_ENGINE_OFFSITE_DIR is not configured",
+            ),
+            (
+                "missing age recipient",
+                |s| s.recovery_age_recipient_configured = false,
+                "VELA_RECOVERY_AGE_RECIPIENT is not configured",
             ),
         ];
 

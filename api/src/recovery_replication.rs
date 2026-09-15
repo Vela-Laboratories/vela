@@ -1,20 +1,34 @@
 use crate::snapshot::{self, EngineSnapshot};
 use crate::wal::Wal;
+use age::secrecy::ExposeSecret;
 use anyhow::{bail, Context, Result};
+use k256::ecdsa::{
+    signature::hazmat::{PrehashSigner, PrehashVerifier},
+    Signature, SigningKey, VerifyingKey,
+};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 pub const RECOVERY_MANIFEST_VERSION: u32 = 1;
 const MANIFEST_FILE: &str = "recovery_manifest.json";
+const SIGNATURE_FILE: &str = "recovery_signature.json";
 const LATEST_FILE: &str = "LATEST.json";
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
+const SIGNATURE_VERSION: u32 = 1;
+const SIGNATURE_ALGORITHM: &str = "secp256k1-ecdsa-sha256";
+const OFFSITE_ARCHIVE_MAGIC: &[u8] = b"VELA-RECOVERY-AGE-V1\n";
+const MAX_ARCHIVE_ENTRIES: u32 = 1024;
+const MAX_ARCHIVE_FILE_BYTES: u64 = 1 << 40;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryArtifact {
@@ -46,6 +60,16 @@ pub struct LatestRecoveryBundle {
     pub manifest_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryManifestSignature {
+    pub version: u32,
+    pub algorithm: String,
+    pub key_id: String,
+    pub public_key: String,
+    pub manifest_sha256: String,
+    pub signature: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RecoveryReplicationSnapshot {
     pub configured: bool,
@@ -54,12 +78,146 @@ pub struct RecoveryReplicationSnapshot {
     pub last_checkpoint_sequence: u64,
     pub failure_count: u64,
     pub failure_code: Option<String>,
+    pub signed: bool,
+    pub offsite_configured: bool,
+}
+
+#[derive(Clone)]
+struct RecoverySigner {
+    signing_key: SigningKey,
+    verifying_key: VerifyingKey,
+    public_key_hex: String,
+    key_id: String,
+}
+
+#[derive(Clone)]
+struct OffsiteTarget {
+    destination: PathBuf,
+    recipient: age::x25519::Recipient,
+}
+
+impl RecoverySigner {
+    fn from_env() -> Result<Self, String> {
+        let mut signing_key = nonempty_env("VELA_RECOVERY_SIGNING_KEY_HEX").ok_or_else(|| {
+            "VELA_RECOVERY_SIGNING_KEY_HEX is required when recovery replication is configured"
+                .to_owned()
+        })?;
+        let verifying_key = nonempty_env("VELA_RECOVERY_VERIFYING_KEY_HEX").ok_or_else(|| {
+            "VELA_RECOVERY_VERIFYING_KEY_HEX is required when recovery replication is configured"
+                .to_owned()
+        })?;
+        let result =
+            Self::from_hex(&signing_key, &verifying_key).map_err(|error| error.to_string());
+        signing_key.zeroize();
+        result
+    }
+
+    fn from_hex(signing_key_hex: &str, verifying_key_hex: &str) -> Result<Self> {
+        let mut signing_bytes = decode_hex(signing_key_hex, "recovery signing key")?;
+        if signing_bytes.len() != 32 {
+            signing_bytes.zeroize();
+            bail!("recovery signing key must be exactly 32 bytes");
+        }
+        let signing_key_result = SigningKey::from_slice(&signing_bytes)
+            .map_err(|_| anyhow::anyhow!("recovery signing key is invalid"));
+        signing_bytes.zeroize();
+        let signing_key = signing_key_result?;
+        let configured_verifying_bytes = decode_hex(verifying_key_hex, "recovery verifying key")?;
+        let configured_verifying_key =
+            VerifyingKey::from_sec1_bytes(&configured_verifying_bytes)
+                .map_err(|_| anyhow::anyhow!("recovery verifying key is invalid"))?;
+        let derived_verifying_key = VerifyingKey::from(&signing_key);
+        if configured_verifying_key.to_encoded_point(true)
+            != derived_verifying_key.to_encoded_point(true)
+        {
+            bail!("recovery signing and verifying keys do not match");
+        }
+        let public_key = derived_verifying_key.to_encoded_point(true);
+        let public_key_hex = hex::encode(public_key.as_bytes());
+        let key_id = key_id(public_key.as_bytes());
+        Ok(Self {
+            signing_key,
+            verifying_key: derived_verifying_key,
+            public_key_hex,
+            key_id,
+        })
+    }
+
+    fn generate() -> Self {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let verifying_key = VerifyingKey::from(&signing_key);
+        let public_key = verifying_key.to_encoded_point(true);
+        Self {
+            signing_key,
+            verifying_key,
+            public_key_hex: hex::encode(public_key.as_bytes()),
+            key_id: key_id(public_key.as_bytes()),
+        }
+    }
+
+    fn sign_manifest(&self, manifest_bytes: &[u8]) -> Result<RecoveryManifestSignature> {
+        let digest = Sha256::digest(manifest_bytes);
+        let signature: Signature = self
+            .signing_key
+            .sign_prehash(&digest)
+            .map_err(|_| anyhow::anyhow!("sign recovery manifest"))?;
+        Ok(RecoveryManifestSignature {
+            version: SIGNATURE_VERSION,
+            algorithm: SIGNATURE_ALGORITHM.to_owned(),
+            key_id: self.key_id.clone(),
+            public_key: self.public_key_hex.clone(),
+            manifest_sha256: hex::encode(digest),
+            signature: hex::encode(signature.to_bytes()),
+        })
+    }
+}
+
+impl OffsiteTarget {
+    fn from_env(snapshot_dir: &Path, replica_dir: &Path) -> Result<Option<Self>, String> {
+        let destination = nonempty_env("VELA_ENGINE_OFFSITE_DIR");
+        let recipient = nonempty_env("VELA_RECOVERY_AGE_RECIPIENT");
+        match (destination, recipient) {
+            (None, None) => Ok(None),
+            (Some(_), None) => Err(
+                "VELA_RECOVERY_AGE_RECIPIENT is required when VELA_ENGINE_OFFSITE_DIR is configured"
+                    .to_owned(),
+            ),
+            (None, Some(_)) => Err(
+                "VELA_ENGINE_OFFSITE_DIR is required when VELA_RECOVERY_AGE_RECIPIENT is configured"
+                    .to_owned(),
+            ),
+            (Some(destination), Some(recipient)) => {
+                let destination = PathBuf::from(destination);
+                validate_distinct_directories(snapshot_dir, &destination)?;
+                validate_distinct_directories(replica_dir, &destination)?;
+                fs::create_dir_all(&destination).map_err(|error| {
+                    format!(
+                        "create engine offsite directory {}: {error}",
+                        destination.display()
+                    )
+                })?;
+                validate_distinct_directories(snapshot_dir, &destination)?;
+                validate_distinct_directories(replica_dir, &destination)?;
+                set_private_directory_permissions(&destination)
+                    .map_err(|error| error.to_string())?;
+                sync_directory(&destination).map_err(|error| error.to_string())?;
+                let recipient = age::x25519::Recipient::from_str(&recipient)
+                    .map_err(|_| "VELA_RECOVERY_AGE_RECIPIENT is invalid".to_owned())?;
+                Ok(Some(Self {
+                    destination,
+                    recipient,
+                }))
+            }
+        }
+    }
 }
 
 pub struct RecoveryReplica {
     destination: PathBuf,
     build_id: String,
     timeout: Duration,
+    signer: RecoverySigner,
+    offsite: Option<OffsiteTarget>,
     copy_lock: Arc<Mutex<()>>,
     healthy: AtomicBool,
     last_success_at_ms: AtomicU64,
@@ -101,6 +259,8 @@ impl RecoveryReplica {
         if timeout_ms < 1_000 {
             return Err("VELA_ENGINE_REPLICA_TIMEOUT_MS must be at least 1000ms".to_owned());
         }
+        let signer = RecoverySigner::from_env()?;
+        let offsite = OffsiteTarget::from_env(snapshot_dir, &destination)?;
         fs::create_dir_all(&destination).map_err(|error| {
             format!(
                 "create engine replica directory {}: {error}",
@@ -108,20 +268,34 @@ impl RecoveryReplica {
             )
         })?;
         validate_distinct_directories(snapshot_dir, &destination)?;
+        if let Some(offsite) = &offsite {
+            validate_distinct_directories(snapshot_dir, &offsite.destination)?;
+            validate_distinct_directories(&destination, &offsite.destination)?;
+        }
         set_private_directory_permissions(&destination).map_err(|error| error.to_string())?;
         sync_directory(&destination).map_err(|error| error.to_string())?;
         Ok(Some(Arc::new(Self::new(
             destination,
             build_id,
             Duration::from_millis(timeout_ms),
+            signer,
+            offsite,
         ))))
     }
 
-    fn new(destination: PathBuf, build_id: String, timeout: Duration) -> Self {
+    fn new(
+        destination: PathBuf,
+        build_id: String,
+        timeout: Duration,
+        signer: RecoverySigner,
+        offsite: Option<OffsiteTarget>,
+    ) -> Self {
         Self {
             destination,
             build_id,
             timeout,
+            signer,
+            offsite,
             copy_lock: Arc::new(Mutex::new(())),
             healthy: AtomicBool::new(true),
             last_success_at_ms: AtomicU64::new(0),
@@ -142,6 +316,8 @@ impl RecoveryReplica {
         }
         let destination = self.destination.clone();
         let build_id = self.build_id.clone();
+        let signer = self.signer.clone();
+        let offsite = self.offsite.clone();
         let snapshot_path = snapshot_path.to_path_buf();
         let wal_dir = wal_dir.to_path_buf();
         let copy_lock = Arc::clone(&self.copy_lock);
@@ -161,6 +337,8 @@ impl RecoveryReplica {
                 &destination,
                 &build_id,
                 leadership_generation,
+                &signer,
+                offsite.as_ref(),
                 &task_cancelled,
             )
         });
@@ -199,6 +377,8 @@ impl RecoveryReplica {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone(),
+            signed: true,
+            offsite_configured: self.offsite.is_some(),
         }
     }
 
@@ -223,6 +403,8 @@ fn publish_bundle_sync(
     destination: &Path,
     build_id: &str,
     leadership_generation: Option<i64>,
+    signer: &RecoverySigner,
+    offsite: Option<&OffsiteTarget>,
     cancelled: &AtomicBool,
 ) -> Result<RecoveryManifest> {
     let snapshot = read_and_validate_snapshot(snapshot_path)?;
@@ -280,6 +462,11 @@ fn publish_bundle_sync(
         };
         let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
         write_synced_file(&temporary.join(MANIFEST_FILE), &manifest_bytes)?;
+        let signature = signer.sign_manifest(&manifest_bytes)?;
+        write_synced_file(
+            &temporary.join(SIGNATURE_FILE),
+            &serde_json::to_vec_pretty(&signature)?,
+        )?;
         sync_directory(&temporary)?;
         if cancelled.load(Ordering::Acquire) {
             bail!("engine recovery replication was cancelled");
@@ -287,7 +474,7 @@ fn publish_bundle_sync(
 
         let final_path = destination.join(&bundle_id);
         let published_manifest = if final_path.exists() {
-            let existing = verify_bundle(&final_path)?;
+            let existing = verify_bundle_with_key(&final_path, Some(&signer.verifying_key))?;
             if !same_bundle_contents(&existing, &manifest) {
                 bail!("recovery bundle identity collision");
             }
@@ -314,6 +501,15 @@ fn publish_bundle_sync(
             manifest_sha256: sha256_bytes(&published_manifest_bytes),
         };
         publish_latest(destination, &latest)?;
+        if let Some(offsite) = offsite {
+            export_bundle_to_offsite(
+                &final_path,
+                &offsite.destination,
+                &offsite.recipient,
+                Some(&signer.verifying_key),
+                cancelled,
+            )?;
+        }
         Ok(published_manifest)
     })();
     if result.is_err() && temporary.exists() {
@@ -336,7 +532,88 @@ fn same_bundle_contents(left: &RecoveryManifest, right: &RecoveryManifest) -> bo
         && left.artifacts == right.artifacts
 }
 
-pub fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
+fn verify_manifest_signature(
+    bundle_dir: &Path,
+    manifest_bytes: &[u8],
+    trusted_verifying_key: Option<&VerifyingKey>,
+) -> Result<RecoveryManifestSignature> {
+    let signature_path = bundle_dir.join(SIGNATURE_FILE);
+    require_regular_file(&signature_path)?;
+    let metadata = fs::metadata(&signature_path)?;
+    if metadata.len() > 64 * 1024 {
+        bail!("recovery signature exceeds 64 KiB");
+    }
+    let signature: RecoveryManifestSignature = serde_json::from_reader(BufReader::new(
+        File::open(&signature_path)
+            .with_context(|| format!("open recovery signature {}", signature_path.display()))?,
+    ))
+    .with_context(|| format!("parse recovery signature {}", signature_path.display()))?;
+    if signature.version != SIGNATURE_VERSION || signature.algorithm != SIGNATURE_ALGORITHM {
+        bail!("unsupported recovery signature format");
+    }
+    let verifying_key = parse_verifying_key(&signature.public_key)?;
+    let public_point = verifying_key.to_encoded_point(true);
+    if signature.key_id != key_id(public_point.as_bytes()) {
+        bail!("recovery signature key identity does not match its public key");
+    }
+    if let Some(trusted) = trusted_verifying_key {
+        if trusted.to_encoded_point(true) != public_point {
+            bail!("recovery signature was not produced by the trusted verification key");
+        }
+    }
+    let digest = Sha256::digest(manifest_bytes);
+    if signature.manifest_sha256 != hex::encode(digest) {
+        bail!("recovery signature manifest hash does not match");
+    }
+    let signature_bytes = decode_hex(&signature.signature, "recovery signature")?;
+    let ecdsa_signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| anyhow::anyhow!("recovery signature is invalid"))?;
+    verifying_key
+        .verify_prehash(&digest, &ecdsa_signature)
+        .map_err(|_| anyhow::anyhow!("recovery manifest signature verification failed"))?;
+    Ok(signature)
+}
+
+fn parse_verifying_key(value: &str) -> Result<VerifyingKey> {
+    let bytes = decode_hex(value, "recovery verifying key")?;
+    VerifyingKey::from_sec1_bytes(&bytes)
+        .map_err(|_| anyhow::anyhow!("recovery verifying key is invalid"))
+}
+
+fn decode_hex(value: &str, label: &str) -> Result<Vec<u8>> {
+    hex::decode(value.strip_prefix("0x").unwrap_or(value))
+        .map_err(|_| anyhow::anyhow!("{label} is not valid hexadecimal"))
+}
+
+fn key_id(public_key: &[u8]) -> String {
+    hex::encode(&Sha256::digest(public_key)[..16])
+}
+
+#[cfg(test)]
+fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
+    verify_bundle_with_key(bundle_dir, None)
+}
+
+pub fn verify_bundle_with_trusted_key(
+    bundle_dir: &Path,
+    trusted_verifying_key_hex: &str,
+) -> Result<RecoveryManifest> {
+    let trusted_key = parse_verifying_key(trusted_verifying_key_hex)?;
+    verify_bundle_with_key(bundle_dir, Some(&trusted_key))
+}
+
+fn verify_bundle_with_key(
+    bundle_dir: &Path,
+    trusted_verifying_key: Option<&VerifyingKey>,
+) -> Result<RecoveryManifest> {
+    verify_bundle_with_key_options(bundle_dir, trusted_verifying_key, true)
+}
+
+fn verify_bundle_with_key_options(
+    bundle_dir: &Path,
+    trusted_verifying_key: Option<&VerifyingKey>,
+    require_directory_identity: bool,
+) -> Result<RecoveryManifest> {
     let manifest_path = bundle_dir.join(MANIFEST_FILE);
     require_regular_file(&manifest_path)?;
     let metadata = fs::metadata(&manifest_path)?;
@@ -345,6 +622,7 @@ pub fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
     }
     let manifest_bytes = fs::read(&manifest_path)
         .with_context(|| format!("read recovery manifest {}", manifest_path.display()))?;
+    verify_manifest_signature(bundle_dir, &manifest_bytes, trusted_verifying_key)?;
     let manifest: RecoveryManifest = serde_json::from_slice(&manifest_bytes)
         .with_context(|| format!("parse recovery manifest {}", manifest_path.display()))?;
     if manifest.version != RECOVERY_MANIFEST_VERSION {
@@ -354,7 +632,7 @@ pub fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
         bail!("recovery manifest is incomplete");
     }
     let directory_name = bundle_dir.file_name().and_then(|name| name.to_str());
-    if directory_name != Some(manifest.bundle_id.as_str()) {
+    if require_directory_identity && directory_name != Some(manifest.bundle_id.as_str()) {
         bail!("recovery bundle directory does not match its manifest identity");
     }
 
@@ -390,7 +668,7 @@ pub fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
         .artifacts
         .iter()
         .map(|artifact| artifact.file_name.as_str())
-        .chain(std::iter::once(MANIFEST_FILE))
+        .chain([MANIFEST_FILE, SIGNATURE_FILE])
         .collect();
     for entry in fs::read_dir(bundle_dir)? {
         let entry = entry?;
@@ -409,7 +687,23 @@ pub fn verify_bundle(bundle_dir: &Path) -> Result<RecoveryManifest> {
     Ok(manifest)
 }
 
-pub fn verify_latest(replica_dir: &Path) -> Result<(PathBuf, RecoveryManifest)> {
+#[cfg(test)]
+fn verify_latest(replica_dir: &Path) -> Result<(PathBuf, RecoveryManifest)> {
+    verify_latest_with_key(replica_dir, None)
+}
+
+pub fn verify_latest_with_trusted_key(
+    replica_dir: &Path,
+    trusted_verifying_key_hex: &str,
+) -> Result<(PathBuf, RecoveryManifest)> {
+    let trusted_key = parse_verifying_key(trusted_verifying_key_hex)?;
+    verify_latest_with_key(replica_dir, Some(&trusted_key))
+}
+
+fn verify_latest_with_key(
+    replica_dir: &Path,
+    trusted_verifying_key: Option<&VerifyingKey>,
+) -> Result<(PathBuf, RecoveryManifest)> {
     let latest_path = replica_dir.join(LATEST_FILE);
     require_regular_file(&latest_path)?;
     let bytes = fs::read(&latest_path)?;
@@ -431,15 +725,33 @@ pub fn verify_latest(replica_dir: &Path) -> Result<(PathBuf, RecoveryManifest)> 
     if sha256_bytes(&manifest_bytes) != latest.manifest_sha256 {
         bail!("latest recovery pointer manifest hash does not match");
     }
-    let manifest = verify_bundle(&bundle_dir)?;
+    let manifest = verify_bundle_with_key(&bundle_dir, trusted_verifying_key)?;
     if manifest.bundle_id != latest.bundle_id {
         bail!("latest recovery pointer bundle identity does not match");
     }
     Ok((bundle_dir, manifest))
 }
 
-pub fn restore_bundle(bundle_dir: &Path, target_dir: &Path) -> Result<RecoveryManifest> {
-    let manifest = verify_bundle(bundle_dir)?;
+#[cfg(test)]
+fn restore_bundle(bundle_dir: &Path, target_dir: &Path) -> Result<RecoveryManifest> {
+    restore_bundle_with_key(bundle_dir, target_dir, None)
+}
+
+pub fn restore_bundle_with_trusted_key(
+    bundle_dir: &Path,
+    target_dir: &Path,
+    trusted_verifying_key_hex: &str,
+) -> Result<RecoveryManifest> {
+    let trusted_key = parse_verifying_key(trusted_verifying_key_hex)?;
+    restore_bundle_with_key(bundle_dir, target_dir, Some(&trusted_key))
+}
+
+fn restore_bundle_with_key(
+    bundle_dir: &Path,
+    target_dir: &Path,
+    trusted_verifying_key: Option<&VerifyingKey>,
+) -> Result<RecoveryManifest> {
+    let manifest = verify_bundle_with_key(bundle_dir, trusted_verifying_key)?;
     if !manifest.clean_shutdown {
         bail!("refusing to restore an unclean recovery bundle");
     }
@@ -499,6 +811,314 @@ pub fn restore_bundle(bundle_dir: &Path, target_dir: &Path) -> Result<RecoveryMa
     }
     result?;
     Ok(manifest)
+}
+
+pub fn export_encrypted_bundle(
+    bundle_dir: &Path,
+    offsite_dir: &Path,
+    recipient: &str,
+    trusted_verifying_key_hex: &str,
+) -> Result<PathBuf> {
+    let recipient = age::x25519::Recipient::from_str(recipient)
+        .map_err(|_| anyhow::anyhow!("age recipient is invalid"))?;
+    let trusted_key = parse_verifying_key(trusted_verifying_key_hex)?;
+    fs::create_dir_all(offsite_dir)?;
+    set_private_directory_permissions(offsite_dir)?;
+    export_bundle_to_offsite(
+        bundle_dir,
+        offsite_dir,
+        &recipient,
+        Some(&trusted_key),
+        &AtomicBool::new(false),
+    )
+}
+
+fn export_bundle_to_offsite(
+    bundle_dir: &Path,
+    offsite_dir: &Path,
+    recipient: &age::x25519::Recipient,
+    trusted_verifying_key: Option<&VerifyingKey>,
+    cancelled: &AtomicBool,
+) -> Result<PathBuf> {
+    let manifest = verify_bundle_with_key(bundle_dir, trusted_verifying_key)?;
+    let final_path = offsite_dir.join(format!("{}.age", manifest.bundle_id));
+    if final_path.exists() {
+        bail!("refusing to replace an existing offsite recovery archive");
+    }
+    fs::create_dir_all(offsite_dir)?;
+    set_private_directory_permissions(offsite_dir)?;
+    let temporary = offsite_dir.join(format!(
+        ".{}.age-{}.tmp",
+        manifest.bundle_id,
+        Uuid::new_v4()
+    ));
+    let result: Result<PathBuf> = (|| {
+        let output = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)?;
+        set_private_file_permissions(&temporary)?;
+        let encryptor =
+            age::Encryptor::with_recipients(std::iter::once(recipient as &dyn age::Recipient))?;
+        let mut encrypted = encryptor.wrap_output(output)?;
+        encrypted.write_all(OFFSITE_ARCHIVE_MAGIC)?;
+        let mut names = Vec::with_capacity(manifest.artifacts.len() + 2);
+        names.push(MANIFEST_FILE.to_owned());
+        names.push(SIGNATURE_FILE.to_owned());
+        names.extend(
+            manifest
+                .artifacts
+                .iter()
+                .map(|artifact| artifact.file_name.clone()),
+        );
+        names.sort();
+        let count = u32::try_from(names.len())
+            .map_err(|_| anyhow::anyhow!("too many recovery archive entries"))?;
+        if count > MAX_ARCHIVE_ENTRIES {
+            bail!("too many recovery archive entries");
+        }
+        encrypted.write_all(&count.to_be_bytes())?;
+        for name in names {
+            if cancelled.load(Ordering::Acquire) {
+                bail!("encrypted offsite export was cancelled");
+            }
+            validate_artifact_name(&name)?;
+            let source = bundle_dir.join(&name);
+            require_regular_file(&source)?;
+            let size = fs::metadata(&source)?.len();
+            if size > MAX_ARCHIVE_FILE_BYTES {
+                bail!("recovery archive entry exceeds the size limit");
+            }
+            let name_bytes = name.as_bytes();
+            let name_len = u16::try_from(name_bytes.len())
+                .map_err(|_| anyhow::anyhow!("recovery archive file name is too long"))?;
+            encrypted.write_all(&name_len.to_be_bytes())?;
+            encrypted.write_all(name_bytes)?;
+            encrypted.write_all(&size.to_be_bytes())?;
+            copy_exact_file(&source, &mut encrypted, size, cancelled)?;
+        }
+        let output = encrypted.finish()?;
+        output.sync_all()?;
+        if cancelled.load(Ordering::Acquire) {
+            bail!("encrypted offsite export was cancelled");
+        }
+        if final_path.exists() {
+            bail!("refusing to replace an existing offsite recovery archive");
+        }
+        fs::rename(&temporary, &final_path)
+            .context("publish encrypted offsite recovery archive")?;
+        sync_directory(offsite_dir)?;
+        Ok(final_path.clone())
+    })();
+    if result.is_err() && temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+pub fn import_encrypted_bundle(
+    archive_path: &Path,
+    replica_dir: &Path,
+    identity: &str,
+    trusted_verifying_key_hex: &str,
+) -> Result<(PathBuf, RecoveryManifest)> {
+    require_regular_file(archive_path)?;
+    let identity = age::x25519::Identity::from_str(identity.trim())
+        .map_err(|_| anyhow::anyhow!("age identity is invalid"))?;
+    let trusted_key = parse_verifying_key(trusted_verifying_key_hex)?;
+    fs::create_dir_all(replica_dir)?;
+    set_private_directory_permissions(replica_dir)?;
+    let staging = replica_dir.join(format!(".offsite-import-{}.tmp", Uuid::new_v4()));
+    fs::create_dir(&staging)?;
+    set_private_directory_permissions(&staging)?;
+    let result: Result<(PathBuf, RecoveryManifest)> = (|| {
+        let decryptor = age::Decryptor::new(BufReader::new(File::open(archive_path)?))?;
+        let mut decrypted = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
+        let mut magic = vec![0u8; OFFSITE_ARCHIVE_MAGIC.len()];
+        decrypted.read_exact(&mut magic)?;
+        if magic != OFFSITE_ARCHIVE_MAGIC {
+            bail!("encrypted recovery archive has an unsupported format");
+        }
+        let count = read_u32(&mut decrypted)?;
+        if !(3..=MAX_ARCHIVE_ENTRIES).contains(&count) {
+            bail!("encrypted recovery archive has an invalid entry count");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..count {
+            let name_len = usize::from(read_u16(&mut decrypted)?);
+            if name_len == 0 || name_len > 255 {
+                bail!("encrypted recovery archive has an invalid file name length");
+            }
+            let mut name_bytes = vec![0u8; name_len];
+            decrypted.read_exact(&mut name_bytes)?;
+            let name = String::from_utf8(name_bytes).map_err(|_| {
+                anyhow::anyhow!("encrypted recovery archive file name is not UTF-8")
+            })?;
+            validate_artifact_name(&name)?;
+            if !seen.insert(name.clone()) {
+                bail!("encrypted recovery archive contains a duplicate file");
+            }
+            let size = read_u64(&mut decrypted)?;
+            if size > MAX_ARCHIVE_FILE_BYTES {
+                bail!("encrypted recovery archive entry exceeds the size limit");
+            }
+            let output_path = staging.join(name);
+            let mut output = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&output_path)?;
+            set_private_file_permissions(&output_path)?;
+            copy_exact_reader(&mut decrypted, &mut output, size)?;
+            output.sync_all()?;
+        }
+        let mut trailing = [0u8; 1];
+        if decrypted.read(&mut trailing)? != 0 {
+            bail!("encrypted recovery archive contains trailing data");
+        }
+        sync_directory(&staging)?;
+        let manifest = verify_bundle_with_key_options(&staging, Some(&trusted_key), false)?;
+        let archive_bundle_id = archive_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".age"))
+            .ok_or_else(|| anyhow::anyhow!("offsite archive must end in .age"))?;
+        if archive_bundle_id != manifest.bundle_id {
+            bail!("offsite archive name does not match the signed bundle identity");
+        }
+        let final_path = replica_dir.join(&manifest.bundle_id);
+        if final_path.exists() {
+            let existing = verify_bundle_with_key(&final_path, Some(&trusted_key))?;
+            if !same_bundle_contents(&existing, &manifest) {
+                bail!("imported recovery bundle conflicts with an existing bundle");
+            }
+            fs::remove_dir_all(&staging)?;
+        } else {
+            fs::rename(&staging, &final_path)?;
+            sync_directory(replica_dir)?;
+        }
+        Ok((final_path, manifest))
+    })();
+    if result.is_err() && staging.exists() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratedRecoveryKeys {
+    pub key_id: String,
+    pub age_recipient: String,
+}
+
+pub fn generate_recovery_key_files(target_dir: &Path) -> Result<GeneratedRecoveryKeys> {
+    if target_dir.exists() {
+        bail!("key output directory already exists");
+    }
+    fs::create_dir(target_dir)?;
+    let result: Result<GeneratedRecoveryKeys> = (|| {
+        set_private_directory_permissions(target_dir)?;
+        let signer = RecoverySigner::generate();
+        let age_identity = age::x25519::Identity::generate();
+        let age_recipient = age_identity.to_public().to_string();
+        let mut signing_key_hex = hex::encode(signer.signing_key.to_bytes());
+        let signing_write = write_synced_file(
+            &target_dir.join("recovery-signing-key.hex"),
+            signing_key_hex.as_bytes(),
+        );
+        signing_key_hex.zeroize();
+        signing_write?;
+        write_synced_file(
+            &target_dir.join("recovery-verifying-key.hex"),
+            signer.public_key_hex.as_bytes(),
+        )?;
+        write_synced_file(
+            &target_dir.join("recovery-age-identity.txt"),
+            age_identity.to_string().expose_secret().as_bytes(),
+        )?;
+        write_synced_file(
+            &target_dir.join("recovery-age-recipient.txt"),
+            age_recipient.as_bytes(),
+        )?;
+        sync_directory(target_dir)?;
+        if let Some(parent) = target_dir
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+        {
+            sync_directory(parent)?;
+        }
+        Ok(GeneratedRecoveryKeys {
+            key_id: signer.key_id,
+            age_recipient,
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(target_dir);
+    }
+    result
+}
+
+fn copy_exact_file(
+    source: &Path,
+    output: &mut impl Write,
+    expected_size: u64,
+    cancelled: &AtomicBool,
+) -> Result<()> {
+    let mut input = BufReader::new(File::open(source)?);
+    let mut remaining = expected_size;
+    let mut buffer = vec![0u8; COPY_BUFFER_BYTES];
+    while remaining > 0 {
+        if cancelled.load(Ordering::Acquire) {
+            bail!("encrypted offsite export was cancelled");
+        }
+        let limit = usize::try_from(remaining.min(buffer.len() as u64)).unwrap_or(buffer.len());
+        let read = input.read(&mut buffer[..limit])?;
+        if read == 0 {
+            bail!("recovery artifact was truncated during offsite export");
+        }
+        output.write_all(&buffer[..read])?;
+        remaining -= read as u64;
+    }
+    if input.read(&mut [0u8; 1])? != 0 {
+        bail!("recovery artifact grew during offsite export");
+    }
+    Ok(())
+}
+
+fn copy_exact_reader(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    expected_size: u64,
+) -> Result<()> {
+    let mut remaining = expected_size;
+    let mut buffer = vec![0u8; COPY_BUFFER_BYTES];
+    while remaining > 0 {
+        let limit = usize::try_from(remaining.min(buffer.len() as u64)).unwrap_or(buffer.len());
+        let read = input.read(&mut buffer[..limit])?;
+        if read == 0 {
+            bail!("encrypted recovery archive is truncated");
+        }
+        output.write_all(&buffer[..read])?;
+        remaining -= read as u64;
+    }
+    Ok(())
+}
+
+fn read_u16(reader: &mut impl Read) -> Result<u16> {
+    let mut bytes = [0u8; 2];
+    reader.read_exact(&mut bytes)?;
+    Ok(u16::from_be_bytes(bytes))
+}
+
+fn read_u32(reader: &mut impl Read) -> Result<u32> {
+    let mut bytes = [0u8; 4];
+    reader.read_exact(&mut bytes)?;
+    Ok(u32::from_be_bytes(bytes))
+}
+
+fn read_u64(reader: &mut impl Read) -> Result<u64> {
+    let mut bytes = [0u8; 8];
+    reader.read_exact(&mut bytes)?;
+    Ok(u64::from_be_bytes(bytes))
 }
 
 struct CancelOnDrop(Arc<AtomicBool>);
@@ -805,6 +1425,17 @@ mod tests {
         assert_eq!(manifest.leadership_generation, Some(7));
         let bundle = fixture.replica_dir.join(&manifest.bundle_id);
         assert_eq!(verify_bundle(&bundle).unwrap(), manifest);
+        assert_eq!(
+            verify_bundle_with_trusted_key(&bundle, &fixture.trusted_key_hex).unwrap(),
+            manifest
+        );
+        let untrusted = RecoverySigner::generate();
+        assert!(
+            verify_bundle_with_trusted_key(&bundle, &untrusted.public_key_hex)
+                .unwrap_err()
+                .to_string()
+                .contains("trusted verification key")
+        );
         assert_eq!(verify_latest(&fixture.replica_dir).unwrap().1, manifest);
         assert!(restore_bundle(&bundle, &fixture.base.join("unused"))
             .unwrap_err()
@@ -821,6 +1452,31 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("integrity mismatch"));
+        fs::remove_dir_all(fixture.base).unwrap();
+    }
+
+    #[tokio::test]
+    async fn signed_manifest_rejects_post_signature_changes() {
+        let fixture = fixture(false).await;
+        let manifest = fixture
+            .replica
+            .publish(&fixture.snapshot_path, &fixture.source, Some(8))
+            .await
+            .unwrap();
+        let bundle = fixture.replica_dir.join(&manifest.bundle_id);
+        let manifest_path = bundle.join(MANIFEST_FILE);
+        let mut manifest_file = OpenOptions::new()
+            .append(true)
+            .open(&manifest_path)
+            .unwrap();
+        manifest_file.write_all(b"\n").unwrap();
+        manifest_file.sync_all().unwrap();
+        assert!(
+            verify_bundle_with_trusted_key(&bundle, &fixture.trusted_key_hex)
+                .unwrap_err()
+                .to_string()
+                .contains("manifest hash does not match")
+        );
         fs::remove_dir_all(fixture.base).unwrap();
     }
 
@@ -846,12 +1502,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn encrypted_offsite_archive_round_trips_and_requires_trusted_signature() {
+        let fixture = fixture(true).await;
+        let manifest = fixture
+            .replica
+            .publish(&fixture.snapshot_path, &fixture.source, Some(11))
+            .await
+            .unwrap();
+        let bundle = fixture.replica_dir.join(&manifest.bundle_id);
+        let identity = age::x25519::Identity::generate();
+        let recipient = identity.to_public().to_string();
+        let offsite = fixture.base.join("offsite");
+        let archive =
+            export_encrypted_bundle(&bundle, &offsite, &recipient, &fixture.trusted_key_hex)
+                .unwrap();
+        assert!(archive
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with(".age"));
+
+        let imported_dir = fixture.base.join("imported");
+        let (imported_bundle, imported_manifest) = import_encrypted_bundle(
+            &archive,
+            &imported_dir,
+            identity.to_string().expose_secret(),
+            &fixture.trusted_key_hex,
+        )
+        .unwrap();
+        assert_eq!(imported_manifest, manifest);
+        assert_eq!(
+            verify_bundle_with_trusted_key(&imported_bundle, &fixture.trusted_key_hex).unwrap(),
+            manifest
+        );
+
+        let mut ciphertext = fs::read(&archive).unwrap();
+        let last = ciphertext.last_mut().unwrap();
+        *last ^= 0x01;
+        fs::write(&archive, ciphertext).unwrap();
+        assert!(import_encrypted_bundle(
+            &archive,
+            &fixture.base.join("corrupt-import"),
+            identity.to_string().expose_secret(),
+            &fixture.trusted_key_hex,
+        )
+        .is_err());
+        fs::remove_dir_all(fixture.base).unwrap();
+    }
+
+    #[test]
+    fn key_generation_refuses_to_overwrite_existing_material() {
+        let base = std::env::temp_dir().join(format!("vela-recovery-{}", Uuid::new_v4()));
+        fs::create_dir(&base).unwrap();
+        let key_dir = base.join("keys");
+        let generated = generate_recovery_key_files(&key_dir).unwrap();
+        assert_eq!(generated.key_id.len(), 32);
+        for name in [
+            "recovery-signing-key.hex",
+            "recovery-verifying-key.hex",
+            "recovery-age-identity.txt",
+            "recovery-age-recipient.txt",
+        ] {
+            assert!(key_dir.join(name).is_file());
+        }
+        assert!(generate_recovery_key_files(&key_dir).is_err());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[tokio::test]
     async fn failed_publication_latches_replica_health() {
         let base = std::env::temp_dir().join(format!("vela-recovery-{}", Uuid::new_v4()));
         let destination = base.join("replica");
         fs::create_dir_all(&destination).unwrap();
-        let replica =
-            RecoveryReplica::new(destination, "test-build".to_owned(), Duration::from_secs(5));
+        let replica = RecoveryReplica::new(
+            destination,
+            "test-build".to_owned(),
+            Duration::from_secs(5),
+            RecoverySigner::generate(),
+            None,
+        );
         assert!(replica
             .publish(&base.join("missing.json"), &base.join("missing-wal"), None)
             .await
@@ -869,11 +1598,41 @@ mod tests {
         fs::remove_dir_all(base).unwrap();
     }
 
+    #[tokio::test]
+    async fn offsite_export_failure_latches_replica_health() {
+        let fixture = fixture(false).await;
+        let blocked_destination = fixture.base.join("offsite-is-a-file");
+        fs::write(&blocked_destination, b"not a directory").unwrap();
+        let second_replica = fixture.base.join("second-replica");
+        fs::create_dir(&second_replica).unwrap();
+        let identity = age::x25519::Identity::generate();
+        let replica = RecoveryReplica::new(
+            second_replica,
+            "test-build".to_owned(),
+            Duration::from_secs(5),
+            RecoverySigner::generate(),
+            Some(OffsiteTarget {
+                destination: blocked_destination,
+                recipient: identity.to_public(),
+            }),
+        );
+        assert!(replica
+            .publish(&fixture.snapshot_path, &fixture.source, None)
+            .await
+            .is_err());
+        let status = replica.snapshot();
+        assert!(!status.healthy);
+        assert!(status.offsite_configured);
+        assert_eq!(status.failure_code.as_deref(), Some("replication_failed"));
+        fs::remove_dir_all(fixture.base).unwrap();
+    }
+
     struct Fixture {
         base: PathBuf,
         source: PathBuf,
         snapshot_path: PathBuf,
         replica_dir: PathBuf,
+        trusted_key_hex: String,
         replica: RecoveryReplica,
     }
 
@@ -941,15 +1700,19 @@ mod tests {
             wal.flush().await.unwrap();
         }
         drop(wal);
+        let signer = RecoverySigner::generate();
         Fixture {
             base,
             source,
             snapshot_path,
             replica_dir: replica_dir.clone(),
+            trusted_key_hex: signer.public_key_hex.clone(),
             replica: RecoveryReplica::new(
                 replica_dir,
                 "test-build".to_owned(),
                 Duration::from_secs(5),
+                signer,
+                None,
             ),
         }
     }

@@ -583,6 +583,17 @@ Work should begin in this order. Each item should land as a small, independently
     - Verify periodic replication, SHA-256 corruption detection, and a clean lost-directory restore in automated tests. Embed the Git commit as the container build identity.
     - Rehearse PostgreSQL 16 physical base backup plus archived-WAL recovery to an exact named restore point in CI, proving post-target writes are excluded.
     - This provider-neutral chapter does not provision a second Fly volume, object store, managed PostgreSQL, multi-zone replication, encrypted offsite backups, managed-provider PITR, automatic failover, or external paging. Those remain deployment gates before real funds.
+34. [x] **EX-034: Signed recovery manifests and encrypted offsite archive boundary**
+    - Sign the exact recovery-manifest bytes with a dedicated secp256k1 key and publish a detached signature containing the algorithm, manifest SHA-256, compressed public key, and stable key identifier.
+    - Require a separately pinned verification key whenever recovery replication is configured, reject mismatched signing/verification keys at startup, and require both controls in production readiness.
+    - Verify the detached signature and pinned trust anchor before bundle verification, export, import, or restore. Reject post-signature manifest changes and signing-key substitution.
+    - Stream each complete signed bundle into an authenticated age/X25519 archive without loading the bundle into memory, then atomically publish it to a provider-neutral directory adapter.
+    - Treat configured encrypted export as part of the durability boundary: export failure or timeout latches the matcher-storage fence and stops mutating traffic.
+    - Import only through bounded archive framing into a private staging directory. Require age authentication, exact archive identity, the pinned manifest signature, artifact hashes, and snapshot/WAL recovery invariants before atomic publication.
+    - Add a key-generation command that creates new recovery signing and age key material with private permissions and refuses to overwrite an existing directory. Keep the age identity off the engine host.
+    - Expose only redacted signing/offsite configured state in readiness, status, and metrics. Never expose key material, recipients, or filesystem destinations.
+    - Verify trusted signing, key-substitution rejection, manifest-tamper rejection, encrypted export/import, ciphertext-tamper rejection, and key overwrite refusal in automated tests.
+    - This free implementation supplies the cryptographic and provider-neutral storage boundary. A local directory is not proof of offsite durability; separately provisioned immutable storage, key custody/rotation, retention, and hosted disaster-recovery rehearsal remain launch gates.
 
 ## Parallel nonengineering work
 

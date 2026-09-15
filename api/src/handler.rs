@@ -721,6 +721,10 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         out,
         "# TYPE vela_engine_recovery_replication_failures_total counter"
     );
+    let _ = writeln!(out, "# HELP vela_engine_recovery_signing_configured 1 when recovery manifests are signed with a pinned key.");
+    let _ = writeln!(out, "# TYPE vela_engine_recovery_signing_configured gauge");
+    let _ = writeln!(out, "# HELP vela_engine_recovery_offsite_configured 1 when encrypted offsite archive export is configured.");
+    let _ = writeln!(out, "# TYPE vela_engine_recovery_offsite_configured gauge");
     let _ = writeln!(
         out,
         "vela_engine_recovery_replication_configured {}",
@@ -755,6 +759,24 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         recovery_replication
             .as_ref()
             .map_or(0, |replication| replication.failure_count)
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_signing_configured {}",
+        u8::from(
+            recovery_replication
+                .as_ref()
+                .is_some_and(|replication| replication.signed)
+        )
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_recovery_offsite_configured {}",
+        u8::from(
+            recovery_replication
+                .as_ref()
+                .is_some_and(|replication| replication.offsite_configured)
+        )
     );
 
     let _ = writeln!(

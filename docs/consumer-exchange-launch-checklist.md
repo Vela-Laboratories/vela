@@ -196,11 +196,12 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Treat matching-engine customer balances and platform fees as a cache rebuilt from the authoritative journal whenever the ledger is configured.
 - [ ] Rebuild complete engine state from authoritative records; financial balances and fees replay now, while complete order-book and nonfinancial state recovery still depends on snapshots/WAL.
 - [x] Add SHA-256 integrity metadata for the snapshot and every WAL segment in each immutable recovery bundle; raw WAL records retain CRC64 for local corruption detection.
-- [ ] Sign production snapshots.
+- [x] Sign exact recovery-manifest bytes with a dedicated secp256k1 key and require a separately pinned verification key before export, import, or restore.
 - [x] Store snapshot format, exact deployed build identity, leadership generation, WAL boundary, byte lengths, and SHA-256 hashes in the recovery manifest.
 - [x] Verify snapshot format compatibility and internal market/order sequencing before loading, and bind each recovery bundle to an exact deployed build identity.
 - [ ] Replicate WAL and ledger data across failure domains.
 - [ ] Create encrypted offsite backups.
+- [x] Stream signed recovery bundles into authenticated age/X25519 archives through a provider-neutral atomic export/import boundary; actual separately provisioned offsite storage and retention remain open.
 - [x] Define recovery point objectives.
 - [x] Define recovery time objectives.
 - [x] Test PostgreSQL 16 physical base-backup plus archived-WAL recovery to a named restore point in an isolated container; managed-provider PITR rehearsal remains open.
@@ -436,6 +437,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Include matcher storage, engine leadership, recovery replication, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage plus configured leadership and recovery replication now fail readiness after a latched failure, while the other dependencies remain open.
 - [x] Report redacted PostgreSQL engine-leadership state and generation in readiness/status and separate configured/active metrics without exposing the lease owner identity.
 - [x] Report redacted recovery-replication health, last success, checkpoint sequence, and failures without exposing filesystem paths.
+- [x] Report only redacted recovery-signing and encrypted-offsite configuration state without exposing keys, recipients, or destinations.
 - [x] Latch a process-lifetime matcher-storage fence after ledger/WAL/snapshot durability failure, reject current and queued matching proposals, and reject new non-GET HTTP traffic while preserving liveness diagnostics.
 - [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
 - [ ] Add alerts for failed WAL writes.
