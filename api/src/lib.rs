@@ -37,6 +37,7 @@ pub mod fix_adapter;
 pub mod fix_gateway;
 pub mod handler;
 pub mod historical;
+pub mod leadership;
 pub mod ledger_coordinator;
 pub mod listings;
 pub mod mcp;
@@ -130,6 +131,7 @@ pub struct AppState {
     pub wal: Arc<wal::Wal>,
     pub storage_health: Arc<durability::StorageHealth>,
     pub mutation_gate: Arc<tokio::sync::Mutex<()>>,
+    pub engine_leadership: Option<Arc<leadership::EngineLeadershipGuard>>,
     // TEOB: threshold encrypted order book
     pub pending_encrypted: PendingEncryptedOrders,
     pub threshold_decryptor: Arc<Mutex<ThresholdDecryptor>>,
@@ -220,7 +222,14 @@ impl AppState {
         wal: Arc<wal::Wal>,
         runtime_mode: RuntimeMode,
     ) -> Arc<Self> {
-        Self::new_inner(engine, wal, runtime_mode, None)
+        Self::new_inner(
+            engine,
+            wal,
+            runtime_mode,
+            None,
+            crate::durability::StorageHealth::new(),
+            None,
+        )
     }
 
     pub async fn new_with_runtime_and_ledger(
@@ -229,12 +238,35 @@ impl AppState {
         runtime_mode: RuntimeMode,
         ledger: Option<Arc<ledger::Ledger>>,
     ) -> Result<Arc<Self>, String> {
+        let storage_health = crate::durability::StorageHealth::new();
+        let leadership = match ledger.as_ref() {
+            Some(authoritative_ledger) => Some(
+                crate::leadership::EngineLeadershipGuard::acquire(
+                    Arc::clone(authoritative_ledger),
+                    Arc::clone(&storage_health),
+                )
+                .await
+                .map_err(|error| format!("engine leadership initialization failed: {error}"))?,
+            ),
+            None => None,
+        };
         if let Some(authoritative_ledger) = ledger.as_ref() {
-            let stats = crate::ledger_coordinator::restore_engine_financial_state(
+            let stats = match crate::ledger_coordinator::restore_engine_financial_state(
                 &mut engine,
                 authoritative_ledger,
             )
-            .await?;
+            .await
+            {
+                Ok(stats) => stats,
+                Err(error) => {
+                    if let Some(guard) = &leadership {
+                        if let Err(release_error) = guard.release().await {
+                            tracing::error!(error = %release_error, generation = guard.token().generation, "failed to release engine leadership after replay failure; lease will expire");
+                        }
+                    }
+                    return Err(format!("authoritative ledger replay failed: {error}"));
+                }
+            };
             tracing::info!(
                 replayed_accounts = stats.replayed_accounts,
                 customer_balances = stats.customer_balances,
@@ -242,7 +274,14 @@ impl AppState {
                 "restored matching-engine financial cache from authoritative journal"
             );
         }
-        Ok(Self::new_inner(engine, wal, runtime_mode, ledger))
+        Ok(Self::new_inner(
+            engine,
+            wal,
+            runtime_mode,
+            ledger,
+            storage_health,
+            leadership,
+        ))
     }
 
     fn new_inner(
@@ -250,6 +289,8 @@ impl AppState {
         wal: Arc<wal::Wal>,
         runtime_mode: RuntimeMode,
         ledger: Option<Arc<ledger::Ledger>>,
+        storage_health: Arc<crate::durability::StorageHealth>,
+        leadership: Option<Arc<crate::leadership::EngineLeadershipGuard>>,
     ) -> Arc<Self> {
         let window_us: u64 = std::env::var("VELA_BATCH_WINDOW_US")
             .ok()
@@ -348,14 +389,18 @@ impl AppState {
         let ledger_committer = ledger.as_ref().map(|ledger| {
             Arc::new(crate::ledger_coordinator::LedgerFinancialCommitter::new(
                 Arc::clone(ledger),
+                leadership
+                    .as_ref()
+                    .expect("ledger leadership acquired")
+                    .token(),
             )) as Arc<dyn engine::FinancialCommitter>
         });
-        let storage_health = crate::durability::StorageHealth::new();
         let mutation_gate = Arc::new(tokio::sync::Mutex::new(()));
         let financial_committer: Arc<dyn engine::FinancialCommitter> =
             Arc::new(crate::durability::DurableMutationCommitter::new(
                 Arc::clone(&wal),
                 ledger_committer,
+                leadership.clone(),
                 Arc::clone(&storage_health),
             ));
 
@@ -406,6 +451,7 @@ impl AppState {
             wal,
             storage_health,
             mutation_gate: Arc::clone(&mutation_gate),
+            engine_leadership: leadership,
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,

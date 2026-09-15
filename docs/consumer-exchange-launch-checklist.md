@@ -208,7 +208,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Test fail-closed handling of corrupt and unsupported local engine snapshots.
 - [x] Test fail-closed handling of incomplete, oversized, checksum-invalid, and sequence-invalid local WAL records.
 - [ ] Test recovery while chain deposits or withdrawals are in flight.
-- [ ] Add fencing so two engine leaders cannot process orders simultaneously.
+- [x] Add PostgreSQL generation fencing so two ledger-backed engine leaders cannot commit matching mutations simultaneously; no-ledger demo operation remains explicitly single-process only.
 - [x] Define an active-passive or consensus-backed availability design.
 - [ ] Preserve regulatory records for the legally required retention period.
 - [ ] Make audit records tamper-evident.
@@ -432,7 +432,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Add internal health monitoring.
 - [x] Separate process liveness and service readiness endpoints.
 - [x] Include ledger connectivity and exact schema version in readiness.
-- [ ] Include matcher storage, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage now fails readiness after a latched write failure, while the other dependencies remain open.
+- [ ] Include matcher storage, engine leadership, chain indexer, signer, custody RPC, and reconciler health in readiness; matcher storage and configured engine leadership now fail readiness after a latched failure, while the other dependencies remain open.
+- [x] Report redacted PostgreSQL engine-leadership state and generation in readiness/status and separate configured/active metrics without exposing the lease owner identity.
 - [x] Latch a process-lifetime matcher-storage fence after ledger/WAL/snapshot durability failure, reject current and queued matching proposals, and reject new non-GET HTTP traffic while preserving liveness diagnostics.
 - [x] Prevent the service from accepting traffic while local recovery or authoritative ledger replay is incomplete by completing both before binding the listener.
 - [ ] Add alerts for failed WAL writes.

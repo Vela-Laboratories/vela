@@ -20,6 +20,12 @@ retries serializable conflicts and deadlocks a bounded number of times. In
 production, startup fails when `DATABASE_URL` is absent or the schema is not at
 the exact version expected by the binary.
 
+When the ledger is configured, the API also acquires the singleton engine
+leadership lease before replay or listener binding. Every matching mutation
+validates the current PostgreSQL generation, and financial journal commits bind
+that generation inside the serializable write transaction. See
+[the engine leadership runbook](../docs/operations/engine-leadership.md).
+
 Migrations use a separate privileged secret and an explicit command:
 
 ```sh

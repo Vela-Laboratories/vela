@@ -15,6 +15,7 @@ const PLATFORM_REFERENCE: &str = "platform:vela";
 
 pub struct LedgerFinancialCommitter {
     ledger: Arc<ledger::Ledger>,
+    leadership: ledger::EngineLeaderToken,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,8 +26,8 @@ pub struct FinancialReplayStats {
 }
 
 impl LedgerFinancialCommitter {
-    pub fn new(ledger: Arc<ledger::Ledger>) -> Self {
-        Self { ledger }
+    pub fn new(ledger: Arc<ledger::Ledger>, leadership: ledger::EngineLeaderToken) -> Self {
+        Self { ledger, leadership }
     }
 
     async fn commit_effects(&self, effects: &FinancialEffectSet) -> Result<(), String> {
@@ -100,23 +101,24 @@ impl LedgerFinancialCommitter {
             "effect_set": effects,
         });
 
+        let transaction = PostTransaction {
+            id: Uuid::new_v4(),
+            operation_type: effects.operation_type.clone(),
+            idempotency_key,
+            request_hash,
+            external_reference: Some(serde_json::json!({
+                "fills": effects.fills.iter().map(|fill| serde_json::json!({
+                    "market": fill.market.0,
+                    "maker_order_id": fill.maker_order_id,
+                    "taker_order_id": fill.taker_order_id,
+                    "timestamp": fill.timestamp,
+                })).collect::<Vec<_>>()
+            })),
+            metadata,
+            legs,
+        };
         self.ledger
-            .post(&PostTransaction {
-                id: Uuid::new_v4(),
-                operation_type: effects.operation_type.clone(),
-                idempotency_key,
-                request_hash,
-                external_reference: Some(serde_json::json!({
-                    "fills": effects.fills.iter().map(|fill| serde_json::json!({
-                        "market": fill.market.0,
-                        "maker_order_id": fill.maker_order_id,
-                        "taker_order_id": fill.taker_order_id,
-                        "timestamp": fill.timestamp,
-                    })).collect::<Vec<_>>()
-                })),
-                metadata,
-                legs,
-            })
+            .post_as_engine_leader(&transaction, self.leadership)
             .await
             .map_err(|error| error.to_string())?;
         Ok(())

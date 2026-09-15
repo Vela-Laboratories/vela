@@ -460,6 +460,10 @@ async fn health() -> &'static str {
 
 async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = state.storage_health.snapshot();
+    let leadership = state
+        .engine_leadership
+        .as_ref()
+        .map(|guard| guard.snapshot());
     if !storage.healthy {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -468,6 +472,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "status": "not_ready",
                 "runtime_mode": state.runtime_mode.as_str(),
                 "matcher_storage": storage,
+                "engine_leadership": leadership,
             })),
         );
     }
@@ -486,6 +491,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "runtime_mode": state.runtime_mode.as_str(),
                 "ledger": "not_configured",
                 "matcher_storage": storage,
+                "engine_leadership": leadership,
             })),
         );
     };
@@ -500,6 +506,7 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "ledger": "ready",
                 "ledger_schema_version": ledger::Ledger::EXPECTED_SCHEMA_VERSION,
                 "matcher_storage": storage,
+                "engine_leadership": leadership,
             })),
         ),
         Ok(Err(error)) => {
@@ -511,6 +518,8 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "status": "not_ready",
                     "runtime_mode": state.runtime_mode.as_str(),
                     "ledger": "unavailable",
+                    "matcher_storage": storage,
+                    "engine_leadership": leadership,
                 })),
             )
         }
@@ -523,6 +532,8 @@ async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "status": "not_ready",
                     "runtime_mode": state.runtime_mode.as_str(),
                     "ledger": "timeout",
+                    "matcher_storage": storage,
+                    "engine_leadership": leadership,
                 })),
             )
         }
@@ -639,6 +650,11 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         state.batch_metrics.financial_commit_failures()
     );
     let storage_health = state.storage_health.snapshot();
+    let leadership_configured = state.engine_leadership.is_some();
+    let leadership_healthy = state
+        .engine_leadership
+        .as_ref()
+        .is_some_and(|guard| guard.is_active());
     let _ = writeln!(
         out,
         "# HELP vela_matcher_storage_healthy 1 while durable matching mutations can be accepted."
@@ -655,6 +671,20 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
         out,
         "vela_matcher_storage_failures_total {}",
         storage_health.failure_count
+    );
+    let _ = writeln!(out, "# HELP vela_engine_leadership_active 1 while this process holds the current PostgreSQL engine generation.");
+    let _ = writeln!(out, "# TYPE vela_engine_leadership_active gauge");
+    let _ = writeln!(out, "# HELP vela_engine_leadership_configured 1 when PostgreSQL engine leadership fencing is configured.");
+    let _ = writeln!(out, "# TYPE vela_engine_leadership_configured gauge");
+    let _ = writeln!(
+        out,
+        "vela_engine_leadership_configured {}",
+        u8::from(leadership_configured)
+    );
+    let _ = writeln!(
+        out,
+        "vela_engine_leadership_active {}",
+        u8::from(leadership_healthy)
     );
 
     let _ = writeln!(
@@ -4131,6 +4161,10 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
     };
 
     let storage_health = state.storage_health.snapshot();
+    let engine_leadership = state
+        .engine_leadership
+        .as_ref()
+        .map(|guard| guard.snapshot());
     let status = if !storage_health.healthy {
         "fenced"
     } else if uptime_secs < 30 {
@@ -4162,6 +4196,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "connected_ws_clients": ws_clients,
         "last_restart_reason": restart_reason,
         "matcher_storage": storage_health,
+        "engine_leadership": engine_leadership,
     })))
 }
 

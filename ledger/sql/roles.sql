@@ -92,6 +92,7 @@ REVOKE UPDATE, DELETE ON ledger_reconciliation_halt_links FROM vela_ledger_write
 REVOKE UPDATE, DELETE ON ledger_reconciliation_failures FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_reconciliation_failure_halts FROM vela_ledger_writer;
 REVOKE DELETE ON ledger_reconciliation_worker_checkpoints FROM vela_ledger_writer;
+REVOKE INSERT, DELETE ON ledger_engine_leadership FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
@@ -135,6 +136,13 @@ GRANT UPDATE (
     last_completed_at,
     updated_at
 ) ON ledger_reconciliation_worker_checkpoints TO vela_ledger_writer;
+GRANT UPDATE (
+    owner_id,
+    generation,
+    lease_expires_at,
+    acquired_at,
+    renewed_at
+) ON ledger_engine_leadership TO vela_ledger_writer;
 GRANT UPDATE (
     state,
     reservation_transaction_id,

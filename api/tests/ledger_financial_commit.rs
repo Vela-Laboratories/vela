@@ -73,6 +73,15 @@ async fn submit(
     receiver.await.expect("dispatcher should respond")
 }
 
+async fn leader_committer(ledger: Arc<Ledger>) -> Arc<dyn FinancialCommitter> {
+    let leadership = ledger
+        .acquire_engine_leadership(Uuid::new_v4(), std::time::Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    Arc::new(LedgerFinancialCommitter::new(ledger, leadership.token))
+}
+
 struct LedgerFixture {
     ledger: Arc<Ledger>,
     accounts: HashMap<String, Uuid>,
@@ -232,8 +241,7 @@ async fn matcher_commits_trade_fees_and_rebate_before_ack(pool: sqlx::PgPool) {
     matching_engine.add_market(market());
     shard_builder.add_shard(MarketId(MARKET.to_owned()), matching_engine);
     let shards = Arc::new(shard_builder);
-    let committer: Arc<dyn FinancialCommitter> =
-        Arc::new(LedgerFinancialCommitter::new(Arc::clone(&fixture.ledger)));
+    let committer = leader_committer(Arc::clone(&fixture.ledger)).await;
 
     let maker_responses = submit(
         Arc::clone(&shards),
@@ -398,7 +406,7 @@ async fn missing_financial_account_rejects_order_without_state_change(pool: sqlx
     matching_engine.add_market(market());
     shard_builder.add_shard(MarketId(MARKET.to_owned()), matching_engine);
     let shards = Arc::new(shard_builder);
-    let committer: Arc<dyn FinancialCommitter> = Arc::new(LedgerFinancialCommitter::new(ledger));
+    let committer = leader_committer(ledger).await;
 
     let responses = submit(
         Arc::clone(&shards),
@@ -467,8 +475,7 @@ async fn external_credit_cannot_mutate_a_ledger_backed_engine_projection(pool: s
     let user_state = Arc::new(RwLock::new(UserState::new(5.0)));
     let before = user_state.read().await.balances.clone();
     let shards = Arc::new(MarketShards::new(Arc::clone(&user_state)));
-    let committer: Arc<dyn FinancialCommitter> =
-        Arc::new(LedgerFinancialCommitter::new(Arc::clone(&fixture.ledger)));
+    let committer = leader_committer(Arc::clone(&fixture.ledger)).await;
     let (responder, receiver) = tokio::sync::oneshot::channel();
 
     MarketShards::dispatch_sharded_batch_with_committer(

@@ -76,6 +76,7 @@ pub fn shutdown_stop_reason(snapshot_succeeded: bool, health: &StorageHealth) ->
 pub struct DurableMutationCommitter {
     journal: Arc<dyn MutationJournal>,
     ledger: Option<Arc<dyn FinancialCommitter>>,
+    leadership: Option<Arc<crate::leadership::EngineLeadershipGuard>>,
     health: Arc<StorageHealth>,
 }
 
@@ -83,11 +84,13 @@ impl DurableMutationCommitter {
     pub fn new(
         wal: Arc<Wal>,
         ledger: Option<Arc<dyn FinancialCommitter>>,
+        leadership: Option<Arc<crate::leadership::EngineLeadershipGuard>>,
         health: Arc<StorageHealth>,
     ) -> Self {
         Self {
             journal: Arc::new(WalMutationJournal { wal }),
             ledger,
+            leadership,
             health,
         }
     }
@@ -97,6 +100,7 @@ impl DurableMutationCommitter {
         Self {
             journal,
             ledger: None,
+            leadership: None,
             health,
         }
     }
@@ -122,11 +126,29 @@ impl DurableMutationCommitter {
             }
         }
 
+        // Zero-net and resting-order mutations do not create journal legs, but
+        // they still cross the same commit boundary and must prove this process
+        // owns the current PostgreSQL generation before local publication.
+        if let Some(leadership) = &self.leadership {
+            if let Err(error) = leadership.validate_at_commit().await {
+                self.health.fence("engine_leadership_commit", &error);
+                return Err(error);
+            }
+        }
+
         let batch = WalMutationBatch {
             requests: requests.to_vec(),
             responses: responses.to_vec(),
         };
-        if let Err(error) = self.journal.commit(&batch).await {
+        let journal_result = match &self.leadership {
+            Some(leadership) => {
+                tokio::time::timeout(leadership.wal_commit_timeout(), self.journal.commit(&batch))
+                    .await
+                    .unwrap_or_else(|_| Err("WAL mutation commit timed out".to_owned()))
+            }
+            None => self.journal.commit(&batch).await,
+        };
+        if let Err(error) = journal_result {
             let message = format!("WAL mutation commit failed: {error}");
             self.health.fence("wal_commit", &error);
             return Err(message);

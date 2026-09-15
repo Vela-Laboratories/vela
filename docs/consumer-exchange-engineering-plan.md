@@ -559,6 +559,17 @@ Work should begin in this order. Each item should land as a small, independently
     - Sync the snapshot file and containing directory before checkpointing, then append and fsync the checkpoint before WAL rotation; refuse periodic and shutdown snapshot publication after a fence so no false clean recovery boundary is emitted.
     - Verify irreversible fencing, redacted public health, liveness/readiness separation, non-GET rejection, proposal rollback, success-after-commit ordering, and a mutation already queued when the first storage failure trips the fence.
     - Document the cross-resource limit: PostgreSQL and local WAL do not share a distributed transaction. A failure after PostgreSQL commit requires an unclean, evidence-preserving operator recovery; automatic unclean replay, replication, external paging, leader fencing, and full auxiliary-state durability remain open.
+32. [x] **EX-032: PostgreSQL engine leadership fencing**
+    - Add one database-owned engine lease with PostgreSQL server-time expiry, process-random ownership, and a monotonically increasing fencing generation on every takeover.
+    - Acquire leadership before authoritative replay, matcher dispatcher startup, or listener binding; refuse startup while another generation is active.
+    - Renew with bounded timeouts and latch the irreversible matcher durability fence on lost, expired, failed, or indeterminate renewal.
+    - Extend and validate the exact generation for every matcher mutation commit, including resting and zero-net-effect batches, then bound local WAL persistence below the renewed lease interval.
+    - Lock and validate the same owner and generation inside the serializable financial journal transaction so a stale engine cannot commit after takeover.
+    - Expose redacted leadership state, generation, and expiry through readiness/status plus separate configured/active metrics; never expose the owner identity.
+    - Release only the process's own generation after renewal is disabled; failed release safely falls back to lease expiry.
+    - Verify concurrent exclusion, monotonic takeover, stale financial-commit rejection, lost renewal, old-owner release rejection, API startup contention, and durability fencing against PostgreSQL 16.
+    - Keep no-ledger development/demo operation available without claiming multi-process safety. The live Fly testnet has no ledger configured, so deployment alone does not activate this control.
+    - Remaining work includes replicated engine state, automatic takeover recovery, managed-database failover and long-pause rehearsals, cross-resource PostgreSQL/WAL recovery, and external paging.
 
 ## Parallel nonengineering work
 

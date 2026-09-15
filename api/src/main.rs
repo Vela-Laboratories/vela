@@ -323,7 +323,12 @@ async fn main() {
     let state =
         api::AppState::new_with_runtime_and_ledger(engine, Arc::clone(&wal), runtime.mode, ledger)
             .await
-            .unwrap_or_else(|_| panic!("authoritative ledger replay failed"));
+            .unwrap_or_else(|error| {
+                if error.starts_with("engine leadership") || error.starts_with("another engine") {
+                    panic!("authoritative engine leadership initialization failed")
+                }
+                panic!("authoritative ledger replay failed")
+            });
 
     {
         let replayed_engine = state.engine.lock().await;
@@ -473,13 +478,14 @@ async fn main() {
     // Only label the terminal WAL record clean when the final snapshot and
     // its checkpoint were both published successfully.
     let shutdown_health = Arc::clone(&shutdown_state.storage_health);
-    let snapshot_succeeded = match api::snapshot::save_snapshot(shutdown_state, true).await {
-        Ok(()) => true,
-        Err(error) => {
-            tracing::error!("Final snapshot save failed: {error}");
-            false
-        }
-    };
+    let snapshot_succeeded =
+        match api::snapshot::save_snapshot(Arc::clone(&shutdown_state), true).await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::error!("Final snapshot save failed: {error}");
+                false
+            }
+        };
     let stop_reason = api::durability::shutdown_stop_reason(snapshot_succeeded, &shutdown_health);
 
     let stop_written = wal
@@ -495,6 +501,12 @@ async fn main() {
         tracing::error!("WAL ENGINE_STOP write failed: {error}");
     } else if let Err(error) = wal.flush().await {
         tracing::error!("WAL ENGINE_STOP flush failed: {error}");
+    }
+
+    if let Some(leadership) = &shutdown_state.engine_leadership {
+        if let Err(error) = leadership.release().await {
+            tracing::error!(error = %error, generation = leadership.token().generation, "engine leadership release failed; lease will expire without being reassigned");
+        }
     }
 }
 

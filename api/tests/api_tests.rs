@@ -179,7 +179,129 @@ async fn test_production_readiness_passes_with_current_ledger_schema(pool: sqlx:
     let body: Value = response.json();
     assert_eq!(body["ok"], true);
     assert_eq!(body["ledger"], "ready");
-    assert_eq!(body["ledger_schema_version"], 11);
+    assert_eq!(body["ledger_schema_version"], 12);
+    assert_eq!(body["engine_leadership"]["configured"], true);
+    assert_eq!(body["engine_leadership"]["state"], "active");
+    assert!(body["engine_leadership"].get("owner_id").is_none());
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn second_ledger_backed_engine_refuses_to_initialize(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool));
+    let first = ledger
+        .acquire_engine_leadership(Uuid::new_v4(), std::time::Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    let result = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Production,
+        Some(Arc::clone(&ledger)),
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("second engine unexpectedly initialized"),
+        Err(error) => error,
+    };
+    assert!(error.contains("another engine holds the authoritative leadership lease"));
+    assert!(ledger.release_engine_leadership(first.token).await.unwrap());
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn superseded_engine_latches_mutation_fence(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool.clone()));
+    let state = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Production,
+        Some(Arc::clone(&ledger)),
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE ledger_engine_leadership SET lease_expires_at = transaction_timestamp() - interval '1 second'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    ledger
+        .acquire_engine_leadership(Uuid::new_v4(), std::time::Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let error = state
+        .engine_leadership
+        .as_ref()
+        .unwrap()
+        .validate_at_commit()
+        .await
+        .unwrap_err();
+    assert!(error.contains("absent, expired, or superseded"));
+    assert!(!state.storage_health.is_healthy());
+    assert_eq!(
+        state.storage_health.snapshot().failure_code.as_deref(),
+        Some("engine_leadership_lost")
+    );
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn replay_failure_releases_startup_leadership(pool: sqlx::PgPool) {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let ledger = Arc::new(ledger::Ledger::from_pool(pool.clone()));
+    let asset_id = Uuid::new_v4();
+    ledger
+        .create_asset(&ledger::NewAsset {
+            id: asset_id,
+            code: "USDC".to_owned(),
+            decimals: 6,
+            chain_id: Some(8453),
+            contract_address: None,
+        })
+        .await
+        .unwrap();
+    let account_id = Uuid::new_v4();
+    ledger
+        .create_account(&ledger::NewAccount {
+            id: account_id,
+            asset_id,
+            owner_type: "customer".to_owned(),
+            owner_reference: user_addr(),
+            account_type: "customer_available".to_owned(),
+            allow_negative: false,
+        })
+        .await
+        .unwrap();
+    sqlx::query("UPDATE ledger_account_balances SET balance = 1 WHERE account_id = $1")
+        .bind(account_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let result = AppState::new_with_runtime_and_ledger(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Production,
+        Some(Arc::clone(&ledger)),
+    )
+    .await;
+    assert!(
+        matches!(result, Err(error) if error.starts_with("authoritative ledger replay failed"))
+    );
+    assert!(ledger
+        .acquire_engine_leadership(Uuid::new_v4(), std::time::Duration::from_secs(30))
+        .await
+        .unwrap()
+        .is_some());
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

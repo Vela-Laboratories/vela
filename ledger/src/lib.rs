@@ -16,6 +16,8 @@ mod withdrawals;
 pub use withdrawals::*;
 mod reconciliation;
 pub use reconciliation::*;
+mod leadership;
+pub use leadership::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalLegInput {
@@ -202,6 +204,10 @@ pub enum LedgerError {
     InvalidWithdrawal(String),
     #[error("invalid reconciliation command: {0}")]
     InvalidReconciliation(String),
+    #[error("invalid engine leadership lease: {0}")]
+    InvalidEngineLease(String),
+    #[error("engine leadership lease is absent, expired, or superseded")]
+    EngineLeadershipLost,
     #[error("withdrawal was not found: {0}")]
     WithdrawalNotFound(Uuid),
     #[error("invalid withdrawal transition from {from} to {to}")]
@@ -266,7 +272,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 11;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 12;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {
@@ -726,7 +732,7 @@ impl Ledger {
         if command.operation_type == "administrative_adjustment" {
             return Err(LedgerError::AdministrativeCorrectionRequired);
         }
-        self.post_authorized(command, None).await
+        self.post_authorized(command, None, None).await
     }
 
     pub async fn post_administrative_correction(
@@ -735,7 +741,9 @@ impl Ledger {
     ) -> Result<PostedAdministrativeCorrection, LedgerError> {
         validate_administrative_correction(correction)?;
         let command = administrative_correction_transaction(correction);
-        let transaction = self.post_authorized(&command, Some(correction)).await?;
+        let transaction = self
+            .post_authorized(&command, Some(correction), None)
+            .await?;
         Ok(PostedAdministrativeCorrection {
             correction_id: correction.correction_id,
             transaction,
@@ -746,12 +754,13 @@ impl Ledger {
         &self,
         command: &PostTransaction,
         correction: Option<&AdministrativeCorrection>,
+        leader: Option<EngineLeaderToken>,
     ) -> Result<PostedTransaction, LedgerError> {
         validate_command(command)?;
 
         let mut attempt = 0_u32;
         loop {
-            match self.post_once(command, correction).await {
+            match self.post_once(command, correction, leader).await {
                 Err(error)
                     if is_retryable_transaction_error(&error)
                         && attempt < self.max_serializable_retries =>
@@ -769,11 +778,16 @@ impl Ledger {
         &self,
         command: &PostTransaction,
         correction: Option<&AdministrativeCorrection>,
+        leader: Option<EngineLeaderToken>,
     ) -> Result<PostedTransaction, LedgerError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
             .await?;
+
+        if let Some(token) = leader {
+            leadership::assert_engine_leadership_in_transaction(&mut tx, token).await?;
+        }
 
         let post_result = post_command_in_transaction(&mut tx, command).await?;
         if !post_result.inserted {
