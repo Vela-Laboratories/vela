@@ -286,6 +286,21 @@ async fn main() {
             loaded_mms = snapshot.registered_mms.clone();
             loaded_proofs = api::snapshot::extract_proofs_from_snapshot(&snapshot);
             loaded_attestations = api::snapshot::extract_attestations_from_snapshot(&snapshot);
+            match (&ledger, &snapshot.ledger_recovery) {
+                (Some(authoritative_ledger), Some(watermark)) => authoritative_ledger
+                    .verify_recovery_watermark(watermark)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("engine/database recovery boundary mismatch: {error}")
+                    }),
+                (Some(_), None) => panic!(
+                    "engine snapshot predates authoritative journal watermarking; reviewed recovery is required"
+                ),
+                (None, Some(_)) => panic!(
+                    "engine snapshot requires its authoritative ledger; DATABASE_URL is not configured"
+                ),
+                (None, None) => {}
+            }
             api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot)
                 .unwrap_or_else(|error| panic!("snapshot restore failed: {error}"));
             tracing::info!("engine restored from snapshot");

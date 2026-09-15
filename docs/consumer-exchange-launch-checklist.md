@@ -198,6 +198,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Add SHA-256 integrity metadata for the snapshot and every WAL segment in each immutable recovery bundle; raw WAL records retain CRC64 for local corruption detection.
 - [x] Sign exact recovery-manifest bytes with a dedicated secp256k1 key and require a separately pinned verification key before export, import, or restore.
 - [x] Store snapshot format, exact deployed build identity, leadership generation, WAL boundary, byte lengths, and SHA-256 hashes in the recovery manifest.
+- [x] Bind every new ledger-backed engine snapshot and signed recovery manifest to an immutable authoritative-journal commit sequence and exact transaction identity; restored startup rejects an older, divergent, or projection-invalid database.
 - [x] Verify snapshot format compatibility and internal market/order sequencing before loading, and bind each recovery bundle to an exact deployed build identity.
 - [ ] Replicate WAL and ledger data across failure domains.
 - [ ] Create encrypted offsite backups.
@@ -210,6 +211,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Test fail-closed handling of corrupt and unsupported local engine snapshots.
 - [x] Test fail-closed handling of incomplete, oversized, checksum-invalid, and sequence-invalid local WAL records.
 - [ ] Test recovery while chain deposits or withdrawals are in flight.
+- [x] Test the cross-resource recovery selector with a later in-flight journal commit and retain the exact earlier engine watermark; a combined hosted chain-worker disaster exercise remains open.
 - [x] Add PostgreSQL generation fencing so two ledger-backed engine leaders cannot commit matching mutations simultaneously; no-ledger demo operation remains explicitly single-process only.
 - [x] Define an active-passive or consensus-backed availability design.
 - [ ] Preserve regulatory records for the legally required retention period.

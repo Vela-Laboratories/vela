@@ -19,7 +19,7 @@ use types::{
 use zkvm::BatchProof;
 
 const SNAPSHOT_INTERVAL_SECS: u64 = 60;
-pub const CURRENT_SNAPSHOT_VERSION: u32 = 2;
+pub const CURRENT_SNAPSHOT_VERSION: u32 = 3;
 
 fn snapshot_path() -> String {
     let dir = std::env::var("SNAPSHOT_DIR").unwrap_or_else(|_| "/data".to_string());
@@ -47,6 +47,8 @@ pub struct EngineSnapshot {
     pub fee_balances: HashMap<String, u64>,
     #[serde(default)]
     pub clean_shutdown: bool,
+    #[serde(default)]
+    pub ledger_recovery: Option<ledger::JournalRecoveryWatermark>,
     #[serde(default)]
     pub incidents: Vec<Incident>,
     #[serde(default)]
@@ -151,6 +153,16 @@ async fn save_snapshot_to_path(
     let proofs = state.proofs.lock().await.clone();
     let attestations = state.attestations.lock().await.clone();
 
+    let ledger_recovery = match &state.ledger {
+        Some(ledger) => Some(
+            ledger
+                .journal_recovery_watermark()
+                .await
+                .context("read authoritative journal recovery watermark")?,
+        ),
+        None => None,
+    };
+
     let snapshot = EngineSnapshot {
         version: CURRENT_SNAPSHOT_VERSION,
         timestamp,
@@ -162,6 +174,7 @@ async fn save_snapshot_to_path(
         metadata,
         fee_balances,
         clean_shutdown,
+        ledger_recovery,
         incidents,
         decisions,
         registered_mms,
@@ -314,6 +327,8 @@ pub async fn load_recovery_snapshot(
                 .checkpoint_sequence
                 .checked_sub(1)
                 .ok_or_else(|| anyhow::anyhow!("version-1 snapshot has no WAL checkpoint"))?;
+            snapshot.version = CURRENT_SNAPSHOT_VERSION;
+        } else if snapshot.version == 2 {
             snapshot.version = CURRENT_SNAPSHOT_VERSION;
         }
         validate_snapshot(snapshot)?;

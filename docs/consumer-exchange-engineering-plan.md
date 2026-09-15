@@ -594,6 +594,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Expose only redacted signing/offsite configured state in readiness, status, and metrics. Never expose key material, recipients, or filesystem destinations.
     - Verify trusted signing, key-substitution rejection, manifest-tamper rejection, encrypted export/import, ciphertext-tamper rejection, and key overwrite refusal in automated tests.
     - This free implementation supplies the cryptographic and provider-neutral storage boundary. A local directory is not proof of offsite durability; separately provisioned immutable storage, key custody/rotation, retention, and hosted disaster-recovery rehearsal remain launch gates.
+35. [x] **EX-035: Authoritative cross-resource recovery watermark**
+    - Add an immutable monotonic commit sequence to every authoritative journal transaction and bind each new engine snapshot and signed recovery manifest to the exact latest sequence and transaction identity.
+    - Refuse restored startup when the configured PostgreSQL database is older than the engine artifact, identifies a different transaction at the required sequence, or its balance projection no longer replays from the immutable journal.
+    - Allow a database restored beyond the engine checkpoint because deposits and withdrawals may advance independently; matching financial caches are rebuilt from the newer authoritative journal before the listener binds.
+    - Require reviewed recovery when a ledger-backed engine artifact predates watermarking or when an artifact that requires PostgreSQL is started without it.
+    - Verify exact-prefix matching, later in-flight journal commits, wrong-database rejection, and projection divergence against PostgreSQL 16. Existing deposit, matcher-trade restart, withdrawal lifecycle, WAL replay, and PITR suites cover each independently advancing state machine.
+    - This closes cross-resource restore selection without claiming a distributed transaction, automatic failover, hosted lost-machine rehearsal, or provider-level replication. A combined hosted in-flight disaster exercise remains a launch gate.
 
 ## Parallel nonengineering work
 

@@ -190,6 +190,56 @@ async fn posts_balanced_transaction_and_materializes_balances(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn recovery_watermark_binds_exact_journal_prefix_and_projection(pool: PgPool) {
+    let fixture = Fixture::new(pool).await;
+    fixture.seed_source(100).await;
+
+    let watermark = fixture.ledger.journal_recovery_watermark().await.unwrap();
+    assert!(watermark.sequence > 0);
+    assert!(watermark.transaction_id.is_some());
+    fixture
+        .ledger
+        .verify_recovery_watermark(&watermark)
+        .await
+        .unwrap();
+
+    fixture
+        .ledger
+        .post(&command(
+            "after-recovery-boundary",
+            "trade",
+            9,
+            vec![(fixture.source_id, -1), (fixture.destination_a_id, 1)],
+        ))
+        .await
+        .unwrap();
+    fixture
+        .ledger
+        .verify_recovery_watermark(&watermark)
+        .await
+        .unwrap();
+
+    let wrong = ledger::JournalRecoveryWatermark {
+        sequence: watermark.sequence,
+        transaction_id: Some(Uuid::new_v4()),
+    };
+    assert!(matches!(
+        fixture.ledger.verify_recovery_watermark(&wrong).await,
+        Err(LedgerError::RecoveryWatermarkMismatch { .. })
+    ));
+
+    sqlx::query("UPDATE ledger_account_balances SET balance = balance + 1 WHERE account_id = $1")
+        .bind(fixture.source_id)
+        .execute(fixture.ledger.pool())
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture.ledger.verify_recovery_watermark(&watermark).await,
+        Err(LedgerError::RecoveryProjectionMismatch)
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn returns_original_result_for_idempotent_retry(pool: PgPool) {
     let fixture = Fixture::new(pool).await;
     fixture.seed_source(100).await;

@@ -50,6 +50,8 @@ pub struct RecoveryManifest {
     pub checkpoint_sequence: u64,
     pub last_sequence: u64,
     pub clean_shutdown: bool,
+    #[serde(default)]
+    pub ledger_recovery: Option<ledger::JournalRecoveryWatermark>,
     pub artifacts: Vec<RecoveryArtifact>,
 }
 
@@ -458,6 +460,7 @@ fn publish_bundle_sync(
             checkpoint_sequence: recovery.checkpoint_sequence,
             last_sequence: recovery.last_sequence,
             clean_shutdown: recovery.clean_shutdown && snapshot.clean_shutdown,
+            ledger_recovery: snapshot.ledger_recovery.clone(),
             artifacts,
         };
         let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
@@ -529,6 +532,7 @@ fn same_bundle_contents(left: &RecoveryManifest, right: &RecoveryManifest) -> bo
         && left.checkpoint_sequence == right.checkpoint_sequence
         && left.last_sequence == right.last_sequence
         && left.clean_shutdown == right.clean_shutdown
+        && left.ledger_recovery == right.ledger_recovery
         && left.artifacts == right.artifacts
 }
 
@@ -1167,6 +1171,7 @@ fn validate_manifest_boundary(
         || manifest.checkpoint_sequence != recovery.checkpoint_sequence
         || manifest.last_sequence != recovery.last_sequence
         || manifest.clean_shutdown != (snapshot.clean_shutdown && recovery.clean_shutdown)
+        || manifest.ledger_recovery != snapshot.ledger_recovery
     {
         bail!("recovery manifest does not match its snapshot/WAL boundary");
     }

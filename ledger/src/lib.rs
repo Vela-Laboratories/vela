@@ -226,6 +226,12 @@ pub enum LedgerError {
         replayed: BigDecimal,
         projected: BigDecimal,
     },
+    #[error("recovery journal watermark is malformed")]
+    InvalidRecoveryWatermark,
+    #[error("authoritative journal does not contain recovery sequence {sequence}")]
+    RecoveryWatermarkMismatch { sequence: i64 },
+    #[error("authoritative ledger projection does not replay from the journal")]
+    RecoveryProjectionMismatch,
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -272,7 +278,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 12;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 13;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {
@@ -875,6 +881,70 @@ impl Ledger {
         .await?;
         Ok(mismatch_count == 0)
     }
+
+    /// Return an immutable journal boundary suitable for binding an engine
+    /// recovery artifact to the authoritative financial store. Sequence zero
+    /// denotes a migrated but still-empty journal.
+    pub async fn journal_recovery_watermark(
+        &self,
+    ) -> Result<JournalRecoveryWatermark, LedgerError> {
+        let row = sqlx::query_as::<_, (Uuid, i64)>(
+            r#"
+            SELECT id, commit_sequence
+            FROM ledger_journal_transactions
+            ORDER BY commit_sequence DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(match row {
+            Some((transaction_id, sequence)) => JournalRecoveryWatermark {
+                sequence,
+                transaction_id: Some(transaction_id),
+            },
+            None => JournalRecoveryWatermark {
+                sequence: 0,
+                transaction_id: None,
+            },
+        })
+    }
+
+    /// Prove that this database contains the exact journal prefix named by a
+    /// recovery artifact and that its materialized projection still replays.
+    /// Later journal entries are allowed because deposits and withdrawals can
+    /// advance independently of the engine snapshot; an older database is not.
+    pub async fn verify_recovery_watermark(
+        &self,
+        required: &JournalRecoveryWatermark,
+    ) -> Result<(), LedgerError> {
+        if required.sequence < 0 || (required.sequence == 0) != required.transaction_id.is_none() {
+            return Err(LedgerError::InvalidRecoveryWatermark);
+        }
+        if required.sequence > 0 {
+            let stored = sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM ledger_journal_transactions WHERE commit_sequence = $1",
+            )
+            .bind(required.sequence)
+            .fetch_optional(&self.pool)
+            .await?;
+            if stored != required.transaction_id {
+                return Err(LedgerError::RecoveryWatermarkMismatch {
+                    sequence: required.sequence,
+                });
+            }
+        }
+        if !self.verify_balance_projection().await? {
+            return Err(LedgerError::RecoveryProjectionMismatch);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct JournalRecoveryWatermark {
+    pub sequence: i64,
+    pub transaction_id: Option<Uuid>,
 }
 
 struct PostCommandResult {
