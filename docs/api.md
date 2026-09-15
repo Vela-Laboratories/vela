@@ -13,6 +13,12 @@ Responses always have the shape:
 
 ## HTTP Endpoints
 
+Customer-data routes require `Authorization: Bearer <token>`. Request a
+single-use challenge from `POST /auth/challenge`, sign the exact returned
+message, and exchange it at `POST /auth/session`. Challenges expire after five
+minutes and sessions after 30 minutes. `POST /auth/session/revoke` invalidates
+the current token.
+
 ### `GET /health`
 
 Liveness probe.
@@ -72,7 +78,7 @@ Returns `404` with `error: "market not found"` if the market ID is not registere
 
 ### `GET /account/:address/balances`
 
-All balances for a given address.
+All balances for the authenticated address.
 
 **Path parameter:** `address` — Ethereum address, with or without `0x` prefix
 
@@ -96,6 +102,8 @@ All balances for a given address.
 ```
 
 Returns `400` if the address is not a valid 20-byte Ethereum address.
+Returns `401` for a missing or invalid session and `403` when the session is
+bound to another address.
 
 ---
 
@@ -326,6 +334,19 @@ const sig = await signer.signMessage(msg);
 ```
 
 The nonce must exactly match the value received in the `challenge` response. The server rejects auth if no `request_challenge` was sent first, or if the nonce does not match.
+
+#### `session_auth`
+
+Preferred browser flow. Reuse the short-lived HTTP session so the user does not
+sign a second challenge for the private WebSocket:
+
+```json
+{
+  "type": "session_auth",
+  "address": "0xAbCd1234...",
+  "token": "<opaque-session-token>"
+}
+```
 
 #### `ping`
 

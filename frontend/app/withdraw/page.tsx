@@ -22,7 +22,7 @@ const ASSETS = ['USDC', 'ETH'] as const
 type SupportedAsset = (typeof ASSETS)[number]
 
 function ConnectGate() {
-  const { connect } = useAuth()
+  const { connect, isConnected } = useAuth()
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,9 +41,11 @@ function ConnectGate() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center bg-canvas border border-border p-8">
-        <h2 className="text-xl font-semibold text-ink mb-2">Connect your wallet</h2>
+        <h2 className="text-xl font-semibold text-ink mb-2">
+          {isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}
+        </h2>
         <p className="text-sm text-brown mb-6">
-          Connect the wallet that owns the exchange balance you want to withdraw.
+          Sign a one-time challenge to access the exchange balance you want to withdraw.
         </p>
         {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
         <button
@@ -53,7 +55,7 @@ function ConnectGate() {
           className="w-full flex items-center justify-center gap-2 h-10 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] disabled:opacity-50"
         >
           {connecting && <Spinner size="xs" className="text-ink" />}
-          Connect Wallet
+          {isConnected ? 'Authenticate Wallet' : 'Connect Wallet'}
         </button>
       </div>
     </div>
@@ -61,7 +63,7 @@ function ConnectGate() {
 }
 
 export default function WithdrawPage() {
-  const { address, isConnected } = useAuth()
+  const { address, isConnected, isAuthenticated } = useAuth()
   const [selectedAsset, setSelectedAsset] = useState<SupportedAsset>('USDC')
   const [amount, setAmount] = useState('')
   const [balances, setBalances] = useState<BalanceResponse[]>([])
@@ -73,7 +75,7 @@ export default function WithdrawPage() {
   const [success, setSuccess] = useState<WithdrawalStatus | null>(null)
 
   const refresh = useCallback(async () => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     const [balanceResponse, withdrawalResponse] = await Promise.all([
       getBalances(address),
       getWithdrawals(address),
@@ -82,7 +84,7 @@ export default function WithdrawPage() {
     if (withdrawalResponse.ok && withdrawalResponse.data) {
       setWithdrawals(withdrawalResponse.data)
     }
-  }, [address])
+  }, [address, isAuthenticated])
 
   useEffect(() => {
     const initial = window.setTimeout(refresh, 0)
@@ -190,7 +192,7 @@ export default function WithdrawPage() {
     }
   }
 
-  if (!isConnected) return <ConnectGate />
+  if (!isConnected || !isAuthenticated) return <ConnectGate />
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">

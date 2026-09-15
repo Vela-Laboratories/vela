@@ -103,6 +103,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/account/{address}/fills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Private fill history for an account */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description At most 500 newest account fills */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["AccountFillResponse"][];
+                            ok?: boolean;
+                        };
+                    };
+                };
+                /** @description Missing or invalid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session belongs to another account */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account/{address}/orders": {
         parameters: {
             query?: never;
@@ -124,6 +179,64 @@ export interface paths {
             responses: {
                 /** @description Open orders */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/account/{address}/orders/by-client-id/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Look up an account order by client order ID */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address: string;
+                    client_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Order owned by the authenticated account */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session belongs to another account */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Order not found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -294,6 +407,155 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a single-use wallet authentication challenge */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HttpAuthChallengeRequest"];
+                };
+            };
+            responses: {
+                /** @description Versioned message to sign */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HttpAuthChallengeResponse"];
+                    };
+                };
+                /** @description Invalid address */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Challenge capacity reached */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a wallet signature for a short-lived account session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HttpAuthSessionRequest"];
+                };
+            };
+            responses: {
+                /** @description Opaque bearer session */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HttpAuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid or replayed proof */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session capacity reached */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current account session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session revoked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -2000,6 +2262,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountFillResponse: {
+            /** Format: int64 */
+            counterparty_order_id: number;
+            id: string;
+            market: string;
+            /** Format: int64 */
+            order_id: number;
+            price: string;
+            quantity: string;
+            /** @enum {string} */
+            role: "maker" | "taker";
+            /** @enum {string} */
+            side: "buy" | "sell";
+            /** Format: int64 */
+            timestamp: number;
+        };
         ApiResponse: {
             data?: unknown;
             error?: string;
@@ -2078,6 +2356,36 @@ export interface components {
             updated_at: string;
             vault_address: string;
             vault_deposit_id: string;
+        };
+        HttpAuthChallengeRequest: {
+            /** @description 0x-prefixed Ethereum address */
+            address: string;
+        };
+        HttpAuthChallengeResponse: {
+            data: {
+                address: string;
+                /** Format: int64 */
+                expires_at_ms: number;
+                message: string;
+                nonce: string;
+            };
+            ok: boolean;
+        };
+        HttpAuthSessionRequest: {
+            address: string;
+            nonce: string;
+            /** @description personal_sign signature over the exact challenge message */
+            signature: string;
+        };
+        HttpAuthSessionResponse: {
+            data: {
+                address: string;
+                /** Format: int64 */
+                expires_at_ms: number;
+                /** @description Opaque bearer token; store in memory only */
+                token: string;
+            };
+            ok: boolean;
         };
         MarketResponse: {
             base: string;

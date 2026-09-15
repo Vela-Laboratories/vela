@@ -8,7 +8,14 @@ import {
   useRef,
   useState,
 } from 'react'
-import { getOrders, listMarkets, type MarketResponse, type Order } from '@/lib/api'
+import {
+  getAccountFills,
+  getOrders,
+  listMarkets,
+  type AccountFill,
+  type MarketResponse,
+  type Order,
+} from '@/lib/api'
 import { getWsClient } from '@/lib/ws'
 import { useAuth } from '@/lib/auth'
 import { Badge } from '@/components/ui/Badge'
@@ -42,10 +49,9 @@ interface PublicTrade {
 
 interface HistState {
   markets: MarketResponse[]
-  allOrders: Order[]
+  historicalFills: FillRecord[]
   liveFills: FillRecord[]
   marketByOrderId: Record<number, string>
-  sideByOrderId: Record<number, 'buy' | 'sell'>
   loadingInitial: boolean
   visiblePage: number
   filterMarket: string
@@ -59,9 +65,8 @@ type HistAction =
   | { type: 'INIT_MARKETS'; markets: MarketResponse[] }
   | {
       type: 'INIT'
-      orders: Order[]
+      fills: FillRecord[]
       marketByOrderId: Record<number, string>
-      sideByOrderId: Record<number, 'buy' | 'sell'>
     }
   | { type: 'SET_LOADING_INITIAL'; loading: boolean }
   | { type: 'PREPEND_LIVE'; fill: FillRecord }
@@ -76,10 +81,9 @@ type HistAction =
 
 const initState: HistState = {
   markets: [],
-  allOrders: [],
+  historicalFills: [],
   liveFills: [],
   marketByOrderId: {},
-  sideByOrderId: {},
   loadingInitial: false,
   visiblePage: 1,
   filterMarket: '',
@@ -104,9 +108,8 @@ function histReducer(state: HistState, action: HistAction): HistState {
     case 'INIT':
       return {
         ...state,
-        allOrders: action.orders,
+        historicalFills: action.fills,
         marketByOrderId: action.marketByOrderId,
-        sideByOrderId: action.sideByOrderId,
         loadingInitial: false,
         visiblePage: 1,
       }
@@ -140,33 +143,28 @@ function histReducer(state: HistState, action: HistAction): HistState {
   }
 }
 
-function orderToFillRecord(o: Order): FillRecord | null {
-  const size = parseFloat(o.filled_quantity)
-  if (isNaN(size) || size <= 0) return null
+function accountFillToRecord(fill: AccountFill): FillRecord {
   return {
-    key: `hist-${o.id}`,
-    ts: o.timestamp,
-    market: o.market,
-    side: o.side,
-    price: o.price,
-    size: o.filled_quantity,
+    key: `hist-${fill.id}`,
+    ts: fill.timestamp,
+    market: fill.market,
+    side: fill.side,
+    price: fill.price,
+    size: fill.quantity,
     fee: '—',
-    role: 'unknown',
+    role: fill.role,
     source: 'historical',
   }
 }
 
 function buildOrderMaps(orders: Order[]): {
   marketByOrderId: Record<number, string>
-  sideByOrderId: Record<number, 'buy' | 'sell'>
 } {
   const marketByOrderId: Record<number, string> = {}
-  const sideByOrderId: Record<number, 'buy' | 'sell'> = {}
   for (const o of orders) {
     marketByOrderId[o.id] = o.market
-    sideByOrderId[o.id] = o.side
   }
-  return { marketByOrderId, sideByOrderId }
+  return { marketByOrderId }
 }
 
 function fmtTs(ts: number): string {
@@ -578,16 +576,16 @@ function PublicFeed({
 }
 
 export default function HistoryPage() {
-  const { address, isConnected, connect, signIn } = useAuth()
+  const { address, isConnected, isAuthenticated, connect, signIn } = useAuth()
   const [state, dispatch] = useReducer(histReducer, initState)
   const wsRef = useRef(getWsClient())
 
   const handleConnect = useCallback(async () => {
-    await connect()
+    const addr = await connect()
     const ws = wsRef.current
     ws.connect()
     try {
-      await signIn(ws)
+      await signIn(ws, addr)
     } catch {
       // wallet connected; WS auth best-effort
     }
@@ -602,25 +600,29 @@ export default function HistoryPage() {
   }, [])
 
   useEffect(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     dispatch({ type: 'SET_LOADING_INITIAL', loading: true })
-    getOrders(address)
-      .then((res) => {
-        const orders = res.ok && res.data ? res.data : []
-        const { marketByOrderId, sideByOrderId } = buildOrderMaps(orders)
-        dispatch({ type: 'INIT', orders, marketByOrderId, sideByOrderId })
+    Promise.all([getOrders(address), getAccountFills(address)])
+      .then(([ordersResponse, fillsResponse]) => {
+        const orders = ordersResponse.ok && ordersResponse.data ? ordersResponse.data : []
+        const fills = fillsResponse.ok && fillsResponse.data
+          ? fillsResponse.data.map(accountFillToRecord)
+          : []
+        const { marketByOrderId } = buildOrderMaps(orders)
+        dispatch({ type: 'INIT', fills, marketByOrderId })
       })
       .catch(() => dispatch({ type: 'SET_LOADING_INITIAL', loading: false }))
-  }, [address])
+  }, [address, isAuthenticated])
+
+  const { marketByOrderId } = state
 
   useEffect(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     const ws = wsRef.current
     ws.connect()
 
     const unsub = ws.onMessage((msg) => {
       if (msg.type === 'fill') {
-        const { marketByOrderId, sideByOrderId } = state
         const isMaker = msg.maker_order_id in marketByOrderId
         const isTaker = msg.taker_order_id in marketByOrderId
 
@@ -653,7 +655,7 @@ export default function HistoryPage() {
     })
 
     return () => unsub()
-  }, [address, state.marketByOrderId, state.sideByOrderId])
+  }, [address, isAuthenticated, marketByOrderId])
 
   useEffect(() => {
     if (!state.publicMarket) return
@@ -684,12 +686,10 @@ export default function HistoryPage() {
   }, [state.publicMarket])
 
   const allFillRecords = useMemo(() => {
-    const historical = state.allOrders
-      .map(orderToFillRecord)
-      .filter((f): f is FillRecord => f !== null)
+    return [...state.liveFills, ...state.historicalFills]
+      .filter((fill, index, fills) => fills.findIndex((item) => item.key === fill.key) === index)
       .sort((a, b) => b.ts - a.ts)
-    return [...state.liveFills, ...historical]
-  }, [state.allOrders, state.liveFills])
+  }, [state.historicalFills, state.liveFills])
 
   const hasMore = useMemo(
     () => allFillRecords.length > state.visiblePage * PAGE_SIZE,
@@ -742,7 +742,7 @@ export default function HistoryPage() {
         </p>
       </div>
 
-      {!isConnected ? (
+      {!isConnected || !isAuthenticated ? (
         <div className="mb-8">
           <ConnectGate onConnect={handleConnect} />
         </div>

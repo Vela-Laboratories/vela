@@ -15,10 +15,10 @@
 // address explicitly to preserve the legacy key for any external tool
 // that reads it — but wagmi is the source of truth.
 //
-// isAuthenticated is deliberately NOT persisted. It tracks the per-WS
-// challenge, and a stale bearer that survives a page reload would
-// silently diverge from the server view. On refresh, the user's account
-// is reconnected by wagmi and `isAuthenticated` starts false.
+// isAuthenticated and the bearer token are deliberately NOT persisted.
+// A stale bearer that survives a page reload would silently diverge from
+// the server view. On refresh, wagmi reconnects the account but the user
+// must establish a fresh, short-lived Vela session.
 // ---------------------------------------------------------------------------
 
 import {
@@ -27,6 +27,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -38,6 +39,12 @@ import {
   useSignMessage,
 } from 'wagmi'
 import type { VelaWsClient } from './ws'
+import {
+  createAuthSession,
+  requestAuthChallenge,
+  revokeAuthSession,
+  setAuthSessionToken,
+} from './api'
 
 interface AuthState {
   address: string | null
@@ -46,14 +53,14 @@ interface AuthState {
 }
 
 export interface AuthContextValue extends AuthState {
-  /** Trigger the wagmi connect flow (uses the first available connector,
-   * typically the injected wallet). Returns the connected address. */
+  /** Connect the wallet if needed, then establish a short-lived Vela
+   * session. Returns the authenticated address. */
   connect: () => Promise<string>
   /** Disconnect via wagmi + clear local state. */
   signOut: () => void
-  /** Run the WS challenge-response flow. Signs via wagmi's
-   * useSignMessage; no direct window.ethereum access. */
-  signIn: (wsClient: VelaWsClient) => Promise<void>
+  /** Establish a short-lived HTTP session and use it to authenticate the
+   * private WebSocket. Signs once via wagmi's useSignMessage. */
+  signIn: (wsClient: VelaWsClient, addressOverride?: string) => Promise<void>
 }
 
 const PERSISTED_ADDRESS_KEY = 'vela.auth.address'
@@ -67,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { signMessageAsync } = useSignMessage()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const sessionTokenRef = useRef<string | null>(null)
+  const sessionAddressRef = useRef<string | null>(null)
 
   const address = useMemo(
     () => (wagmiAddress ? wagmiAddress.toLowerCase() : null),
@@ -90,15 +99,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [address])
 
-  // If the wallet disconnects mid-session, the WS-authenticated flag has
-  // to drop too — the server-side session is tied to the address.
+  // Any account transition invalidates the in-memory bearer. Sessions are
+  // account-bound and are deliberately re-established after wallet changes.
   useEffect(() => {
-    if (!wagmiConnected) {
+    if (
+      !wagmiConnected
+      || !address
+      || (sessionAddressRef.current !== null && sessionAddressRef.current !== address)
+    ) {
+      if (sessionTokenRef.current) void revokeAuthSession()
+      sessionTokenRef.current = null
+      sessionAddressRef.current = null
+      setAuthSessionToken(null)
       setIsAuthenticated(false)
     }
-  }, [wagmiConnected])
+  }, [address, wagmiConnected])
+
+  useEffect(() => {
+    const expireSession = () => {
+      sessionTokenRef.current = null
+      sessionAddressRef.current = null
+      setAuthSessionToken(null)
+      setIsAuthenticated(false)
+    }
+    window.addEventListener('vela:auth-expired', expireSession)
+    return () => window.removeEventListener('vela:auth-expired', expireSession)
+  }, [])
+
+  const establishHttpSession = useCallback(
+    async (sessionAddress: string): Promise<string> => {
+      const normalizedAddress = sessionAddress.toLowerCase()
+      const challenge = await requestAuthChallenge(normalizedAddress)
+      if (!challenge.ok || !challenge.data) {
+        throw new Error(challenge.error ?? 'Unable to request an authentication challenge.')
+      }
+      const signature = await signMessageAsync({ message: challenge.data.message })
+      const session = await createAuthSession(
+        normalizedAddress,
+        challenge.data.nonce,
+        signature,
+      )
+      if (!session.ok || !session.data) {
+        throw new Error(session.error ?? 'Unable to create an authenticated session.')
+      }
+      sessionTokenRef.current = session.data.token
+      sessionAddressRef.current = normalizedAddress
+      setAuthSessionToken(session.data.token)
+      setIsAuthenticated(true)
+      return session.data.token
+    },
+    [signMessageAsync],
+  )
 
   const connect = useCallback(async (): Promise<string> => {
+    if (wagmiConnected && address) {
+      await establishHttpSession(address)
+      return address
+    }
     const connector = connectors[0]
     if (!connector) {
       throw new Error(
@@ -108,52 +165,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await connectAsync({ connector })
     const next = result.accounts[0]
     if (!next) throw new Error('Wallet returned no accounts.')
-    return next.toLowerCase()
-  }, [connectAsync, connectors])
+    const normalizedAddress = next.toLowerCase()
+    await establishHttpSession(normalizedAddress)
+    return normalizedAddress
+  }, [address, connectAsync, connectors, establishHttpSession, wagmiConnected])
 
   const signOut = useCallback(() => {
+    void revokeAuthSession()
+    sessionTokenRef.current = null
+    sessionAddressRef.current = null
+    setAuthSessionToken(null)
     disconnect()
     setIsAuthenticated(false)
   }, [disconnect])
 
   const signIn = useCallback(
-    (wsClient: VelaWsClient): Promise<void> => {
-      if (!address) {
-        return Promise.reject(new Error('Wallet not connected.'))
+    async (wsClient: VelaWsClient, addressOverride?: string): Promise<void> => {
+      const sessionAddress = (addressOverride ?? address)?.toLowerCase()
+      if (!sessionAddress) {
+        throw new Error('Wallet not connected.')
       }
+      const token = sessionAddressRef.current === sessionAddress
+        ? sessionTokenRef.current ?? await establishHttpSession(sessionAddress)
+        : await establishHttpSession(sessionAddress)
+
       return new Promise<void>((resolve, reject) => {
         let settled = false
-        const unsubscribe = wsClient.onMessage(async (msg) => {
+        const timeout = setTimeout(() => {
           if (settled) return
-          if (msg.type === 'challenge') {
-            try {
-              const message = `vela:auth:${msg.nonce}`
-              const signature = await signMessageAsync({ message })
-              wsClient.authChallenge(address, signature, msg.nonce)
-            } catch (err) {
-              settled = true
-              unsubscribe()
-              reject(err)
-            }
-            return
-          }
-          if (msg.type === 'authenticated') {
-            settled = true
-            unsubscribe()
+          settled = true
+          unsubscribeMessage()
+          unsubscribeStatus()
+          reject(new Error('Private stream authentication timed out.'))
+        }, 10_000)
+        const finish = (error?: Error) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          unsubscribeMessage()
+          unsubscribeStatus()
+          if (error) {
+            reject(error)
+          } else {
             setIsAuthenticated(true)
             resolve()
+          }
+        }
+        const authenticateSocket = () => {
+          wsClient.authSession(sessionAddress, token)
+        }
+        const unsubscribeMessage = wsClient.onMessage((msg) => {
+          if (settled) return
+          if (msg.type === 'authenticated') {
+            finish()
             return
           }
           if (msg.type === 'error') {
-            settled = true
-            unsubscribe()
-            reject(new Error(msg.message))
+            finish(new Error(msg.message))
           }
         })
-        wsClient.requestChallenge()
+        const unsubscribeStatus = wsClient.onStatus((status) => {
+          if (status === 'connected') authenticateSocket()
+        })
+        if (wsClient.status === 'connected') {
+          authenticateSocket()
+        } else {
+          wsClient.connect()
+        }
       })
     },
-    [address, signMessageAsync],
+    [address, establishHttpSession],
   )
 
   const value: AuthContextValue = {

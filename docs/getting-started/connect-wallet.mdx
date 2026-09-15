@@ -45,9 +45,7 @@ Hardware wallets (Ledger, Trezor) connected through MetaMask also work. Signing 
     After connecting, the Vela server issues a one-time challenge nonce. Your wallet will prompt you to sign a message that looks like:
 
     ```
-    Vela Exchange Authentication
-    Nonce: 7f3a91c2e8d40b56
-    Timestamp: 2026-04-15T12:00:00Z
+    vela:http-auth:v1:production:0xyouraddress:7f3a91c2e8d40b56
     ```
 
     This is an off-chain signature — no gas is spent. Click **Sign** in your wallet.
@@ -61,7 +59,7 @@ Hardware wallets (Ledger, Trezor) connected through MetaMask also work. Signing 
 
 ## What the Signature Proves
 
-When you sign the challenge nonce, you prove that you control the private key corresponding to your Ethereum address. This is the same mechanism used by Ethereum itself — `personal_sign` prepends a standard prefix (`\x19Ethereum Signed Message:\n`) to the message before hashing, preventing replay attacks across different applications.
+When you sign the exact versioned challenge message, you prove that you control the private key corresponding to your Ethereum address. The message binds the Vela HTTP-auth domain, protocol version, address, and single-use nonce. `personal_sign` also prepends the standard Ethereum signed-message prefix before hashing.
 
 **Your private key is never shared.** The signature is a one-way proof. Vela can verify your address from the signature, but cannot recover your private key from it.
 

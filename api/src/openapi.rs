@@ -28,7 +28,7 @@ pub fn openapi_spec() -> serde_json::Value {
         "openapi": "3.1.0",
         "info": {
             "title": "Vela Exchange API",
-            "version": "0.3.0",
+            "version": "0.4.0",
             "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/Monolith-Investments-LP/vela for source and https://vela.monolithsystematic.com for live beta.",
             "contact": { "email": "asomu@ucsd.edu" }
         },
@@ -51,6 +51,38 @@ pub fn openapi_spec() -> serde_json::Value {
             },
             "/metrics": {
                 "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text 0.0.4" } } }
+            },
+            "/auth/challenge": {
+                "post": {
+                    "summary": "Issue a single-use wallet authentication challenge",
+                    "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HttpAuthChallengeRequest" } } } },
+                    "responses": {
+                        "200": { "description": "Versioned message to sign", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HttpAuthChallengeResponse" } } } },
+                        "400": { "description": "Invalid address" },
+                        "429": { "description": "Challenge capacity reached" }
+                    }
+                }
+            },
+            "/auth/session": {
+                "post": {
+                    "summary": "Exchange a wallet signature for a short-lived account session",
+                    "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HttpAuthSessionRequest" } } } },
+                    "responses": {
+                        "200": { "description": "Opaque bearer session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HttpAuthSessionResponse" } } } },
+                        "401": { "description": "Invalid or replayed proof" },
+                        "503": { "description": "Session capacity reached" }
+                    }
+                }
+            },
+            "/auth/session/revoke": {
+                "post": {
+                    "summary": "Revoke the current account session",
+                    "security": [{ "BearerAuth": [] }],
+                    "responses": {
+                        "200": { "description": "Session revoked" },
+                        "401": { "description": "Invalid or expired session" }
+                    }
+                }
             },
             "/markets": {
                 "get": {
@@ -140,6 +172,7 @@ pub fn openapi_spec() -> serde_json::Value {
             "/account/{address}/balances": {
                 "get": {
                     "summary": "Balances by asset",
+                    "security": [{ "BearerAuth": [] }],
                     "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
                     "responses": {
                         "200": {
@@ -158,6 +191,7 @@ pub fn openapi_spec() -> serde_json::Value {
             "/account/{address}/deposits": {
                 "get": {
                     "summary": "Authoritative verified-deposit status and chain evidence",
+                    "security": [{ "BearerAuth": [] }],
                     "parameters": [
                         { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
                         { "name": "transaction_hash", "in": "query", "required": false, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" } },
@@ -182,6 +216,7 @@ pub fn openapi_spec() -> serde_json::Value {
             "/account/{address}/withdrawals": {
                 "get": {
                     "summary": "Authoritative customer withdrawal reservations and status",
+                    "security": [{ "BearerAuth": [] }],
                     "parameters": [
                         { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
                         { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 } }
@@ -338,13 +373,52 @@ pub fn openapi_spec() -> serde_json::Value {
             "/account/{address}/orders": {
                 "get": {
                     "summary": "Open orders for an account",
+                    "security": [{ "BearerAuth": [] }],
                     "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
                     "responses": { "200": { "description": "Open orders" } }
+                }
+            },
+            "/account/{address}/orders/by-client-id/{client_id}": {
+                "get": {
+                    "summary": "Look up an account order by client order ID",
+                    "security": [{ "BearerAuth": [] }],
+                    "parameters": [
+                        { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
+                        { "name": "client_id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    ],
+                    "responses": {
+                        "200": { "description": "Order owned by the authenticated account" },
+                        "401": { "description": "Missing or invalid session" },
+                        "403": { "description": "Session belongs to another account" },
+                        "404": { "description": "Order not found" }
+                    }
+                }
+            },
+            "/account/{address}/fills": {
+                "get": {
+                    "summary": "Private fill history for an account",
+                    "security": [{ "BearerAuth": [] }],
+                    "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
+                    "responses": {
+                        "200": {
+                            "description": "At most 500 newest account fills",
+                            "content": { "application/json": { "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ok": { "type": "boolean" },
+                                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/AccountFillResponse" } }
+                                }
+                            } } }
+                        },
+                        "401": { "description": "Missing or invalid session" },
+                        "403": { "description": "Session belongs to another account" }
+                    }
                 }
             },
             "/portfolio/{address}": {
                 "get": {
                     "summary": "Realized + unrealized PnL, cost basis, per market",
+                    "security": [{ "BearerAuth": [] }],
                     "parameters": [
                         { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
                         { "name": "method", "in": "query", "required": false, "schema": { "type": "string", "enum": ["fifo", "hifo"] } }
@@ -366,6 +440,7 @@ pub fn openapi_spec() -> serde_json::Value {
             "/portfolio/{address}/csv": {
                 "get": {
                     "summary": "Full fill history as CSV (Koinly/CoinTracker)",
+                    "security": [{ "BearerAuth": [] }],
                     "responses": { "200": { "description": "text/csv", "content": { "text/csv": {} } } }
                 }
             },
@@ -489,6 +564,14 @@ pub fn openapi_spec() -> serde_json::Value {
             }
         },
         "components": {
+            "securitySchemes": {
+                "BearerAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "opaque-session-token",
+                    "description": "Short-lived account-bound session returned by POST /auth/session"
+                }
+            },
             "schemas": {
                 "ApiResponse": {
                     "type": "object",
@@ -497,6 +580,55 @@ pub fn openapi_spec() -> serde_json::Value {
                         "ok": { "type": "boolean" },
                         "data": {},
                         "error": { "type": "string" }
+                    }
+                },
+                "HttpAuthChallengeRequest": {
+                    "type": "object",
+                    "required": ["address"],
+                    "properties": {
+                        "address": { "type": "string", "description": "0x-prefixed Ethereum address" }
+                    }
+                },
+                "HttpAuthChallengeResponse": {
+                    "type": "object",
+                    "required": ["ok", "data"],
+                    "properties": {
+                        "ok": { "type": "boolean" },
+                        "data": {
+                            "type": "object",
+                            "required": ["address", "nonce", "message", "expires_at_ms"],
+                            "properties": {
+                                "address": { "type": "string" },
+                                "nonce": { "type": "string" },
+                                "message": { "type": "string" },
+                                "expires_at_ms": { "type": "integer", "format": "int64" }
+                            }
+                        }
+                    }
+                },
+                "HttpAuthSessionRequest": {
+                    "type": "object",
+                    "required": ["address", "nonce", "signature"],
+                    "properties": {
+                        "address": { "type": "string" },
+                        "nonce": { "type": "string" },
+                        "signature": { "type": "string", "description": "personal_sign signature over the exact challenge message" }
+                    }
+                },
+                "HttpAuthSessionResponse": {
+                    "type": "object",
+                    "required": ["ok", "data"],
+                    "properties": {
+                        "ok": { "type": "boolean" },
+                        "data": {
+                            "type": "object",
+                            "required": ["address", "token", "expires_at_ms"],
+                            "properties": {
+                                "address": { "type": "string" },
+                                "token": { "type": "string", "description": "Opaque bearer token; store in memory only" },
+                                "expires_at_ms": { "type": "integer", "format": "int64" }
+                            }
+                        }
                     }
                 },
                 "PostOrderBody": {
@@ -560,6 +692,21 @@ pub fn openapi_spec() -> serde_json::Value {
                         "available": { "type": "string" },
                         "locked": { "type": "string" },
                         "total": { "type": "string" }
+                    }
+                },
+                "AccountFillResponse": {
+                    "type": "object",
+                    "required": ["id", "market", "price", "quantity", "order_id", "counterparty_order_id", "role", "side", "timestamp"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "market": { "type": "string" },
+                        "price": { "type": "string" },
+                        "quantity": { "type": "string" },
+                        "order_id": { "type": "integer", "format": "int64" },
+                        "counterparty_order_id": { "type": "integer", "format": "int64" },
+                        "role": { "type": "string", "enum": ["maker", "taker"] },
+                        "side": { "type": "string", "enum": ["buy", "sell"] },
+                        "timestamp": { "type": "integer", "format": "int64" }
                     }
                 },
                 "DepositStatusResponse": {

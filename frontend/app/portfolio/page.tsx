@@ -54,7 +54,7 @@ function downloadBlob(name: string, content: string, mime: string) {
 }
 
 export default function PortfolioPage() {
-  const { address, isConnected, connect } = useAuth()
+  const { address, isConnected, isAuthenticated, connect } = useAuth()
   const [method, setMethod] = useState<CostBasisMethod>('FIFO')
   const [data, setData] = useState<PortfolioResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -62,7 +62,7 @@ export default function PortfolioPage() {
   const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     setLoading(true)
     setError(null)
     const res = await getPortfolio(address, method)
@@ -72,7 +72,7 @@ export default function PortfolioPage() {
       setError(res.error ?? 'Failed to load portfolio')
     }
     setLoading(false)
-  }, [address, method])
+  }, [address, isAuthenticated, method])
 
   useEffect(() => {
     load()
@@ -86,7 +86,7 @@ export default function PortfolioPage() {
   }, [data])
 
   const handleExport = useCallback(async () => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     setExporting(true)
     const res = await getPortfolioCsv(address, method)
     setExporting(false)
@@ -96,22 +96,24 @@ export default function PortfolioPage() {
     } else {
       setError(res.error ?? 'Failed to export CSV')
     }
-  }, [address, method])
+  }, [address, isAuthenticated, method])
 
-  if (!isConnected || !address) {
+  if (!isConnected || !isAuthenticated || !address) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-6">
         <Card className="max-w-md w-full p-8 text-center flex flex-col gap-6">
           <div>
             <div className="text-brown uppercase tracking-[0.18em] text-xs mb-2">Portfolio</div>
-            <h1 className="text-ink text-2xl font-serif">Connect your wallet</h1>
+            <h1 className="text-ink text-2xl font-serif">
+              {isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}
+            </h1>
             <p className="text-brown text-sm mt-3">
               PnL, cost basis, and tax-lot exports are gated to the connected
               wallet. Nothing is stored server-side beyond your fills.
             </p>
           </div>
           <Button onClick={() => connect().catch(() => setError('Wallet connect rejected.'))}>
-            Connect wallet
+            {isConnected ? 'Authenticate wallet' : 'Connect wallet'}
           </Button>
           <Link href="/" className="text-brown text-xs uppercase tracking-[0.18em]">
             Back to home

@@ -302,20 +302,20 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Authentication and customer privacy
 
-- [ ] Require authentication for customer balance endpoints.
-- [ ] Require authentication for open-order endpoints.
-- [ ] Require authentication for portfolio endpoints.
-- [ ] Require authentication for CSV and tax exports.
-- [ ] Require authentication for private fill history.
-- [ ] Verify that a wallet can only access its own records.
-- [ ] Add authorization tests for every customer-data endpoint.
-- [ ] Reconcile HTTP authentication with WebSocket authentication.
+- [x] Require authentication for customer balance endpoints.
+- [x] Require authentication for open-order endpoints.
+- [x] Require authentication for portfolio endpoints.
+- [x] Require authentication for CSV and tax exports.
+- [x] Require authentication for private fill history.
+- [x] Verify that a wallet can only access its own private HTTP records.
+- [x] Add authorization tests for every customer-data endpoint.
+- [x] Reconcile HTTP authentication with WebSocket authentication by reusing the short-lived account session.
 - [ ] Align frontend WebSocket event envelopes with the backend schema.
 - [ ] Make WebSocket reconnect and replacement-socket transitions race-safe.
-- [ ] Use server-issued, single-use challenges.
-- [ ] Expire authentication challenges.
-- [ ] Rate-limit challenge issuance.
-- [ ] Prevent replay across domains and environments.
+- [x] Use server-issued, single-use challenges.
+- [x] Expire authentication challenges.
+- [x] Rate-limit challenge issuance per account; add ingress-level IP and device abuse controls before production.
+- [x] Prevent challenge replay across protocol domains and runtime environments.
 - [ ] Implement session keys so users do not approve every order manually.
 - [ ] Add session-key creation UI.
 - [ ] Add session-key revocation UI.
@@ -327,8 +327,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Support WalletConnect and mobile wallets.
 - [ ] Test MetaMask, Rabby, Coinbase Wallet, Brave, and WalletConnect.
 - [ ] Remove direct `window.ethereum` usage where wagmi or viem can provide typed flows.
-- [ ] Avoid storing sensitive authentication material in local storage.
-- [ ] Define session timeout and reauthentication behavior.
+- [x] Avoid storing sensitive authentication material in local storage.
+- [x] Define session timeout and reauthentication behavior: 30-minute in-memory sessions, explicit sign-out revocation, and a fresh signature after refresh or expiry.
+- [ ] Move account challenge and session state into a shared, revocation-capable store before running multiple API replicas.
 
 ## Compliance program
 

@@ -37,6 +37,7 @@ pub mod fix_adapter;
 pub mod fix_gateway;
 pub mod handler;
 pub mod historical;
+pub mod http_auth;
 pub mod leadership;
 pub mod ledger_coordinator;
 pub mod listings;
@@ -136,6 +137,7 @@ pub struct AppState {
     pub engine_leadership: Option<Arc<leadership::EngineLeadershipGuard>>,
     pub recovery_replica: Option<Arc<recovery_replication::RecoveryReplica>>,
     pub operational_health: Arc<operational_health::OperationalHealth>,
+    pub http_auth: Arc<http_auth::HttpAuth>,
     // TEOB: threshold encrypted order book
     pub pending_encrypted: PendingEncryptedOrders,
     pub threshold_decryptor: Arc<Mutex<ThresholdDecryptor>>,
@@ -465,6 +467,7 @@ impl AppState {
             engine_leadership: leadership,
             recovery_replica,
             operational_health: operational_health::OperationalHealth::from_env(),
+            http_auth: http_auth::HttpAuth::new(runtime_mode),
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,

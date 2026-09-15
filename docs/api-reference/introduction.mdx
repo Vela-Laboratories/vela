@@ -15,7 +15,7 @@ https://vela-engine.fly.dev
 |----------|-----------|
 | Markets | `GET /markets`, `GET /orderbook/:id`, `GET /ohlcv/:id` |
 | Orders | `POST /orders`, `POST /orders/cancel` |
-| Account | `GET /account/:address/balances`, `GET /account/:address/orders` |
+| Account | `GET /account/:address/balances`, `GET /account/:address/orders`, `GET /account/:address/fills` |
 | Fees | `GET /fees`, `GET /markets/:id/fees` |
 | Referrals | `GET /referral/:address`, `POST /referral/register` |
 | Leaderboard | `GET /leaderboard` |
@@ -24,7 +24,10 @@ https://vela-engine.fly.dev
 
 ## Authentication
 
-Order mutations (place, cancel) require an Ethereum wallet signature using `personal_sign` (EIP-191). WebSocket private feeds use a separate timestamp-based auth signature.
+Customer-data reads require a short-lived bearer session created from a server-issued,
+single-use wallet challenge. The same session authenticates WebSocket private feeds,
+so the browser signs once per session. Order mutations still carry their own exact
+Ethereum wallet signature using `personal_sign` (EIP-191).
 
 See [Authentication](/api-reference/authentication) for implementation examples.
 

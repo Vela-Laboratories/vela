@@ -37,6 +37,33 @@ use types::{
     UserId, UserMetadata, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 
+#[derive(serde::Deserialize)]
+struct HttpAuthChallengeRequest {
+    address: String,
+}
+
+#[derive(serde::Serialize)]
+struct HttpAuthChallengeData {
+    address: String,
+    nonce: String,
+    message: String,
+    expires_at_ms: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct HttpAuthSessionRequest {
+    address: String,
+    nonce: String,
+    signature: String,
+}
+
+#[derive(serde::Serialize)]
+struct HttpAuthSessionData {
+    address: String,
+    token: String,
+    expires_at_ms: u64,
+}
+
 fn reject_unjournaled_financial_route(state: &AppState, operation: &str) -> Option<Response> {
     state.ledger.as_ref().map(|_| {
         tracing::warn!(operation, "rejected unjournaled financial route");
@@ -222,6 +249,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/metrics", get(metrics_handler))
         .route("/openapi.json", get(crate::openapi::openapi_handler))
         .route("/docs", get(crate::openapi::docs_handler))
+        .route("/auth/challenge", post(http_auth_challenge))
+        .route("/auth/session", post(http_auth_session))
+        .route("/auth/session/revoke", post(http_auth_revoke))
         .route("/mcp", post(crate::mcp::handle_rpc))
         .route(
             "/agent-stream/schema.json",
@@ -239,6 +269,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/account/:address/deposits", get(get_deposits))
         .route("/account/:address/withdrawals", get(get_withdrawals))
         .route("/account/:address/orders", get(get_open_orders))
+        .route("/account/:address/fills", get(get_account_fills))
         .route(
             "/account/:address/orders/by-client-id/:client_id",
             get(get_order_by_client_id),
@@ -456,6 +487,136 @@ async fn mutation_storage_fence(
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn http_auth_challenge(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<HttpAuthChallengeRequest>,
+) -> Response {
+    let user = match UserId::from_hex(&body.address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    match state.http_auth.challenge(&user) {
+        Ok((nonce, message, expires_at_ms)) => (
+            StatusCode::OK,
+            Json(ApiResponse::ok(HttpAuthChallengeData {
+                address: user.to_hex(),
+                nonce,
+                message,
+                expires_at_ms,
+            })),
+        )
+            .into_response(),
+        Err(crate::http_auth::AuthError::RateLimited) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse::<()>::err(
+                "authentication challenge rate limit exceeded",
+            )),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "authentication challenge capacity reached",
+            )),
+        )
+            .into_response(),
+    }
+}
+
+async fn http_auth_session(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<HttpAuthSessionRequest>,
+) -> Response {
+    let user = match UserId::from_hex(&body.address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    match state
+        .http_auth
+        .create_session(&user, &body.nonce, &body.signature)
+        .await
+    {
+        Ok((token, expires_at_ms)) => (
+            StatusCode::OK,
+            Json(ApiResponse::ok(HttpAuthSessionData {
+                address: user.to_hex(),
+                token,
+                expires_at_ms,
+            })),
+        )
+            .into_response(),
+        Err(crate::http_auth::AuthError::Capacity) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err(
+                "authentication session capacity reached",
+            )),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse::<()>::err("invalid authentication proof")),
+        )
+            .into_response(),
+    }
+}
+
+async fn http_auth_revoke(headers: HeaderMap, State(state): State<Arc<AppState>>) -> Response {
+    let authorization = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    match state.http_auth.revoke(authorization) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ApiResponse::ok(serde_json::json!({
+                "revoked": true
+            }))),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse::<()>::err("invalid authentication session")),
+        )
+            .into_response(),
+    }
+}
+
+fn require_account_auth(headers: &HeaderMap, state: &AppState, user: &UserId) -> Option<Response> {
+    let authorization = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    match state.http_auth.authorize(authorization, user) {
+        Ok(()) => None,
+        Err(crate::http_auth::AuthorizationError::WrongAccount) => Some(
+            (
+                StatusCode::FORBIDDEN,
+                Json(ApiResponse::<()>::err(
+                    "session does not authorize this account",
+                )),
+            )
+                .into_response(),
+        ),
+        Err(_) => Some(
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<()>::err("authentication required")),
+            )
+                .into_response(),
+        ),
+    }
 }
 
 async fn readiness(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -1048,6 +1209,7 @@ async fn get_book(
 
 async fn get_balances(
     Path(address): Path<String>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&address) {
@@ -1060,6 +1222,9 @@ async fn get_balances(
                 .into_response()
         }
     };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
     let raw_balances = if let Some(ledger) = state.ledger.as_ref() {
         match crate::ledger_coordinator::load_customer_balances(ledger, &user).await {
             Ok(balances) => balances,
@@ -1101,6 +1266,7 @@ struct DepositStatusQuery {
 async fn get_deposits(
     Path(address): Path<String>,
     Query(query): Query<DepositStatusQuery>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&address) {
@@ -1113,6 +1279,9 @@ async fn get_deposits(
                 .into_response()
         }
     };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
     let transaction_hash = query.transaction_hash.as_deref();
     if transaction_hash.is_some_and(|hash| !is_hex_hash(hash)) {
         return (
@@ -1234,6 +1403,7 @@ fn format_ledger_amount(amount: &BigDecimal, decimals: i16) -> Result<String, St
 
 async fn get_open_orders(
     Path(address): Path<String>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&address) {
@@ -1246,6 +1416,9 @@ async fn get_open_orders(
                 .into_response()
         }
     };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
     let open_order_ids = {
         let us = state.shards.user_state.read().await;
         us.metadata
@@ -1279,8 +1452,79 @@ async fn get_open_orders(
     (StatusCode::OK, Json(ApiResponse::ok(orders))).into_response()
 }
 
+#[derive(serde::Serialize)]
+struct AccountFillResponse {
+    id: String,
+    market: String,
+    price: String,
+    quantity: String,
+    order_id: u64,
+    counterparty_order_id: u64,
+    role: &'static str,
+    side: &'static str,
+    timestamp: u64,
+}
+
+async fn get_account_fills(
+    Path(address): Path<String>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
+
+    let address = user.to_hex().to_ascii_lowercase();
+    let fills = state.fills.lock().await;
+    let mut result: Vec<AccountFillResponse> = fills
+        .iter()
+        .filter_map(|fill| {
+            let is_maker = fill.maker_address.to_ascii_lowercase() == address;
+            let is_taker = fill.taker_address.to_ascii_lowercase() == address;
+            if !is_maker && !is_taker {
+                return None;
+            }
+            let taker_buys = matches!(fill.side.to_ascii_lowercase().as_str(), "bid" | "buy");
+            let buys = if is_maker { !taker_buys } else { taker_buys };
+            Some(AccountFillResponse {
+                id: fill.id.clone(),
+                market: fill.market_id.clone(),
+                price: crate::types::format_amount(fill.price, PRICE_DECIMALS),
+                quantity: crate::types::format_amount(fill.quantity, QUANTITY_DECIMALS),
+                order_id: if is_maker {
+                    fill.maker_order_id
+                } else {
+                    fill.taker_order_id
+                },
+                counterparty_order_id: if is_maker {
+                    fill.taker_order_id
+                } else {
+                    fill.maker_order_id
+                },
+                role: if is_maker { "maker" } else { "taker" },
+                side: if buys { "buy" } else { "sell" },
+                timestamp: fill.timestamp,
+            })
+        })
+        .collect();
+    result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    result.truncate(500);
+    (StatusCode::OK, Json(ApiResponse::ok(result))).into_response()
+}
+
 async fn get_order_by_client_id(
     Path((address, client_id)): Path<(String, String)>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&address) {
@@ -1293,6 +1537,9 @@ async fn get_order_by_client_id(
                 .into_response()
         }
     };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
 
     let mut found_order = None;
     'outer: for shard_arc in state.shards.shards.values() {
@@ -2348,6 +2595,7 @@ struct WithdrawalStatusQuery {
 async fn get_withdrawals(
     Path(address): Path<String>,
     Query(query): Query<WithdrawalStatusQuery>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&address) {
@@ -2360,6 +2608,9 @@ async fn get_withdrawals(
                 .into_response()
         }
     };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
     let limit = query.limit.unwrap_or(25);
     if !(1..=100).contains(&limit) {
         return (
@@ -7112,9 +7363,23 @@ struct PortfolioQuery {
 async fn get_portfolio_handler(
     Path(address): Path<String>,
     Query(q): Query<PortfolioQuery>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let addr = address.to_ascii_lowercase();
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
+    let addr = user.to_hex().to_ascii_lowercase();
     let method = CostBasisMethod::parse(q.method.as_deref());
 
     let marks = mark_prices(&state).await;
@@ -7183,9 +7448,23 @@ async fn get_portfolio_handler(
 
 async fn get_portfolio_csv_handler(
     Path(address): Path<String>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let addr = address.to_ascii_lowercase();
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
+    let addr = user.to_hex().to_ascii_lowercase();
     let fills = state.fills.lock().await;
 
     let mut out = String::from(

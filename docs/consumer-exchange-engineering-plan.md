@@ -308,7 +308,7 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M7 tasks
 
-- [ ] Implement authenticated HTTP access to balances, orders, fills, portfolio data, and exports.
+- [x] Implement authenticated HTTP access to balances, orders, fills, deposits, withdrawals, portfolio data, and exports with account-bound short-lived bearer sessions.
 - [ ] Complete session-key creation and revocation.
 - [ ] Support scoped, expiring session permissions.
 - [x] Complete ETH and USDC deposit status interfaces; both assets share the fail-closed Base configuration and ledger-backed activity view, while submission remains disabled until the compatible vault is deployed and configured.
@@ -324,7 +324,7 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M7 acceptance criteria
 
-- [ ] A wallet can access only its own private records.
+- [x] A wallet can access only its own private HTTP records; shared multi-replica session storage and production ingress controls remain launch gates.
 - [ ] A consumer can complete deposit, trade, and withdrawal without an unexplained manual step.
 - [ ] Every financial state shown in the UI comes from an authoritative backend state.
 - [ ] Mobile and supported wallet flows pass automated and manual verification.
@@ -687,6 +687,15 @@ Work should begin in this order. Each item should land as a small, independently
     - Emit provider-neutral JSON build evidence containing the Git commit, pinned compiler/EVM/optimizer settings, creation-bytecode hash, and runtime-template hash, verify the metadata generator in CI, and print the immutable-specific final on-chain code hash during deployment.
     - Extend unit and invariant coverage for unlisted assets, fee-on-transfer rejection, disabled-asset emergency exit, replay/domain separation, conservation, and role controls.
     - Add an opt-in mainnet-fork harness against canonical USDC. It is skipped without `MAINNET_RPC_URL`, so a recorded hosted fork run, deployed bytecode verification, and external audit remain launch gates.
+39. [x] **EX-039: Wallet-authenticated private HTTP and WebSocket session boundary**
+    - Issue server-generated, single-use, five-minute wallet challenges with an explicit protocol version, runtime-environment scope, account binding, and per-account issuance limit.
+    - Exchange a valid EIP-191 signature for a random 256-bit opaque bearer token, store only its SHA-256 digest, bind it to one account, expire it after 30 minutes, and support explicit revocation.
+    - Require the account session on balances, orders, fills, deposits, withdrawals, portfolio data, and CSV exports; return `401` for missing or invalid sessions and `403` for cross-account access.
+    - Add a redacted account-fill endpoint that returns only the authenticated wallet's maker/taker records without counterparty wallet addresses, and drive initial trade history from it.
+    - Reuse the HTTP session for private WebSocket authentication so the browser signs once, while retaining the existing per-socket challenge flow for compatible API clients.
+    - Keep session tokens in frontend memory rather than local storage, revoke on sign-out, and gate every private screen and account-data poll on successful authentication.
+    - Verify challenge replay rejection, issuance limiting, cross-account denial across every customer-data route, revocation, redacted private fill history, and HTTP-session reuse over WebSocket.
+    - Sessions are currently process-local. A shared, revocation-capable store, ingress-level abuse controls, browser-wallet compatibility runs, and production key/session incident procedures remain launch gates before horizontal production scaling.
 
 ## Parallel nonengineering work
 

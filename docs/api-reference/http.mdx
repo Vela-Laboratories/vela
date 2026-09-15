@@ -23,6 +23,10 @@ Rate limit exceeded returns HTTP 429 with:
 
 ## Endpoints
 
+Routes containing customer data require `Authorization: Bearer <token>`. Create a
+session with `POST /auth/challenge` followed by `POST /auth/session`; see
+[Authentication](/api-reference/authentication).
+
 ### GET /markets
 Returns all active markets with current best bid/ask.
 
@@ -154,7 +158,7 @@ Request an operator signature for an on-chain ETH withdrawal.
 ```
 
 ### GET /account/:address/balances
-Returns all balances for a wallet address.
+Returns all balances for the authenticated wallet address.
 
 ```json
 {

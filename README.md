@@ -200,9 +200,17 @@ Base URL: `https://vela-engine.fly.dev`
 
 ### Account
 
+Customer-data reads require `Authorization: Bearer <token>`. Obtain the short-lived,
+account-bound token by signing the exact message returned by `POST /auth/challenge`
+and exchanging it at `POST /auth/session`. Challenges are single-use and expire
+after five minutes; sessions expire after 30 minutes and can be revoked at
+`POST /auth/session/revoke`.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/account/:address/balances` | User balances by asset |
+| `GET` | `/account/:address/orders` | Open orders owned by the authenticated wallet |
+| `GET` | `/account/:address/fills` | Private fill history owned by the authenticated wallet |
 | `GET` | `/account/:address/deposits` | Authoritative verified-deposit state and chain evidence |
 | `GET` | `/account/:address/withdrawals` | Authoritative withdrawal reservation and lifecycle state |
 | `POST` | `/deposit` | Create an unverified demo credit (`testnet-demo` only) |

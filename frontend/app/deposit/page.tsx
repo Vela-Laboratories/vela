@@ -68,7 +68,7 @@ function AssetBadge({ asset }: { asset: string }) {
 }
 
 function ConnectGate() {
-  const { connect } = useAuth()
+  const { connect, isConnected } = useAuth()
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,8 +105,12 @@ function ConnectGate() {
             />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-ink mb-2">Connect your wallet</h2>
-        <p className="text-sm text-brown mb-6">Connect your wallet to deposit funds.</p>
+        <h2 className="text-xl font-semibold text-ink mb-2">
+          {isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}
+        </h2>
+        <p className="text-sm text-brown mb-6">
+          Sign a one-time challenge to access your private deposit data.
+        </p>
         {error && (
           <p className="text-xs text-red-600 mb-4">{error}</p>
         )}
@@ -118,7 +122,7 @@ function ConnectGate() {
           style={{ borderRadius: 0 }}
         >
           {connecting && <Spinner size="xs" className="text-ink" />}
-          Connect Wallet
+          {isConnected ? 'Authenticate Wallet' : 'Connect Wallet'}
         </button>
       </div>
     </div>
@@ -134,7 +138,7 @@ interface SuccessState {
 }
 
 export default function DepositPage() {
-  const { address, isConnected } = useAuth()
+  const { address, isConnected, isAuthenticated } = useAuth()
 
   const [selectedAsset, setSelectedAsset] = useState('USDC')
   const [amount, setAmount] = useState('')
@@ -149,14 +153,14 @@ export default function DepositPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     getBalances(address).then((res) => {
       if (res.ok && res.data) setBalances(res.data)
     })
-  }, [address])
+  }, [address, isAuthenticated])
 
   useEffect(() => {
-    if (!address || !VERIFIED_DEPOSIT_CONFIG) return
+    if (!address || !isAuthenticated || !VERIFIED_DEPOSIT_CONFIG) return
     let cancelled = false
     const refresh = async () => {
       const response = await getDeposits(address)
@@ -170,7 +174,7 @@ export default function DepositPage() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [address])
+  }, [address, isAuthenticated])
 
   useEffect(() => {
     if (!address || selectedAsset !== 'USDC' || !VERIFIED_DEPOSIT_CONFIG?.usdcAddress) {
@@ -278,7 +282,7 @@ export default function DepositPage() {
     }
   }
 
-  if (!isConnected) {
+  if (!isConnected || !isAuthenticated) {
     return <ConnectGate />
   }
 

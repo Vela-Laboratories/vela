@@ -5,6 +5,7 @@ export type WsClientMessage =
   | { type: 'unsubscribe'; channels: string[] }
   | { type: 'request_challenge' }
   | { type: 'auth'; address: string; signature: string; nonce?: string; timestamp?: number }
+  | { type: 'session_auth'; address: string; token: string }
   | { type: 'ping' }
 
 /// Server → client message envelope. Every message from the engine
@@ -162,6 +163,12 @@ export class VelaWsClient {
   authChallenge(address: string, signature: string, nonce: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'auth', address, signature, nonce }))
+    }
+  }
+
+  authSession(address: string, token: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'session_auth', address, token }))
     }
   }
 

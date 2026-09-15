@@ -817,29 +817,17 @@ export default function DashboardPage() {
 
   const handleConnect = useCallback(async () => {
     const addr = await connect()
-    velaWs.connect()
+    const ws = wsRef.current
+    ws.connect()
     try {
-      const timestamp = Date.now()
-      const message = `vela:ws:${addr}:${timestamp}`
-      const signature = (await window.ethereum!.request({
-        method: 'personal_sign',
-        params: [message, addr],
-      })) as string
-      velaWs.auth(addr, signature, timestamp)
+      await signIn(ws, addr)
     } catch {
-      // account WS auth failed — falling back to challenge-response
-      const ws = wsRef.current
-      ws.connect()
-      try {
-        await signIn(ws)
-      } catch {
-        // private feed unavailable
-      }
+      // Private HTTP reads and account streaming remain unavailable.
     }
   }, [connect, signIn])
 
   useEffect(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     dispatch({ type: 'SET_LOADING', loading: true })
     Promise.all([getBalances(address), getOrders(address)])
       .then(([balRes, ordRes]) => {
@@ -850,7 +838,7 @@ export default function DashboardPage() {
         })
       })
       .catch(() => dispatch({ type: 'SET_LOADING', loading: false }))
-  }, [address])
+  }, [address, isAuthenticated])
 
   useEffect(() => {
     if (!address) return
@@ -1023,7 +1011,7 @@ export default function DashboardPage() {
     })
   }, [activeMarkets, openOrders])
 
-  if (!isConnected) {
+  if (!isConnected || !isAuthenticated) {
     return <ConnectGate onConnect={handleConnect} />
   }
 

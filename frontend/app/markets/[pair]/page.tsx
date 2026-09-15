@@ -429,16 +429,16 @@ function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; 
 }
 
 function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: string, v: 'success' | 'error') => void }) {
-  const { address, isConnected } = useAuth()
+  const { address, isConnected, isAuthenticated } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const info = getMarketInfo(pair)
 
   const fetchOrders = useCallback(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     getOrders(address).then((res) => {
       if (res.ok && res.data) setOrders(res.data)
     }).catch(() => {})
-  }, [address])
+  }, [address, isAuthenticated])
 
   useEffect(() => {
     fetchOrders()
@@ -473,8 +473,10 @@ function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: strin
     }
   }, [address, onToast, fetchOrders])
 
-  const showEmpty = !isConnected || openOrders.length === 0
-  const emptyMsg = !isConnected ? 'Connect wallet to view orders' : 'No open orders'
+  const showEmpty = !isConnected || !isAuthenticated || openOrders.length === 0
+  const emptyMsg = !isConnected || !isAuthenticated
+    ? 'Connect and authenticate to view orders'
+    : 'No open orders'
 
   return (
     <div style={{ height: 150, flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -708,7 +710,7 @@ function OrderEntryPanel({
   asks: { price: string; quantity: string }[]
   onToast: (msg: string, v: 'success' | 'error') => void
 }) {
-  const { address, isConnected, connect } = useAuth()
+  const { address, isConnected, isAuthenticated, connect } = useAuth()
   const [orderType, setOrderType] = useState<OrderEntryType>('limit')
   const [side, setSide] = useState<OrderSide>('buy')
   const [price, setPrice] = useState('')
@@ -726,7 +728,7 @@ function OrderEntryPanel({
     : null
 
   useEffect(() => {
-    if (!address) return
+    if (!address || !isAuthenticated) return
     const doFetch = () => {
       getBalances(address).then((res) => {
         if (res.ok && res.data) {
@@ -742,7 +744,7 @@ function OrderEntryPanel({
     doFetch()
     const interval = setInterval(doFetch, 10_000)
     return () => clearInterval(interval)
-  }, [address, info.ticker, info.quoteTicker])
+  }, [address, isAuthenticated, info.ticker, info.quoteTicker])
 
   const availableBalance = side === 'buy' ? balances.quote : balances.base
   const availableAsset = side === 'buy' ? info.quoteTicker : info.ticker
@@ -766,7 +768,7 @@ function OrderEntryPanel({
   }, [availableBalance, side, price, midPrice])
 
   const handleSubmit = useCallback(async () => {
-    if (!address || !isConnected || !size) return
+    if (!address || !isConnected || !isAuthenticated || !size) return
     if ((orderType === 'limit' || orderType === 'stop') && !price) return
     setSubmitting(true)
     const priceRaw = orderType !== 'market' ? Math.round(parseFloat(price) * 1_000_000) : 0
@@ -801,7 +803,7 @@ function OrderEntryPanel({
     } finally {
       setSubmitting(false)
     }
-  }, [address, isConnected, pair, orderType, price, size, side, onToast])
+  }, [address, isAuthenticated, isConnected, pair, orderType, price, size, side, onToast])
 
   return (
     <div style={{ width: 240, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -957,8 +959,8 @@ function OrderEntryPanel({
       </div>
 
       <button
-        onClick={isConnected ? handleSubmit : connect}
-        disabled={isConnected && submitting}
+        onClick={isConnected && isAuthenticated ? handleSubmit : connect}
+        disabled={isConnected && isAuthenticated && submitting}
         style={{
           margin: '0 12px 12px',
           padding: 12,
@@ -970,17 +972,25 @@ function OrderEntryPanel({
           borderRadius: 0,
           border: 'none',
           cursor: 'pointer',
-          background: !isConnected
+          background: !isConnected || !isAuthenticated
             ? 'rgba(232,228,216,0.07)'
             : side === 'buy'
             ? 'rgba(107,138,90,0.9)'
             : 'rgba(204,51,51,0.9)',
-          color: !isConnected ? 'rgba(232,228,216,0.3)' : 'white',
+          color: !isConnected || !isAuthenticated ? 'rgba(232,228,216,0.3)' : 'white',
           flexShrink: 0,
-          opacity: isConnected && submitting ? 0.6 : 1,
+          opacity: isConnected && isAuthenticated && submitting ? 0.6 : 1,
         }}
       >
-        {!isConnected ? 'CONNECT WALLET' : submitting ? '...' : side === 'buy' ? `BUY ${info.ticker}` : `SELL ${info.ticker}`}
+        {!isConnected
+          ? 'CONNECT WALLET'
+          : !isAuthenticated
+            ? 'AUTHENTICATE WALLET'
+            : submitting
+              ? '...'
+              : side === 'buy'
+                ? `BUY ${info.ticker}`
+                : `SELL ${info.ticker}`}
       </button>
     </div>
   )

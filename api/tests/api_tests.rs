@@ -24,7 +24,7 @@ fn make_wal() -> Arc<api::wal::Wal> {
 }
 
 fn user_addr() -> String {
-    "0x0000000000000000000000000000000000000001".to_string()
+    wallet(1).1
 }
 
 fn wallet(seed: u8) -> (SigningKey, String) {
@@ -41,6 +41,41 @@ fn sign_personal(key: &SigningKey, message: &[u8]) -> String {
     bytes.extend_from_slice(signature.to_bytes().as_ref());
     bytes.push(recovery_id.to_byte() + 27);
     format!("0x{}", hex::encode(bytes))
+}
+
+async fn auth_token_for(server: &TestServer, key: &SigningKey, address: &str) -> String {
+    let challenge = server
+        .post("/auth/challenge")
+        .json(&json!({ "address": address }))
+        .await;
+    challenge.assert_status_ok();
+    let challenge_body: Value = challenge.json();
+    let nonce = challenge_body["data"]["nonce"].as_str().unwrap();
+    let message = challenge_body["data"]["message"].as_str().unwrap();
+    let session = server
+        .post("/auth/session")
+        .json(&json!({
+            "address": address,
+            "nonce": nonce,
+            "signature": sign_personal(key, message.as_bytes()),
+        }))
+        .await;
+    session.assert_status_ok();
+    let session_body: Value = session.json();
+    session_body["data"]["token"].as_str().unwrap().to_owned()
+}
+
+async fn user_auth_token(server: &TestServer) -> String {
+    let (key, address) = wallet(1);
+    auth_token_for(server, &key, &address).await
+}
+
+async fn get_as_user(server: &TestServer, path: &str) -> axum_test::TestResponse {
+    let token = user_auth_token(server).await;
+    server
+        .get(path)
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await
 }
 
 fn engine_with_market() -> MatchingEngine {
@@ -344,9 +379,7 @@ async fn test_ledger_backed_api_ignores_cache_and_rejects_demo_credit(pool: sqlx
         });
     let server = TestServer::new(api::build_router(state)).unwrap();
 
-    let balances = server
-        .get(&format!("/account/{}/balances", user_addr()))
-        .await;
+    let balances = get_as_user(&server, &format!("/account/{}/balances", user_addr())).await;
     balances.assert_status_ok();
     let body: Value = balances.json();
     assert!(body["data"].as_array().unwrap().is_empty());
@@ -370,9 +403,7 @@ async fn test_ledger_backed_api_ignores_cache_and_rejects_demo_credit(pool: sqlx
 #[tokio::test]
 async fn test_deposit_status_fails_closed_without_authoritative_ledger() {
     let server = test_server(engine_with_market());
-    let response = server
-        .get(&format!("/account/{}/deposits", user_addr()))
-        .await;
+    let response = get_as_user(&server, &format!("/account/{}/deposits", user_addr())).await;
     response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json();
     assert_eq!(body["ok"], false);
@@ -447,9 +478,7 @@ async fn test_deposit_status_is_customer_scoped_and_filterable(pool: sqlx::PgPoo
     .unwrap();
     let server = TestServer::new(api::build_router(state)).unwrap();
 
-    let response = server
-        .get(&format!("/account/{}/deposits", user_addr()))
-        .await;
+    let response = get_as_user(&server, &format!("/account/{}/deposits", user_addr())).await;
     response.assert_status_ok();
     let body: Value = response.json();
     let deposits = body["data"].as_array().unwrap();
@@ -462,31 +491,33 @@ async fn test_deposit_status_is_customer_scoped_and_filterable(pool: sqlx::PgPoo
     assert_eq!(deposits[0]["transaction_hash"], transaction_hash);
 
     let absent_hash = format!("0x{}", "99".repeat(32));
-    let response = server
-        .get(&format!(
+    let response = get_as_user(
+        &server,
+        &format!(
             "/account/{}/deposits?transaction_hash={absent_hash}",
             user_addr()
-        ))
-        .await;
+        ),
+    )
+    .await;
     response.assert_status_ok();
     let body: Value = response.json();
     assert!(body["data"].as_array().unwrap().is_empty());
 
-    let invalid = server
-        .get(&format!(
+    let invalid = get_as_user(
+        &server,
+        &format!(
             "/account/{}/deposits?transaction_hash=not-a-hash",
             user_addr()
-        ))
-        .await;
+        ),
+    )
+    .await;
     invalid.assert_status(axum::http::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
 async fn test_withdrawal_status_fails_closed_without_authoritative_ledger() {
     let server = test_server(engine_with_market());
-    let response = server
-        .get(&format!("/account/{}/withdrawals", user_addr()))
-        .await;
+    let response = get_as_user(&server, &format!("/account/{}/withdrawals", user_addr())).await;
     response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
 }
 
@@ -602,7 +633,11 @@ async fn test_withdrawal_reservation_and_cancellation_are_ledger_backed(pool: sq
         ledger.balance(available_id).await.unwrap(),
         BigDecimal::from(4_000_000)
     );
-    let listed = server.get(&format!("/account/{address}/withdrawals")).await;
+    let token = auth_token_for(&server, &key, &address).await;
+    let listed = server
+        .get(&format!("/account/{address}/withdrawals"))
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await;
     listed.assert_status_ok();
     let body: Value = listed.json();
     assert_eq!(body["data"].as_array().unwrap().len(), 1);
@@ -670,13 +705,165 @@ async fn test_get_book_not_found() {
 #[tokio::test]
 async fn test_get_balances_empty() {
     let server = test_server(engine_with_market());
-    let resp = server
-        .get(&format!("/account/{}/balances", user_addr()))
-        .await;
+    let resp = get_as_user(&server, &format!("/account/{}/balances", user_addr())).await;
     resp.assert_status_ok();
     let body: Value = resp.json();
     assert_eq!(body["ok"], true);
     assert!(body["data"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_every_customer_data_route_requires_wallet_session() {
+    let server = test_server(engine_with_market());
+    let address = user_addr();
+    let paths = [
+        format!("/account/{address}/balances"),
+        format!("/account/{address}/orders"),
+        format!("/account/{address}/orders/by-client-id/missing"),
+        format!("/account/{address}/fills"),
+        format!("/account/{address}/deposits"),
+        format!("/account/{address}/withdrawals"),
+        format!("/portfolio/{address}"),
+        format!("/portfolio/{address}/csv"),
+    ];
+
+    for path in paths {
+        let missing = server.get(&path).await;
+        missing.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[tokio::test]
+async fn test_http_auth_challenge_is_single_use_and_session_is_revocable() {
+    let server = test_server(engine_with_market());
+    let (key, address) = wallet(1);
+    let challenge = server
+        .post("/auth/challenge")
+        .json(&json!({ "address": address }))
+        .await;
+    challenge.assert_status_ok();
+    let body: Value = challenge.json();
+    let nonce = body["data"]["nonce"].as_str().unwrap();
+    let message = body["data"]["message"].as_str().unwrap();
+    let proof = json!({
+        "address": address,
+        "nonce": nonce,
+        "signature": sign_personal(&key, message.as_bytes()),
+    });
+
+    let session = server.post("/auth/session").json(&proof).await;
+    session.assert_status_ok();
+    let session_body: Value = session.json();
+    let token = session_body["data"]["token"].as_str().unwrap();
+
+    let replay = server.post("/auth/session").json(&proof).await;
+    replay.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+
+    let revoke = server
+        .post("/auth/session/revoke")
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await;
+    revoke.assert_status_ok();
+
+    let after_revoke = server
+        .get(&format!("/account/{address}/balances"))
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await;
+    after_revoke.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_http_auth_challenge_issuance_is_rate_limited() {
+    let server = test_server(engine_with_market());
+    let address = user_addr();
+    for _ in 0..10 {
+        server
+            .post("/auth/challenge")
+            .json(&json!({ "address": address }))
+            .await
+            .assert_status_ok();
+    }
+    server
+        .post("/auth/challenge")
+        .json(&json!({ "address": address }))
+        .await
+        .assert_status(axum::http::StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn test_http_auth_session_cannot_read_another_accounts_private_routes() {
+    let server = test_server(engine_with_market());
+    let token = user_auth_token(&server).await;
+    let (_, other_address) = wallet(2);
+    let paths = [
+        format!("/account/{other_address}/balances"),
+        format!("/account/{other_address}/orders"),
+        format!("/account/{other_address}/orders/by-client-id/missing"),
+        format!("/account/{other_address}/fills"),
+        format!("/account/{other_address}/deposits"),
+        format!("/account/{other_address}/withdrawals"),
+        format!("/portfolio/{other_address}"),
+        format!("/portfolio/{other_address}/csv"),
+    ];
+    for path in paths {
+        let response = server
+            .get(&path)
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        response.assert_status(axum::http::StatusCode::FORBIDDEN);
+    }
+}
+
+#[tokio::test]
+async fn test_private_fill_history_is_account_scoped_and_redacted() {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let state = AppState::new(engine_with_market(), make_wal());
+    let (_, other_address) = wallet(2);
+    state.fills.lock().await.extend([
+        api::types::StoredFill {
+            id: "own-fill".to_owned(),
+            market_id: "BTC-USDC".to_owned(),
+            price: 50_000 * PRICE_SCALE,
+            quantity: QUANTITY_SCALE,
+            maker_order_id: 10,
+            taker_order_id: 11,
+            maker_address: user_addr(),
+            taker_address: other_address.clone(),
+            timestamp: 20,
+            side: "bid".to_owned(),
+            synthetic: false,
+            toxicity_score: 0.0,
+        },
+        api::types::StoredFill {
+            id: "other-fill".to_owned(),
+            market_id: "BTC-USDC".to_owned(),
+            price: 49_000 * PRICE_SCALE,
+            quantity: QUANTITY_SCALE,
+            maker_order_id: 12,
+            taker_order_id: 13,
+            maker_address: other_address.clone(),
+            taker_address: wallet(3).1,
+            timestamp: 10,
+            side: "ask".to_owned(),
+            synthetic: false,
+            toxicity_score: 0.0,
+        },
+    ]);
+    let server = TestServer::new(api::build_router(state)).unwrap();
+
+    let response = get_as_user(&server, &format!("/account/{}/fills", user_addr())).await;
+    response.assert_status_ok();
+    let body: Value = response.json();
+    let fills = body["data"].as_array().unwrap();
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0]["id"], "own-fill");
+    assert_eq!(fills[0]["role"], "maker");
+    assert_eq!(fills[0]["side"], "sell");
+    assert_eq!(fills[0]["price"], "50000");
+    assert!(fills[0].get("maker_address").is_none());
+    assert!(fills[0].get("taker_address").is_none());
 }
 
 #[tokio::test]
@@ -696,9 +883,7 @@ async fn test_get_balances_after_deposit() {
     );
 
     let server = test_server(e);
-    let resp = server
-        .get(&format!("/account/{}/balances", user_addr()))
-        .await;
+    let resp = get_as_user(&server, &format!("/account/{}/balances", user_addr())).await;
     resp.assert_status_ok();
     let body: Value = resp.json();
     let balances = body["data"].as_array().unwrap();
@@ -872,7 +1057,7 @@ async fn test_get_order_by_client_id_found() {
 
     let server = test_server(e);
     let endpoint = format!("/account/{}/orders/by-client-id/test-coid-api", user_addr());
-    let res = server.get(&endpoint).await;
+    let res = get_as_user(&server, &endpoint).await;
     res.assert_status_ok();
 
     let body: Value = res.json();
@@ -885,7 +1070,7 @@ async fn test_get_order_by_client_id_found() {
 async fn test_get_order_by_client_id_not_found() {
     let server = test_server(engine_with_market());
     let endpoint = format!("/account/{}/orders/by-client-id/nonexistent", user_addr());
-    let res = server.get(&endpoint).await;
+    let res = get_as_user(&server, &endpoint).await;
     res.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
 
@@ -1023,6 +1208,39 @@ mod ws_tests {
         assert_eq!(fill["price"], "50000");
         assert_eq!(fill["maker_order_id"], 10);
 
+        ws.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_ws_accepts_http_session_without_second_wallet_signature() {
+        let (key, address) = wallet(7);
+        let user = types::UserId::from_hex(&address).unwrap();
+        let (server, state) = ws_test_server(engine_with_market());
+        let token = auth_token_for(&server, &key, &address).await;
+
+        let mut ws = server.get_websocket("/ws").await.into_websocket().await;
+        ws.send_json(&json!({
+            "type": "session_auth",
+            "address": address,
+            "token": token,
+        }))
+        .await;
+        let response: Value = ws.receive_json().await;
+        assert_eq!(response["type"], "authenticated", "auth failed: {response}");
+
+        state.feeds.lock().await.publish_private(
+            &user,
+            api::types::WsServerMessage::OrderUpdate {
+                order_id: 77,
+                status: "open".to_string(),
+                filled_quantity: "0".to_string(),
+            },
+        );
+        let update: Value = tokio::time::timeout(Duration::from_millis(500), ws.receive_json())
+            .await
+            .expect("session-authenticated connection should receive private events");
+        assert_eq!(update["type"], "order_update");
+        assert_eq!(update["order_id"], 77);
         ws.close().await;
     }
 

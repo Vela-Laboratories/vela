@@ -14,6 +14,10 @@ describe('lib/api', () => {
     expect(typeof mod.getBook).toBe('function')
     expect(typeof mod.getDeposits).toBe('function')
     expect(typeof mod.getWithdrawals).toBe('function')
+    expect(typeof mod.getAccountFills).toBe('function')
+    expect(typeof mod.requestAuthChallenge).toBe('function')
+    expect(typeof mod.createAuthSession).toBe('function')
+    expect(typeof mod.revokeAuthSession).toBe('function')
     expect(typeof mod.initiateWithdrawal).toBe('function')
     expect(typeof mod.cancelWithdrawal).toBe('function')
     expect(typeof mod.postOrder).toBe('function')
@@ -41,5 +45,45 @@ describe('lib/api', () => {
       `https://vela-engine.fly.dev/account/0x0000000000000000000000000000000000000001/deposits?transaction_hash=${hash}`,
       expect.objectContaining({ cache: 'no-store' }),
     )
+  })
+
+  it('attaches the in-memory bearer to JSON and CSV private reads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: [] }),
+      text: async () => 'timestamp,market\n',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { getBalances, getPortfolioCsv, setAuthSessionToken } = await import('./api')
+    setAuthSessionToken('session-token')
+
+    await getBalances('0x0000000000000000000000000000000000000001')
+    await getPortfolioCsv('0x0000000000000000000000000000000000000001')
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init.headers as Headers).get('Authorization')).toBe('Bearer session-token')
+    }
+    setAuthSessionToken(null)
+  })
+
+  it('clears an expired session and signals the auth provider on 401', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => 'authentication required',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const expired = vi.fn()
+    window.addEventListener('vela:auth-expired', expired)
+    const { getBalances, setAuthSessionToken } = await import('./api')
+    setAuthSessionToken('expired-token')
+
+    const response = await getBalances(
+      '0x0000000000000000000000000000000000000001',
+    )
+    expect(response).toEqual({ ok: false, error: 'authentication required' })
+    expect(expired).toHaveBeenCalledOnce()
+    window.removeEventListener('vela:auth-expired', expired)
   })
 })

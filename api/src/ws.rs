@@ -368,6 +368,20 @@ async fn handle_client_message(
             }
         }
 
+        WsClientMessage::SessionAuth { address, token } => {
+            handle_session_auth(
+                address,
+                token,
+                state,
+                authenticated_user,
+                private_rx,
+                account_rx,
+                dropcopy_rx,
+                subscribed_channels,
+            )
+            .await
+        }
+
         WsClientMessage::Subscribe { channels } => {
             let ts = now_ms();
             let mut responses: Vec<String> = vec![];
@@ -543,6 +557,49 @@ async fn handle_client_message(
             vec![serde_json::to_string(&msg).unwrap_or_default()]
         }
     }
+}
+
+async fn handle_session_auth(
+    address: String,
+    token: String,
+    state: &Arc<AppState>,
+    authenticated_user: &mut Option<types::UserId>,
+    private_rx: &mut Option<broadcast::Receiver<WsServerMessage>>,
+    account_rx: &mut Option<broadcast::Receiver<WsEnvelope>>,
+    dropcopy_rx: &mut Option<broadcast::Receiver<WsEnvelope>>,
+    subscribed_channels: &mut HashSet<String>,
+) -> Vec<String> {
+    let Ok(user) = types::UserId::from_hex(&address) else {
+        let err = WsServerMessage::Error {
+            code: "AUTH_FAILED".to_string(),
+            message: "invalid session authentication".to_string(),
+        };
+        return vec![serde_json::to_string(&err).unwrap_or_default()];
+    };
+    let authorization = format!("Bearer {token}");
+    if state
+        .http_auth
+        .authorize(Some(&authorization), &user)
+        .is_err()
+    {
+        let err = WsServerMessage::Error {
+            code: "AUTH_FAILED".to_string(),
+            message: "invalid session authentication".to_string(),
+        };
+        return vec![serde_json::to_string(&err).unwrap_or_default()];
+    }
+
+    let channel = format!("account:{}", user.to_hex());
+    subscribed_channels.insert(channel);
+    let mut feeds = state.feeds.lock().await;
+    *private_rx = Some(feeds.subscribe_private(&user));
+    *account_rx = Some(feeds.subscribe_account_private(&user));
+    *dropcopy_rx = Some(feeds.subscribe_dropcopy(&user));
+    *authenticated_user = Some(user);
+    let resp = WsServerMessage::Authenticated {
+        address: address.to_ascii_lowercase(),
+    };
+    vec![serde_json::to_string(&resp).unwrap_or_default()]
 }
 
 async fn handle_challenge_auth(

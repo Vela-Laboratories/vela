@@ -29,6 +29,12 @@ export type ApiSchemas = components['schemas']
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
 
+let authSessionToken: string | null = null
+
+export function setAuthSessionToken(token: string | null): void {
+  authSessionToken = token
+}
+
 // ---------------------------------------------------------------------------
 // Response shapes (mirrors api/src/types.rs)
 // ---------------------------------------------------------------------------
@@ -129,11 +135,20 @@ async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<ApiResponse<T>> {
+  const headers = new Headers(init?.headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (authSessionToken) headers.set('Authorization', `Bearer ${authSessionToken}`)
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers,
   })
   if (!res.ok) {
+    if (res.status === 401 && authSessionToken) {
+      authSessionToken = null
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('vela:auth-expired'))
+      }
+    }
     const text = await res.text().catch(() => res.statusText)
     return { ok: false, error: text }
   }
@@ -172,6 +187,43 @@ export function getBook(market: string): Promise<ApiResponse<BookResponse>> {
 // Authenticated endpoints
 // ---------------------------------------------------------------------------
 
+export interface AuthChallenge {
+  address: string
+  nonce: string
+  message: string
+  expires_at_ms: number
+}
+
+export interface AuthSession {
+  address: string
+  token: string
+  expires_at_ms: number
+}
+
+export function requestAuthChallenge(
+  address: string,
+): Promise<ApiResponse<AuthChallenge>> {
+  return apiFetch('/auth/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  })
+}
+
+export function createAuthSession(
+  address: string,
+  nonce: string,
+  signature: string,
+): Promise<ApiResponse<AuthSession>> {
+  return apiFetch('/auth/session', {
+    method: 'POST',
+    body: JSON.stringify({ address, nonce, signature }),
+  })
+}
+
+export function revokeAuthSession(): Promise<ApiResponse<{ revoked: boolean }>> {
+  return apiFetch('/auth/session/revoke', { method: 'POST' })
+}
+
 /** GET /account/:address/balances */
 export function getBalances(
   address: string,
@@ -196,6 +248,25 @@ export function getDeposits(
 /** GET /account/:address/orders */
 export function getOrders(address: string): Promise<ApiResponse<Order[]>> {
   return apiFetch(`/account/${encodeURIComponent(address)}/orders`)
+}
+
+export interface AccountFill {
+  id: string
+  market: string
+  price: string
+  quantity: string
+  order_id: number
+  counterparty_order_id: number
+  role: 'maker' | 'taker'
+  side: 'buy' | 'sell'
+  timestamp: number
+}
+
+/** GET /account/:address/fills */
+export function getAccountFills(
+  address: string,
+): Promise<ApiResponse<AccountFill[]>> {
+  return apiFetch(`/account/${encodeURIComponent(address)}/fills`)
 }
 
 /** POST /orders */
@@ -379,10 +450,18 @@ export async function getPortfolioCsv(
   method: 'FIFO' | 'HIFO' = 'FIFO',
 ): Promise<{ ok: boolean; csv?: string; error?: string }> {
   try {
+    const headers = new Headers()
+    if (authSessionToken) headers.set('Authorization', `Bearer ${authSessionToken}`)
     const res = await fetch(
       `${API_URL}/portfolio/${encodeURIComponent(address)}/csv?method=${method.toLowerCase()}`,
-      { cache: 'no-store' },
+      { cache: 'no-store', headers },
     )
+    if (res.status === 401 && authSessionToken) {
+      authSessionToken = null
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('vela:auth-expired'))
+      }
+    }
     if (!res.ok) return { ok: false, error: res.statusText }
     const csv = await res.text()
     return { ok: true, csv }

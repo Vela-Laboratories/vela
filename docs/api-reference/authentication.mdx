@@ -5,6 +5,21 @@ description: "ECDSA authentication for Vela's API."
 
 Vela uses ECDSA (secp256k1) signatures for all authentication. There are no API keys or passwords. Your Ethereum wallet is your identity, and your signatures prove you control it.
 
+## HTTP Account Sessions
+
+Private reads for balances, orders, fills, deposits, withdrawals, portfolio data,
+and CSV exports require an account-bound bearer session:
+
+1. `POST /auth/challenge` with `{ "address": "0x..." }`.
+2. Sign the exact `data.message` returned by the server. Do not reconstruct it.
+3. `POST /auth/session` with the address, nonce, and signature.
+4. Send `Authorization: Bearer <token>` on private reads.
+5. Revoke the token with `POST /auth/session/revoke` when signing out.
+
+Challenges are single-use and expire after five minutes. Sessions expire after 30
+minutes. Tokens are opaque and should remain in memory, not local storage. A session
+for one wallet receives `403` if it attempts to read another wallet's records.
+
 ## Signature Scheme
 
 Vela uses the same elliptic curve as Ethereum: **secp256k1**. Signatures follow the EIP-191 personal sign standard, which prepends a standard prefix to prevent signed messages from being mistaken for Ethereum transactions:
@@ -62,7 +77,18 @@ The engine recovers the signer address from the signature and verifies it matche
 
 ## WebSocket Authentication
 
-WebSocket private channels use a challenge-response flow:
+The preferred flow reuses the HTTP session, avoiding a second wallet prompt:
+
+```json
+{
+  "type": "session_auth",
+  "address": "0xYourAddress",
+  "token": "the-opaque-http-session-token"
+}
+```
+
+The legacy per-socket challenge-response flow remains supported for non-browser
+clients that do not create an HTTP session:
 
 <Steps>
   <Step title="Request challenge">
@@ -83,13 +109,14 @@ WebSocket private channels use a challenge-response flow:
   </Step>
   <Step title="Sign and respond">
     ```javascript
-    const message = `Vela Exchange\nNonce: ${challenge.nonce}`;
+    const message = `vela:auth:${challenge.nonce}`;
     const signature = await signer.signMessage(message);
 
     ws.send(JSON.stringify({
       type: "auth",
       address: "0xYourAddress",
-      signature
+      signature,
+      nonce: challenge.nonce
     }));
     ```
   </Step>

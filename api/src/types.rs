@@ -84,6 +84,10 @@ pub enum WsClientMessage {
         #[serde(default)]
         timestamp: Option<u64>,
     },
+    SessionAuth {
+        address: String,
+        token: String,
+    },
     Ping,
 }
 
