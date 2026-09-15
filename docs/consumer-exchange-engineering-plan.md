@@ -276,10 +276,10 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M6 tasks
 
-- [ ] Build continuous per-asset custody-to-liability reconciliation.
-- [ ] Persist immutable reconciliation snapshots.
-- [ ] Automatically halt affected deposits, trading, or withdrawals when required.
-- [ ] Add independent reconciliation execution outside the matcher process.
+- [x] Build continuous per-asset custody-to-liability reconciliation; the testnet worker remains separately opt-in and unconfigured.
+- [x] Persist immutable reconciliation snapshots with exact finalized block, dual-provider, deployment, bytecode, custody, and ledger-projection evidence.
+- [x] Automatically halt deposit credits, trading, and new withdrawals for deficits or indeterminate evidence; services never automatically unhalt.
+- [x] Add independent reconciliation execution outside the matcher process as a leased, restart-safe worker.
 - [ ] Remove temporary WAL fallback behavior.
 - [ ] Fail closed on corrupt or unavailable financial storage.
 - [ ] Replicate ledger and journal storage across failure domains.
@@ -531,6 +531,15 @@ Work should begin in this order. Each item should land as a small, independently
     - Require every attempt after the first to carry immediate-predecessor and two-provider replacement evidence, enforce the invariant with a deferred database constraint, and fail migration if unverifiable legacy replacement rows already exist.
     - Keep the capability honest: standard JSON-RPC cannot enumerate arbitrary pending same-nonce replacements from the predecessor hash, so automatic mempool discovery remains open until a reviewed relay, trusted hash feed, or separately operated scanner supplies candidates.
     - Keep the worker opt-in and the broadcaster disabled. No RPC credentials, deployment, signing keys, transaction submission, or funds are introduced by this chapter.
+29. [x] **EX-029: Continuous custody-to-liability reconciliation**
+    - Add a separate, explicitly enabled reconciliation worker with bounded RPC timeouts, retry backoff, responsive shutdown, and a deployment-scoped PostgreSQL lease.
+    - Require two distinct RPC origins to agree on chain ID and the exact finalized block, then verify the pinned vault runtime bytecode and read ETH and registered ERC20 custody balances at that block.
+    - Derive each asset's liability from all non-custody ledger projections and independently cross-check it against the negated custody projections inside one serializable transaction.
+    - Persist immutable snapshot, per-asset result, and failure evidence with deterministic identities covering the observed custody amounts and current ledger projection.
+    - Treat missing balance projections, invalid customer balances, accounting disagreement, provider uncertainty, stale or regressed finality, wrong bytecode, and a lost in-flight lease as indeterminate.
+    - Atomically activate a full asset halt for deficits and indeterminate results; provider-level failures halt every registered deployment asset, surpluses remain explicitly surplus, and no path automatically resolves a halt.
+    - Verify balanced, surplus, deficit, indeterminate, empty-account, replay, changed-projection, changed-custody, lease-fencing, failure-idempotency, and database halt-guard behavior against PostgreSQL 16.
+    - Keep the worker source-only, opt-in, and unconfigured. Readiness integration, external paging, processor-aware orchestration, daily reports, hosted RPC credentials, deployment, and real-funds claims remain open.
 
 ## Parallel nonengineering work
 

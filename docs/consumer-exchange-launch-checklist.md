@@ -72,7 +72,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Decide which ledger is authoritative.
 - [x] Make PostgreSQL balance projections authoritative for customer REST and WebSocket reads; matching-engine balances are only a replayed execution cache when the ledger is configured.
 - [x] Fail closed on every known legacy API route that directly mutates matching-engine balances while the authoritative ledger is configured.
-- [ ] Complete integration of the double-entry financial ledger; matcher reservations, releases, trades, fees, rebates, and referral payouts use it when configured, while deposits, withdrawals, recovery, and reconciliation remain open.
+- [ ] Complete integration of the double-entry financial ledger; matcher reservations, releases, trades, fees, rebates, referral payouts, deposits, withdrawal completion, and custody reconciliation have typed paths when configured, while full withdrawal failure handling, recovery, and processor-aware orchestration remain open.
 - [x] Journal every authoritative finalized deposit atomically with its credited state; unverified demo credits remain testnet-only and non-authoritative.
 - [x] Journal every matcher-produced trade when the authoritative ledger is configured.
 - [x] Journal every matcher-produced fee when the authoritative ledger is configured.
@@ -87,9 +87,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Prevent test, synthetic, bridge, and real-money balances from mixing.
 - [ ] Add separate environments and ledger namespaces for testnet and production.
 - [x] Provision controlled per-asset custody-vault counter-accounts for ETH and USDC during ledger bootstrap.
-- [ ] Reconcile each asset independently.
-- [ ] Continuously compare custody assets against total customer liabilities.
-- [ ] Halt affected operations automatically when reconciliation fails.
+- [x] Reconcile each registered chain asset independently in the opt-in worker; deployed RPC end-to-end validation remains open.
+- [x] Continuously compare finalized custody assets against total ledger liabilities with an independent custody-account cross-check; the worker remains unconfigured and stopped by default.
+- [x] Halt deposit credits, trading, and new withdrawals automatically on deficits or indeterminate reconciliation evidence; operators must resolve halts through the existing dual-control path.
 - [ ] Generate daily proof-of-liabilities snapshots.
 - [ ] Generate daily reconciliation reports.
 - [x] Preserve reconciliation results in an immutable PostgreSQL history table.

@@ -195,6 +195,8 @@ pub enum DepositContradictionOutcome {
 pub enum AssetHaltReason {
     CreditedDepositContradiction,
     HistoricalDepositAppeared,
+    ReconciliationDeficit,
+    ReconciliationIndeterminate,
 }
 
 impl AssetHaltReason {
@@ -202,6 +204,8 @@ impl AssetHaltReason {
         match self {
             Self::CreditedDepositContradiction => "credited_deposit_contradiction",
             Self::HistoricalDepositAppeared => "historical_deposit_appeared",
+            Self::ReconciliationDeficit => "reconciliation_deficit",
+            Self::ReconciliationIndeterminate => "reconciliation_indeterminate",
         }
     }
 }

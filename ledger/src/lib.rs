@@ -14,6 +14,8 @@ mod deposits;
 pub use deposits::*;
 mod withdrawals;
 pub use withdrawals::*;
+mod reconciliation;
+pub use reconciliation::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalLegInput {
@@ -198,6 +200,8 @@ pub enum LedgerError {
     InvalidDepositTransition { from: String, to: String },
     #[error("invalid withdrawal command: {0}")]
     InvalidWithdrawal(String),
+    #[error("invalid reconciliation command: {0}")]
+    InvalidReconciliation(String),
     #[error("withdrawal was not found: {0}")]
     WithdrawalNotFound(Uuid),
     #[error("invalid withdrawal transition from {from} to {to}")]
@@ -262,7 +266,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 10;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 11;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {

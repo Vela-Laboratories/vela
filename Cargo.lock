@@ -2231,6 +2231,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "reconciliation-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bigdecimal",
+ "chrono",
+ "hex",
+ "ledger",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

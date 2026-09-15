@@ -61,6 +61,24 @@ The indexer accepts only the pinned `Deposited(bytes32,address,address,uint256)`
 | `VELA_INDEXER_AUDIT_BATCH_SIZE` | `500` | Maximum previously processed finalized block range re-audited per tick. The checkpoint cycles back to the registered deployment block after each complete pass. |
 | `VELA_INDEXER_LEASE_SECONDS` | `30` | PostgreSQL single-worker lease duration. |
 
+## Custody reconciliation worker
+
+This worker is separately opt-in and is not included in the API runtime image.
+Its two RPC endpoints must be independent HTTPS origins. See the
+[reconciliation runbook](operations/reconciliation-worker.md).
+
+| Variable | Default | Notes |
+|---|---|---|
+| `VELA_RECONCILIATION_ENABLED` | `false` | Must be exactly `true` before the worker will start. |
+| `VELA_RECONCILIATION_DEPLOYMENT_ID` | — | **REQUIRED.** Enabled immutable custody deployment UUID. |
+| `VELA_RECONCILIATION_RPC_PRIMARY_NAME` / `VELA_RECONCILIATION_RPC_SECONDARY_NAME` | — | **REQUIRED.** Distinct nonsecret provider labels retained in evidence. |
+| `VELA_RECONCILIATION_RPC_PRIMARY_URL` / `VELA_RECONCILIATION_RPC_SECONDARY_URL` | — | **REQUIRED.** Secret RPC URLs from distinct origins. |
+| `VELA_RECONCILIATION_RPC_TIMEOUT_MS` | `5000` | Bounded per-request timeout, maximum 60 seconds. |
+| `VELA_RECONCILIATION_POLL_MS` | `30000` | Healthy cycle interval, maximum 5 minutes. |
+| `VELA_RECONCILIATION_RETRY_MAX_MS` | `60000` | Maximum failure retry backoff, maximum 10 minutes. |
+| `VELA_RECONCILIATION_LEASE_SECONDS` | `120` | Single-worker lease; must cover twelve sequential RPC timeouts. |
+| `VELA_RECONCILIATION_MAX_FINALIZED_AGE_SECONDS` | `300` | Maximum accepted age of the agreed finalized block. |
+
 ## Chain & contract
 
 | Variable | Default | Notes |

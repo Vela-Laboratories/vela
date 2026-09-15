@@ -85,6 +85,13 @@ REVOKE UPDATE, DELETE ON ledger_withdrawal_failure_releases FROM vela_ledger_wri
 REVOKE UPDATE, DELETE ON ledger_withdrawal_replacement_evidence FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_attempt_reverts FROM vela_ledger_writer;
 REVOKE DELETE ON ledger_withdrawal_worker_checkpoints FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_custody_snapshots FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_custody_snapshot_balances FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_reconciliation_results FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_reconciliation_halt_links FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_reconciliation_failures FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_reconciliation_failure_halts FROM vela_ledger_writer;
+REVOKE DELETE ON ledger_reconciliation_worker_checkpoints FROM vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
@@ -118,6 +125,16 @@ GRANT UPDATE (
     last_completed_at,
     updated_at
 ) ON ledger_withdrawal_worker_checkpoints TO vela_ledger_writer;
+GRANT UPDATE (
+    lease_owner,
+    lease_expires_at,
+    cycle,
+    last_finalized_block_number,
+    last_finalized_block_hash,
+    last_snapshot_id,
+    last_completed_at,
+    updated_at
+) ON ledger_reconciliation_worker_checkpoints TO vela_ledger_writer;
 GRANT UPDATE (
     state,
     reservation_transaction_id,

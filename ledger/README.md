@@ -103,6 +103,22 @@ makes an attempt terminal but never releases reserved funds by itself; release
 still requires post-deadline two-provider proof that the request and customer
 nonce are unused, no execution event exists, and every attempt is terminal.
 
+Continuous reconciliation is implemented as a separate, opt-in worker. At one
+exact finalized block, two independent RPC providers must agree on chain ID,
+block hash and timestamp, pinned vault runtime bytecode, native ETH balance,
+and ERC20 `balanceOf(vault)` for every registered launch asset. In one
+serializable ledger transaction, the worker persists immutable custody evidence
+and calculates liability as the sum of every non-custody account projection.
+That amount must independently equal the negated sum of the `custody_vault` and
+`custody_withdrawn` projections. Missing projections, negative customer
+balances, or disagreement between those derivations is indeterminate and
+halts the asset. A custody deficit also halts. A surplus is retained as a
+surplus, not called balanced, because it can be a finalized deposit that the
+deposit indexer has not credited yet. Services never automatically unhalt.
+
+See [the reconciliation worker runbook](../docs/operations/reconciliation-worker.md)
+for failure semantics, startup requirements, and remaining orchestration limits.
+
 ## Migration rules
 
 - Migrations in `migrations/` are append-only after they have reached a shared environment.
