@@ -235,20 +235,20 @@ export default function MarketsPage() {
   return (
     <>
       <style>{`* { box-sizing: border-box; } ::-webkit-scrollbar { display: none; }`}</style>
-      <div style={{ background: '#060814', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)]">
+      <div style={{ background: '#070910', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)]">
 
-        <div style={{ flexShrink: 0, borderBottom: '1px solid #1C2841', background: 'rgba(10,14,29,.9)' }} className="h-auto lg:h-[58px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
+        <div style={{ flexShrink: 0, borderBottom: '1px solid #202633', background: '#0B0E16' }} className="h-auto lg:h-[58px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
           <div>
             <div style={{ lineHeight: 1 }}>
               <span style={{ fontFamily: IN, fontWeight: 700, fontSize: 20, color: '#F6F8FF' }}>Explore markets</span>
-              <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 600, fontSize: 10, color: '#21E6A3', padding: '4px 7px', borderRadius: 999, background: 'rgba(33,230,163,.08)', border: '1px solid rgba(33,230,163,.18)' }}>LIVE</span>
+              <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 650, fontSize: 9, letterSpacing: '0.08em', color: '#66c9b4' }}>· LIVE</span>
             </div>
             <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
               16 Binance Spot references · Vela execution on Ethereum Sepolia · Updating every 2s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#21E6A3', boxShadow: '0 0 10px rgba(33,230,163,.6)', flexShrink: 0 }} />
+            <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#66c9b4', flexShrink: 0 }} />
             <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,228,216,0.22)', textTransform: 'uppercase' }}>
               Binance live feed
             </span>
@@ -256,7 +256,7 @@ export default function MarketsPage() {
         </div>
 
         <div
-          style={{ gap: 10, padding: 10, background: '#060814' }}
+          style={{ gap: 8, padding: 8, background: '#070910' }}
           className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
         >
           {markets === null

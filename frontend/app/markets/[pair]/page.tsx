@@ -223,14 +223,14 @@ function ChartArea({ pair, timeframe, onLiveChange }: { pair: string; timeframe:
 
       const chart = createChart(container, {
         layout: {
-          background: { color: '#080C19' },
+          background: { color: '#090C13' },
           textColor: '#8490A9',
           fontFamily: IN,
           fontSize: 11,
         },
         grid: {
-          vertLines: { color: '#151E34' },
-          horzLines: { color: '#151E34' },
+          vertLines: { color: '#171C27' },
+          horzLines: { color: '#171C27' },
         },
         crosshair: {
           vertLine: { color: '#52617C', width: 1, style: 3 },
@@ -521,7 +521,7 @@ function OrderBookPanel({
       <div style={{ padding: '5px 12px', borderTop: '1px solid rgba(232,228,216,0.04)', borderBottom: '1px solid rgba(232,228,216,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.3)' }}>◆ {spread ?? '—'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#21E6A3', boxShadow: '0 0 8px rgba(33,230,163,.6)', display: 'inline-block', flexShrink: 0 }} />
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#35C995', display: 'inline-block', flexShrink: 0 }} />
           <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(33,230,163,0.72)', letterSpacing: '0.12em' }}>LIVE</span>
         </div>
       </div>
