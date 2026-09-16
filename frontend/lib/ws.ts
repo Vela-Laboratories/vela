@@ -60,6 +60,27 @@ const WsServerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pong') }),
 ])
 
+export function normalizeWsEnvelope(
+  raw: Record<string, unknown>,
+  channel: string,
+  data: unknown,
+): Record<string, unknown> {
+  const payload = (data ?? {}) as Record<string, unknown>
+  const type = raw['type'] === 'snapshot' && channel.startsWith('orderbook:')
+    ? 'book_snapshot'
+    : raw['type']
+  const channelMarket = channel.startsWith('orderbook:')
+    ? channel.slice('orderbook:'.length)
+    : undefined
+
+  return {
+    ...payload,
+    type,
+    market: payload['market_id'] ?? payload['market'] ?? channelMarket,
+    timestamp: payload['timestamp'] ?? raw['timestamp'],
+  }
+}
+
 export type WsServerMessage = z.infer<typeof WsServerMessageSchema>
 
 export type MessageHandler = (msg: WsServerMessage) => void
@@ -292,13 +313,7 @@ export class VelaWsClient {
         callbacks.forEach((cb) => cb(data))
       }
 
-      const d = (data ?? {}) as Record<string, unknown>
-      const flatCandidate = {
-        ...d,
-        type: raw['type'],
-        market: d['market_id'] ?? d['market'],
-        timestamp: d['timestamp'] ?? raw['timestamp'],
-      }
+      const flatCandidate = normalizeWsEnvelope(raw, channel, data)
       const parsed = WsServerMessageSchema.safeParse(flatCandidate)
       if (parsed.success) {
         this.messageHandlers.forEach((h) => h(parsed.data))

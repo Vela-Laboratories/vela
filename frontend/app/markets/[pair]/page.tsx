@@ -2,7 +2,6 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import Skeleton from '@/components/ui/Skeleton'
 import TokenIcon from '@/components/TokenIcon'
 // Chart runtime is dynamically imported inside ChartArea's mount effect
@@ -485,7 +484,7 @@ function OrderBookPanel({
     <div className="terminal-orderbook" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
         <span style={{ fontFamily: IN, fontSize: 12, fontWeight: 600, color: '#D6D6DF' }}>
-          VELA TESTNET BOOK
+          SYNTHETIC TESTNET BOOK
         </span>
       </div>
 
@@ -522,7 +521,7 @@ function OrderBookPanel({
         <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.3)' }}>◆ {spread ?? '—'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#35C995', display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(33,230,163,0.72)', letterSpacing: '0.12em' }}>LIVE</span>
+          <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(33,230,163,0.72)', letterSpacing: '0.12em' }}>DEMO FEED</span>
         </div>
       </div>
 
@@ -551,8 +550,6 @@ function OrderBookPanel({
 }
 
 function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; markets: ReferenceMarket[] }) {
-  const router = useRouter()
-
   const marketsById = useMemo(() => Object.fromEntries(markets.map((m) => [m.market, m])), [markets])
 
   return (
@@ -571,21 +568,24 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
           const change = market?.change24h
 
           return (
-            <div
+            <Link
               key={pair}
+              href={`/markets/${pair}`}
+              aria-current={isActive ? 'page' : undefined}
               className={`terminal-market-row${isActive ? ' is-active' : ''}`}
-              onClick={() => router.push(`/markets/${pair}`)}
               style={{
                 padding: '9px 12px',
                 borderBottom: '1px solid rgba(232,228,216,0.03)',
                 borderLeft: isActive ? '2px solid #9C9CF6' : '2px solid transparent',
                 background: isActive ? '#15151F' : 'transparent',
                 cursor: 'pointer',
+                color: 'inherit',
+                textDecoration: 'none',
                 transition: 'background 0.1s',
                 paddingLeft: isActive ? 10 : 12,
               }}
-              onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(232,228,216,0.025)' }}
-              onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(232,228,216,0.025)' }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2, alignItems: 'center' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: IN, fontWeight: 600, fontSize: 12, color: '#F4F4F5' }}><TokenIcon ticker={info.ticker} size="sm" />{info.ticker}</span>
@@ -599,7 +599,7 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
                   {change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}
                 </span>
               </div>
-            </div>
+            </Link>
           )
         })}
       </div>

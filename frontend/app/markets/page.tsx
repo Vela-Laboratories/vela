@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { getBook, type BookLevel } from '@/lib/api'
 import { ORDERED_PAIRS, getMarketInfo } from '@/lib/markets'
 import { fetchReferenceCandles, fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
@@ -56,13 +56,11 @@ function MarketCard({
   market,
   book,
   sparkline,
-  onClick,
 }: {
   pair: string
   market: ReferenceMarket | undefined
   book: { bids: BookLevel[]; asks: BookLevel[] } | undefined
   sparkline: SparklineBar[]
-  onClick: () => void
 }) {
   const info = getMarketInfo(pair)
   const change = market?.change24h
@@ -76,14 +74,16 @@ function MarketCard({
   const priceFontSize = priceValue > 10000 ? 22 : 28
 
   return (
-    <div
-      onClick={onClick}
+    <Link
+      href={`/markets/${pair}`}
+      aria-label={`Open ${info.name} ${info.quoteTicker} testnet market`}
       style={{
-        cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
+        color: 'inherit',
+        textDecoration: 'none',
         transition: 'transform 0.16s ease, border-color 0.16s ease, background 0.16s ease',
       }}
       className="market-card p-4 sm:p-[24px] lg:p-[24px]"
@@ -113,7 +113,7 @@ function MarketCard({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div>
           <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(107,138,90,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            VELA BIDS
+            DEMO BIDS
           </div>
           {topBids.length === 0 ? (
             <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(107,138,90,0.3)' }}>—</span>
@@ -128,7 +128,7 @@ function MarketCard({
         </div>
         <div>
           <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(204,51,51,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            VELA ASKS
+            DEMO ASKS
           </div>
           {topAsks.length === 0 ? (
             <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(204,51,51,0.3)' }}>—</span>
@@ -151,7 +151,7 @@ function MarketCard({
           />
         ))}
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -177,7 +177,6 @@ function SkeletonCard() {
 }
 
 export default function MarketsPage() {
-  const router = useRouter()
   const [markets, setMarkets] = useState<ReferenceMarket[] | null>(null)
   const [books, setBooks] = useState<Record<string, { bids: BookLevel[]; asks: BookLevel[] }>>({})
   const [sparklines, setSparklines] = useState<Record<string, SparklineBar[]>>({})
@@ -235,16 +234,16 @@ export default function MarketsPage() {
   return (
     <>
       <style>{`* { box-sizing: border-box; } ::-webkit-scrollbar { display: none; }`}</style>
-      <div style={{ background: '#070910', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)]">
+      <div style={{ display: 'flex', flexDirection: 'column' }} className="market-grid-page min-h-[calc(100vh-96px)]">
 
-        <div style={{ flexShrink: 0, borderBottom: '1px solid #202633', background: '#0B0E16' }} className="h-auto lg:h-[58px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
+        <div style={{ flexShrink: 0 }} className="markets-header h-auto lg:h-[64px] px-6 lg:px-8 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
           <div>
             <div style={{ lineHeight: 1 }}>
               <span style={{ fontFamily: IN, fontWeight: 700, fontSize: 20, color: '#F6F8FF' }}>Explore markets</span>
               <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 650, fontSize: 9, letterSpacing: '0.08em', color: '#66c9b4' }}>· LIVE</span>
             </div>
             <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
-              16 Binance Spot references · Vela execution on Ethereum Sepolia · Updating every 2s
+              Binance Spot reference data · Synthetic Vela testnet books · Updating every 2s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -256,8 +255,7 @@ export default function MarketsPage() {
         </div>
 
         <div
-          style={{ gap: 8, padding: 8, background: '#070910' }}
-          className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          className="market-card-grid flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
         >
           {markets === null
             ? ORDERED_PAIRS.map((pair) => <SkeletonCard key={pair} />)
@@ -268,17 +266,16 @@ export default function MarketsPage() {
                   market={marketsById[pair]}
                   book={books[pair]}
                   sparkline={sparklines[pair] ?? []}
-                  onClick={() => router.push(`/markets/${pair}`)}
                 />
               ))}
         </div>
 
-        <div style={{ flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.06)' }} className="hidden lg:flex h-[44px] px-10 items-center justify-between">
+        <div style={{ flexShrink: 0 }} className="markets-footer hidden lg:flex h-[52px] px-8 items-center justify-between">
           <div style={{ display: 'flex', gap: 40 }}>
             {[
               { label: 'TOTAL MARKETS', value: '16' },
-              { label: 'ENGINE LATENCY', value: '0.68 μs' },
-              { label: 'OPS / SEC', value: '1,430,000' },
+              { label: 'REFERENCE DATA', value: 'Binance Spot' },
+              { label: 'ORDER BOOKS', value: 'Synthetic demo' },
               { label: 'NETWORK', value: 'Sepolia' },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -288,7 +285,7 @@ export default function MarketsPage() {
             ))}
           </div>
           <span style={{ fontFamily: IN, fontSize: 9, color: 'rgba(232,228,216,0.15)', letterSpacing: '0.1em' }}>
-            Click any market to trade →
+            Choose a testnet market →
           </span>
         </div>
 

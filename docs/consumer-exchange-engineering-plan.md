@@ -696,6 +696,13 @@ Work should begin in this order. Each item should land as a small, independently
     - Keep session tokens in frontend memory rather than local storage, revoke on sign-out, and gate every private screen and account-data poll on successful authentication.
     - Verify challenge replay rejection, issuance limiting, cross-account denial across every customer-data route, revocation, redacted private fill history, and HTTP-session reuse over WebSocket.
     - Sessions are currently process-local. A shared, revocation-capable store, ingress-level abuse controls, browser-wallet compatibility runs, and production key/session incident procedures remain launch gates before horizontal production scaling.
+40. [x] **EX-040: Consumer trading UI integrity and refinement**
+    - Normalize streamed order-book snapshot envelopes at the frontend boundary so backend `snapshot` messages validate as typed `book_snapshot` events without log flooding or bypassing generic message consumers.
+    - Distinguish live Binance Spot reference prices from synthetic Vela testnet books throughout market discovery and trading surfaces; remove unverified hard-coded latency and throughput claims.
+    - Replace pointer-only market cards and selector rows with semantic Next.js links that support keyboard navigation and expose useful accessible names and current-page state.
+    - Refine the primary navigation, market grid, terminal panels, order ticket, profile surfaces, spacing, borders, and typography around a restrained rounded-surface system without importing third-party branding or assets.
+    - Verify the reference-data routes, markets grid, terminal, disconnected profile state, WebSocket stream, frontend tests, type checking, lint, and production build.
+    - This chapter improves the testnet consumer surface and claim integrity. It does not expand the ETH/USDC real-money launch scope, make synthetic liquidity real, complete mobile-wallet compatibility, or satisfy legal accessibility review.
 
 ## Parallel nonengineering work
 
