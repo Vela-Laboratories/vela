@@ -101,25 +101,24 @@ function MarketHeader({ pair, reference, sourceLive, bids, asks }: { pair: strin
 
 function MarketRail({ currentPair, markets, onCollapse }: { currentPair: string; markets: ReferenceMarket[]; onCollapse: () => void }) {
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'movers' | 'volume'>('all')
+  const [filter, setFilter] = useState<'watchlist' | 'all' | 'movers' | 'volume'>('all')
   const [favorites, setFavorites] = useState(['BTC-USDC', 'ETH-USDC'])
   const byId = useMemo(() => Object.fromEntries(markets.map((market) => [market.market, market])), [markets])
   const pairs = useMemo(() => {
     const normalized = query.trim().toUpperCase()
-    const visible = ORDERED_PAIRS.filter((pair) => !normalized || pair.includes(normalized))
+    const visible = ORDERED_PAIRS.filter((pair) => (!normalized || pair.includes(normalized)) && (filter !== 'watchlist' || favorites.includes(pair)))
     if (filter === 'movers') return [...visible].sort((a, b) => Math.abs(byId[b]?.change24h ?? 0) - Math.abs(byId[a]?.change24h ?? 0))
     if (filter === 'volume') return [...visible].sort((a, b) => (byId[b]?.quoteVolume24h ?? 0) - (byId[a]?.quoteVolume24h ?? 0))
     return visible
-  }, [byId, filter, query])
+  }, [byId, favorites, filter, query])
   const toggleFavorite = (event: React.MouseEvent, pair: string) => {
     event.preventDefault(); event.stopPropagation()
     setFavorites((current) => current.includes(pair) ? current.filter((item) => item !== pair) : [...current, pair])
   }
   return <aside className="terminal-market-rail">
-    <div className="terminal-rail-heading"><span><strong>Discover</strong><small>{markets.length} live references</small></span><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><Icon name="collapse" /></button></div>
-    <nav className="terminal-rail-tabs" aria-label="Discovery"><span className="is-active">Markets</span><Link href="/history">Activity</Link><Link href="/leaderboard">Leaders</Link></nav>
+    <nav className="terminal-rail-tabs terminal-rail-tabs--primary" aria-label="Trading navigation"><Link href="/status"><i>●</i>Status</Link><span className="is-active">Markets</span><Link href="/leaderboard">Leaders</Link><Link href="/history">Activity</Link><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><Icon name="collapse" /></button></nav>
     <label className="terminal-rail-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets" /></label>
-    <div className="terminal-rail-filters">{(['all', 'movers', 'volume'] as const).map((item) => <button key={item} type="button" className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'Watchlist' : item}</button>)}</div>
+    <div className="terminal-rail-filters">{(['watchlist', 'all', 'movers', 'volume'] as const).map((item) => <button key={item} type="button" className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'All markets' : item}</button>)}</div>
     <div className="terminal-rail-insight"><span>◆</span><p><strong>Live reference data</strong><small>Binance pricing · Vela testnet execution</small></p><i>↗</i></div>
     <div className="terminal-market-list-head"><span>Markets</span><span>Price / 24h</span></div>
     <div className="terminal-market-list" role="list">
@@ -136,6 +135,7 @@ function MarketRail({ currentPair, markets, onCollapse }: { currentPair: string;
       })}
       {pairs.length === 0 ? <p className="terminal-rail-empty">No matching markets</p> : null}
     </div>
+    <div className="terminal-rail-footer"><button type="button" onClick={onCollapse}><Icon name="collapse" size={13} />Collapse</button><Link href="/dashboard"><span>▤</span>Orders</Link></div>
   </aside>
 }
 
@@ -266,5 +266,5 @@ export default function TradingPage({ params }: { params: Promise<{ pair: string
   useEffect(() => { const request = address && isAuthenticated ? getAccountFeeTier(address).then((response) => response.ok && response.data ? { makerBps: response.data.maker_bps, takerBps: response.data.taker_bps, tier: response.data.cached_tier } : null) : getFeeSchedule().then((response) => { const tier = response.data?.tiers[0]; return response.ok && tier ? { makerBps: tier.maker_bps, takerBps: tier.taker_bps, tier: tier.tier } : null }); void request.then((next) => { if (next) setFee(next) }).catch(() => {}) }, [address, isAuthenticated])
   const handleChartLive = useCallback((mode: LiveMode) => setChartLive(mode), []); const effectiveLive = sourceLive === false || chartLive === 'unavailable' ? false : sourceLive
   if (isMobile) return <><MobileTerminal pair={pair} reference={reference} sourceLive={effectiveLive} bids={bids} asks={asks} loading={!bookLoaded} fee={fee} onToast={addToast} /><ToastContainer toasts={toasts} /></>
-  return <><div className="trade-terminal"><MarketHeader pair={pair} reference={reference} sourceLive={effectiveLive} bids={bids} asks={asks} /><div className={`trade-terminal__grid${railCollapsed ? ' is-rail-collapsed' : ''}`}>{railCollapsed ? <button type="button" className="terminal-rail-restore" onClick={() => setRailCollapsed(false)} aria-label="Open market discovery"><Icon name="collapse" /></button> : <MarketRail currentPair={pair} markets={markets} onCollapse={() => setRailCollapsed(true)} />}<main className="terminal-workspace"><ChartWorkspace pair={pair} reference={reference} onLiveChange={handleChartLive} /><ActivityDock pair={pair} bids={bids} asks={asks} bookLoading={!bookLoaded} onToast={addToast} /></main><ContextRail pair={pair} reference={reference} sourceLive={effectiveLive} bids={bids} asks={asks} fee={fee} onToast={addToast} /></div><TerminalFooter markets={markets} sourceLive={effectiveLive} /></div><ToastContainer toasts={toasts} /></>
+  return <><div className="trade-terminal"><div className={`trade-terminal__grid${railCollapsed ? ' is-rail-collapsed' : ''}`}>{railCollapsed ? <button type="button" className="terminal-rail-restore" onClick={() => setRailCollapsed(false)} aria-label="Open market discovery"><Icon name="collapse" /></button> : <MarketRail currentPair={pair} markets={markets} onCollapse={() => setRailCollapsed(true)} />}<div className="terminal-stage"><MarketHeader pair={pair} reference={reference} sourceLive={effectiveLive} bids={bids} asks={asks} /><div className="terminal-stage__body"><main className="terminal-workspace"><ChartWorkspace pair={pair} reference={reference} onLiveChange={handleChartLive} /><ActivityDock pair={pair} bids={bids} asks={asks} bookLoading={!bookLoaded} onToast={addToast} /></main><ContextRail pair={pair} reference={reference} sourceLive={effectiveLive} bids={bids} asks={asks} fee={fee} onToast={addToast} /></div></div></div><TerminalFooter markets={markets} sourceLive={effectiveLive} /></div><ToastContainer toasts={toasts} /></>
 }

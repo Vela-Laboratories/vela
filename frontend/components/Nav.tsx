@@ -269,13 +269,13 @@ export default function Nav() {
         <div className="app-nav__inner">
           <Link href="/markets/BTC-USDC" className="vela-wordmark" aria-label="Vela trading home">Vela</Link>
 
-          <nav className="app-nav__primary" aria-label="Primary navigation">
+          {!isTrading ? <nav className="app-nav__primary" aria-label="Primary navigation">
             {PRIMARY_LINKS.map(({ href, label, match }) => (
               <Link key={href} href={href} className={pathname.startsWith(match) ? 'is-active' : ''}>
                 {label}
               </Link>
             ))}
-          </nav>
+          </nav> : null}
 
           {isTrading ? (
             <form className="market-search" role="search" onSubmit={handleMarketSearch}>
@@ -286,10 +286,10 @@ export default function Nav() {
           ) : null}
 
           <div className="app-nav__actions">
-            <div className="app-nav__secondary">
+            {!isTrading ? <div className="app-nav__secondary">
               <Link href="/leaderboard">Leaderboard</Link>
               <Link href="/transparency">Transparency</Link>
-            </div>
+            </div> : null}
 
             {isConnected && address ? (
               <AccountControls address={address} isAuthenticated={isAuthenticated} signOut={signOut} />
