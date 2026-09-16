@@ -6,6 +6,7 @@ import { getBook, type BookLevel } from '@/lib/api'
 import { ORDERED_PAIRS, getMarketInfo } from '@/lib/markets'
 import { fetchReferenceCandles, fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 import Skeleton from '@/components/ui/Skeleton'
+import TokenIcon from '@/components/TokenIcon'
 
 interface SparklineBar {
   height: number
@@ -30,9 +31,8 @@ async function fetchSparkline(marketId: string): Promise<SparklineBar[]> {
   }
 }
 
-const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
-const CN = "'Courier New', monospace"
+const CN = "var(--font-mono), 'IBM Plex Mono', monospace"
 
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -64,7 +64,6 @@ function MarketCard({
   sparkline: SparklineBar[]
   onClick: () => void
 }) {
-  const [hovered, setHovered] = useState(false)
   const info = getMarketInfo(pair)
   const change = market?.change24h
   const changeStr = change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
@@ -79,34 +78,31 @@ function MarketCard({
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? '#111110' : '#0C0C0C',
         cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        transition: 'background 0.15s',
+        transition: 'transform 0.16s ease, border-color 0.16s ease, background 0.16s ease',
       }}
-      className="p-4 sm:p-[24px] lg:p-[24px]"
+      className="market-card p-4 sm:p-[24px] lg:p-[24px]"
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <span style={{ fontFamily: IN, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(232,228,216,0.3)' }}>
-          {info.ticker} / USDC
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontFamily: IN, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(232,228,216,0.55)' }}>
+          <TokenIcon ticker={info.ticker} /> {info.ticker} / USDC
         </span>
         <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,228,216,0.12)', padding: '2px 6px', color: 'rgba(232,228,216,0.3)' }}>
           BINANCE SPOT
         </span>
       </div>
 
-      <div style={{ fontFamily: PF, fontWeight: 900, fontSize: priceFontSize, color: '#E8E4D8', lineHeight: 1, marginBottom: 4 }}>
+      <div style={{ fontFamily: CN, fontWeight: 700, fontSize: priceFontSize, color: '#F6F8FF', lineHeight: 1, marginBottom: 4, letterSpacing: '-0.04em' }}>
         {market ? formatPrice(market.price) : '—'}
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: isPositive ? '#6B8A5A' : '#CC3333' }}>
+        <span style={{ fontFamily: IN, fontWeight: 650, fontSize: 11, color: isPositive ? '#21E6A3' : '#FF5C7C' }}>
           {changeStr}
         </span>
         <span style={{ fontFamily: IN, fontSize: 10, color: 'rgba(232,228,216,0.2)' }}>
@@ -124,7 +120,7 @@ function MarketCard({
           ) : (
             topBids.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 11, color: '#6B8A5A' }}>{fmtBookPrice(lvl.price)}</span>
+                <span style={{ fontFamily: CN, fontSize: 11, color: '#21E6A3' }}>{fmtBookPrice(lvl.price)}</span>
                 <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
@@ -139,7 +135,7 @@ function MarketCard({
           ) : (
             topAsks.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 11, color: '#CC3333' }}>{fmtBookPrice(lvl.price)}</span>
+                <span style={{ fontFamily: CN, fontSize: 11, color: '#FF5C7C' }}>{fmtBookPrice(lvl.price)}</span>
                 <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
@@ -151,7 +147,7 @@ function MarketCard({
         {bars.length === 0 ? <span style={{ fontFamily: IN, fontSize: 9, color: '#69697A' }}>Market data unavailable</span> : bars.map((bar, i) => (
           <div
             key={i}
-            style={{ flex: 1, height: `${bar.height}%`, background: bar.up ? '#6B8A5A' : '#CC3333' }}
+            style={{ flex: 1, height: `${bar.height}%`, background: bar.up ? '#21E6A3' : '#FF5C7C', borderRadius: '2px 2px 0 0', opacity: 0.78 }}
           />
         ))}
       </div>
@@ -239,21 +235,20 @@ export default function MarketsPage() {
   return (
     <>
       <style>{`* { box-sizing: border-box; } ::-webkit-scrollbar { display: none; }`}</style>
-      <div style={{ background: '#0C0C0C', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)] lg:h-[calc(100vh-96px)] lg:overflow-hidden">
+      <div style={{ background: '#060814', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)]">
 
-        <div style={{ flexShrink: 0, borderBottom: '1px solid rgba(232,228,216,0.07)' }} className="h-auto lg:h-[52px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
+        <div style={{ flexShrink: 0, borderBottom: '1px solid #1C2841', background: 'rgba(10,14,29,.9)' }} className="h-auto lg:h-[58px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
           <div>
             <div style={{ lineHeight: 1 }}>
-              <span style={{ fontFamily: PF, fontWeight: 900, fontSize: 22, color: '#E8E4D8' }}>Markets</span>
-              <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>{' / '}</span>
-              <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>Live</span>
+              <span style={{ fontFamily: IN, fontWeight: 700, fontSize: 20, color: '#F6F8FF' }}>Explore markets</span>
+              <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 600, fontSize: 10, color: '#21E6A3', padding: '4px 7px', borderRadius: 999, background: 'rgba(33,230,163,.08)', border: '1px solid rgba(33,230,163,.18)' }}>LIVE</span>
             </div>
             <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
               16 Binance Spot references · Vela execution on Ethereum Sepolia · Updating every 2s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#21E6A3', boxShadow: '0 0 10px rgba(33,230,163,.6)', flexShrink: 0 }} />
             <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,228,216,0.22)', textTransform: 'uppercase' }}>
               Binance live feed
             </span>
@@ -261,8 +256,8 @@ export default function MarketsPage() {
         </div>
 
         <div
-          style={{ gap: 1, background: 'rgba(232,228,216,0.05)' }}
-          className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:overflow-hidden"
+          style={{ gap: 10, padding: 10, background: '#060814' }}
+          className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
         >
           {markets === null
             ? ORDERED_PAIRS.map((pair) => <SkeletonCard key={pair} />)
@@ -276,7 +271,6 @@ export default function MarketsPage() {
                   onClick={() => router.push(`/markets/${pair}`)}
                 />
               ))}
-          <div style={{ background: '#0C0C0C' }} />
         </div>
 
         <div style={{ flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.06)' }} className="hidden lg:flex h-[44px] px-10 items-center justify-between">

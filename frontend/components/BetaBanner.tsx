@@ -40,27 +40,8 @@ export default function BetaBanner() {
   const statusText = engineStatus === 'degraded' ? 'DEGRADED' : 'PUBLIC BETA'
 
   return (
-    <div
-      style={{
-        background: '#0C0C0C',
-        borderBottom: '1px solid rgba(232,228,216,0.08)',
-        padding: '0 16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 12,
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '30px',
-        zIndex: 200,
-        fontFamily: 'var(--font-inter-sans), sans-serif',
-        fontSize: '0.68rem',
-        letterSpacing: '0.06em',
-      }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: engineStatus === 'degraded' ? '#CC3333' : 'rgba(232,228,216,0.5)' }}>
+    <div className="beta-banner">
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: engineStatus === 'degraded' ? '#ff5c7c' : '#8c99b3' }}>
         {engineStatus === 'starting' ? (
           <motion.span
             style={{ color: dotColor }}
@@ -71,7 +52,7 @@ export default function BetaBanner() {
           </motion.span>
         ) : engineStatus === null ? (
           <motion.span
-            style={{ color: 'rgba(232,228,216,0.5)' }}
+            style={{ color: '#8c99b3' }}
             animate={{ opacity: [1, 0.15, 1] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
           >
@@ -82,16 +63,14 @@ export default function BetaBanner() {
         )}
         {statusText}
       </span>
-      <span className="beta-banner__detail" style={{ color: 'rgba(232,228,216,0.38)' }}>
+      <span className="beta-banner__detail">
         SEPOLIA TESTNET · NO REAL FUNDS · NOT PRODUCTION CUSTODY
       </span>
       <a
         href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = '#E8E4D8')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+        className="beta-banner__link"
       >
         Learn more →
       </a>

@@ -22,6 +22,7 @@ import {
   type WithdrawalStatus,
 } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
+import TokenIcon from '@/components/TokenIcon'
 import { fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 
 interface ProfileData {
@@ -343,7 +344,7 @@ export default function ProfilePage() {
                   <tbody>
                     {positions.map((position) => (
                       <tr key={position.asset}>
-                        <td><span className="asset-mark asset-mark--small">{position.asset.slice(0, 1)}</span><strong>{position.asset}</strong></td>
+                        <td><TokenIcon ticker={position.asset} size="sm" /><strong>{position.asset}</strong></td>
                         <td>{formatQuantity(position.total)}</td>
                         <td>{formatQuantity(position.available)}</td>
                         <td>{position.price > 0 ? formatMoney(position.price, 6) : '—'}</td>

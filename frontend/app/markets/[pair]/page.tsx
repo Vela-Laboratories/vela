@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Skeleton from '@/components/ui/Skeleton'
+import TokenIcon from '@/components/TokenIcon'
 // Chart runtime is dynamically imported inside ChartArea's mount effect
 // so it doesn't land in the initial route bundle (~300 KB gzipped).
 // Types are erased at compile time and add no runtime cost.
@@ -35,7 +36,7 @@ interface Toast {
 }
 
 const IN = 'Inter, sans-serif'
-const CN = "'Courier New', monospace"
+const CN = "var(--font-mono), 'IBM Plex Mono', monospace"
 
 function fmtPrice(v: string | number | undefined, decimals = 2): string {
   if (v == null || v === '') return '—'
@@ -78,9 +79,9 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
         <div
           key={t.id}
           style={{
-            background: '#111110',
-            border: '1px solid rgba(232,228,216,0.08)',
-            borderLeft: `3px solid ${t.variant === 'success' ? '#6B8A5A' : '#CC3333'}`,
+            background: '#0E1426',
+            border: '1px solid #2D3C5D',
+            borderLeft: `3px solid ${t.variant === 'success' ? '#21E6A3' : '#FF5C7C'}`,
             padding: '10px 16px',
             fontFamily: IN,
             fontSize: 11,
@@ -119,7 +120,7 @@ function TopBar({ pair, reference, sourceLive }: { pair: string; reference: Refe
     <div className="terminal-market-bar">
       <div className="terminal-market-identity">
         <Link href="/markets" aria-label="All markets">‹</Link>
-        <div className="asset-mark">{info.ticker.slice(0, 1)}</div>
+        <TokenIcon ticker={info.ticker} size="lg" />
         <div>
           <div className="terminal-pair">{info.ticker}<span>/ {info.quoteTicker}</span></div>
           <div className="terminal-product">Binance Spot · USDC reference</div>
@@ -149,7 +150,7 @@ const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1H', '4H', '1D']
 
 function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; onChange: (tf: Timeframe) => void; isLive: LiveMode }) {
   const liveLabel = isLive === 'reference' ? '● BINANCE LIVE' : isLive === 'unavailable' ? '○ DATA UNAVAILABLE' : null
-  const liveColor = isLive === 'reference' ? '#6B8A5A' : '#CC6B6B'
+  const liveColor = isLive === 'reference' ? '#21E6A3' : '#FF5C7C'
 
   return (
     <div className="terminal-timeframes">
@@ -157,11 +158,11 @@ function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; o
         <button
           key={tf}
           onClick={() => onChange(tf)}
+          className={timeframe === tf ? 'is-active' : ''}
           style={{
             background: 'transparent',
             border: 'none',
-            borderBottom: timeframe === tf ? '2px solid #9C9CF6' : '2px solid transparent',
-            color: timeframe === tf ? '#F4F4F5' : '#777789',
+            color: timeframe === tf ? '#F5F7FF' : '#8490A9',
             fontFamily: IN,
             fontSize: 12,
             letterSpacing: '0.07em',
@@ -222,32 +223,32 @@ function ChartArea({ pair, timeframe, onLiveChange }: { pair: string; timeframe:
 
       const chart = createChart(container, {
         layout: {
-          background: { color: '#09090E' },
-          textColor: '#7F7F91',
+          background: { color: '#080C19' },
+          textColor: '#8490A9',
           fontFamily: IN,
           fontSize: 11,
         },
         grid: {
-          vertLines: { color: '#15151D' },
-          horzLines: { color: '#15151D' },
+          vertLines: { color: '#151E34' },
+          horzLines: { color: '#151E34' },
         },
         crosshair: {
-          vertLine: { color: '#4A4A5D', width: 1, style: 3 },
-          horzLine: { color: '#4A4A5D', width: 1, style: 3 },
+          vertLine: { color: '#52617C', width: 1, style: 3 },
+          horzLine: { color: '#52617C', width: 1, style: 3 },
         },
-        rightPriceScale: { borderColor: '#242431' },
-        timeScale: { borderColor: '#242431', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: '#1C2841' },
+        timeScale: { borderColor: '#1C2841', timeVisible: true, secondsVisible: false },
         width: container.clientWidth,
         height: container.clientHeight,
       })
 
       const series = chart.addSeries(CandlestickSeries, {
-        upColor: '#2ED67B',
-        downColor: '#FF5C67',
-        borderUpColor: '#2ED67B',
-        borderDownColor: '#FF5C67',
-        wickUpColor: '#2ED67B',
-        wickDownColor: '#FF5C67',
+        upColor: '#21E6A3',
+        downColor: '#FF5C7C',
+        borderUpColor: '#21E6A3',
+        borderDownColor: '#FF5C7C',
+        wickUpColor: '#21E6A3',
+        wickDownColor: '#FF5C7C',
       })
 
       chartRef.current = chart
@@ -413,14 +414,14 @@ function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: strin
               <div key={order.id} style={{ display: 'grid', gridTemplateColumns: '90px 55px 45px 75px 75px 1fr', padding: '4px 16px', alignItems: 'center' }}>
                 <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.3)' }}>{fmtOrderTime(order.timestamp)}</span>
                 <span style={{ fontFamily: IN, fontSize: 10, color: '#E8E4D8' }}>{order.market}</span>
-                <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', color: order.side === 'buy' ? '#6B8A5A' : '#CC3333' }}>{order.side}</span>
+                <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', color: order.side === 'buy' ? '#21E6A3' : '#FF5C7C' }}>{order.side}</span>
                 <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{fmtPrice(order.price)}</span>
                 <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{fmtSize(order.quantity, info.ticker)}</span>
                 {(order.status === 'open' || order.status === 'partial') ? (
                   <button
                     onClick={() => handleCancel(order)}
                     style={{ background: 'transparent', border: 'none', fontFamily: IN, fontSize: 9, color: 'rgba(232,228,216,0.28)', cursor: 'pointer', padding: 0, borderRadius: 0, textAlign: 'left' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#CC3333' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#FF5C7C' }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,228,216,0.28)' }}
                   >
                     Cancel
@@ -508,8 +509,8 @@ function OrderBookPanel({
               const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
               return (
                 <div key={`ask-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                  <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(204,51,51,0.08)' }} />
-                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#FF5C67', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(255,92,124,0.09)' }} />
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#FF5C7C', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
                   <span style={{ fontFamily: CN, fontSize: 11.5, color: '#C4C4CE', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
                 </div>
               )
@@ -520,8 +521,8 @@ function OrderBookPanel({
       <div style={{ padding: '5px 12px', borderTop: '1px solid rgba(232,228,216,0.04)', borderBottom: '1px solid rgba(232,228,216,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.3)' }}>◆ {spread ?? '—'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(107,138,90,0.6)', letterSpacing: '0.12em' }}>LIVE</span>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#21E6A3', boxShadow: '0 0 8px rgba(33,230,163,.6)', display: 'inline-block', flexShrink: 0 }} />
+          <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(33,230,163,0.72)', letterSpacing: '0.12em' }}>LIVE</span>
         </div>
       </div>
 
@@ -537,8 +538,8 @@ function OrderBookPanel({
               const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
               return (
                 <div key={`bid-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(107,138,90,0.08)' }} />
-                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#2ED67B', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(33,230,163,0.08)' }} />
+                  <span style={{ fontFamily: CN, fontSize: 11.5, color: '#21E6A3', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
                   <span style={{ fontFamily: CN, fontSize: 11.5, color: '#C4C4CE', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
                 </div>
               )
@@ -572,6 +573,7 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
           return (
             <div
               key={pair}
+              className={`terminal-market-row${isActive ? ' is-active' : ''}`}
               onClick={() => router.push(`/markets/${pair}`)}
               style={{
                 padding: '9px 12px',
@@ -585,15 +587,15 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
               onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(232,228,216,0.025)' }}
               onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 12, color: '#F4F4F5' }}>{info.ticker}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2, alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: IN, fontWeight: 600, fontSize: 12, color: '#F4F4F5' }}><TokenIcon ticker={info.ticker} size="sm" />{info.ticker}</span>
                 <span style={{ fontFamily: CN, fontSize: 11, color: '#F4F4F5' }}>
                   {market ? market.price.toFixed(decimals) : '—'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: IN, fontSize: 10, color: '#69697A' }}>USDC</span>
-                <span style={{ fontFamily: IN, fontSize: 10, color: change !== undefined && change >= 0 ? '#2ED67B' : '#FF5C67' }}>
+                <span style={{ fontFamily: IN, fontSize: 10, color: change !== undefined && change >= 0 ? '#21E6A3' : '#FF5C7C' }}>
                   {change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}
                 </span>
               </div>
@@ -718,6 +720,7 @@ function OrderEntryPanel({
           <button
             key={t}
             onClick={() => setOrderType(t)}
+            className={orderType === t ? 'is-active' : ''}
             style={{
               padding: '11px 0',
               background: 'transparent',
@@ -743,6 +746,7 @@ function OrderEntryPanel({
           <button
             key={s}
             onClick={() => setSide(s)}
+            className={`trade-side trade-side--${s}${side === s ? ' is-active' : ''}`}
             style={{
               padding: 11,
               textAlign: 'center',
@@ -760,7 +764,7 @@ function OrderEntryPanel({
                 ? s === 'buy' ? 'rgba(46,214,123,0.14)' : 'rgba(255,92,103,0.14)'
                 : '#101018',
               color: side === s
-                ? s === 'buy' ? '#2ED67B' : '#FF5C67'
+                ? s === 'buy' ? '#21E6A3' : '#FF5C7C'
                 : '#777789',
             }}
           >
@@ -847,7 +851,7 @@ function OrderEntryPanel({
               tabIndex={0}
               onClick={() => setPostOnly(!postOnly)}
               onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setPostOnly(!postOnly) }}
-              style={{ width: 18, height: 18, border: '1px solid #3A3A49', borderRadius: 4, background: postOnly ? '#9C9CF6' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              style={{ width: 18, height: 18, border: '1px solid #3A4967', borderRadius: 4, background: postOnly ? '#7C6CFF' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
             >
               {postOnly && <span style={{ color: '#E8E4D8', fontSize: 10, lineHeight: 1 }}>✓</span>}
             </div>
@@ -883,10 +887,10 @@ function OrderEntryPanel({
           border: 'none',
           cursor: 'pointer',
           background: !isConnected || !isAuthenticated
-            ? '#20202A'
+            ? '#172037'
             : side === 'buy'
-            ? '#159A5A'
-            : '#D84752',
+            ? '#13B879'
+            : '#E34767',
           color: !isConnected || !isAuthenticated ? '#777789' : 'white',
           flexShrink: 0,
           opacity: isConnected && isAuthenticated && submitting ? 0.6 : 1,
