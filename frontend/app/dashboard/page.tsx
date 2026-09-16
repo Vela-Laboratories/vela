@@ -225,15 +225,15 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#6B8A5A"
+              stroke="#20c98a"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#6B8A5A" />
+            <circle cx="14" cy="14" r="2" fill="#20c98a" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#6B8A5A"
+              stroke="#20c98a"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -274,13 +274,13 @@ function CreditGauge({
   const dashOffset = circumference - (clamped / 100) * circumference
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
-  const arcColor = isDanger ? '#CC3333' : '#6B8A5A'
-  const textFill = '#E8E4D8'
+  const arcColor = isDanger ? '#ef6a5b' : '#20c98a'
+  const textFill = '#e9eaf0'
 
   return (
     <div className="flex flex-col items-center gap-5">
       <svg width="128" height="128" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={R} stroke="rgba(232,228,216,0.06)" strokeWidth="10" fill="none" />
+        <circle cx="50" cy="50" r={R} stroke="rgba(232,234,240,0.06)" strokeWidth="10" fill="none" />
         <circle
           cx="50"
           cy="50"
@@ -310,7 +310,7 @@ function CreditGauge({
           y="61"
           textAnchor="middle"
           fontSize="8"
-          fill="rgba(232,228,216,0.25)"
+          fill="rgba(232,234,240,0.25)"
           fontFamily="Courier New, monospace"
         >
           utilized
@@ -420,7 +420,7 @@ function OpenOrdersTable({
                     key={order.id}
                     className={[
                       'transition-opacity duration-150 border-b border-border last:border-0',
-                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(232,228,216,0.04)]',
+                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(232,234,240,0.04)]',
                     ].join(' ')}
                   >
                     <td className="px-4 py-3">
@@ -507,7 +507,7 @@ function PnlTracker({
     <Card padding="none">
       <button
         type="button"
-        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(232,228,216,0.03)] transition-colors"
+        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(232,234,240,0.03)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3">
@@ -565,7 +565,7 @@ function PnlTracker({
                 return (
                   <div
                     key={mkt}
-                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(232,228,216,0.03)] transition-colors border-b border-border last:border-0"
+                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(232,234,240,0.03)] transition-colors border-b border-border last:border-0"
                   >
                     <span className="font-medium text-ink">{mkt}</span>
                     <span className="text-right tabular-nums text-brown font-mono">
@@ -627,7 +627,7 @@ function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
               {summaries.map((row) => (
                 <tr
                   key={row.market}
-                  className="hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-100 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(232,234,240,0.04)] transition-colors duration-100 border-b border-border last:border-0"
                 >
                   <td className="px-4 py-3 font-medium text-ink">
                     {row.market}

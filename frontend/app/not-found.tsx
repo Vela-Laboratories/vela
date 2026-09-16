@@ -3,7 +3,7 @@
 import HexCanvas from '@/components/HexCanvas'
 import Link from 'next/link'
 
-const PF = "'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = 'Inter, sans-serif'
 
 export default function NotFound() {
@@ -36,7 +36,7 @@ export default function NotFound() {
           fontWeight: 900,
           fontStyle: 'italic',
           fontSize: 120,
-          color: 'rgba(232,228,216,0.06)',
+          color: 'rgba(232,234,240,0.06)',
           position: 'absolute',
           userSelect: 'none',
           lineHeight: 1,
@@ -56,7 +56,7 @@ export default function NotFound() {
             fontFamily: PF,
             fontWeight: 700,
             fontSize: 32,
-            color: '#E8E4D8',
+            color: '#e9eaf0',
           }}>
             Page not found.
           </span>
@@ -65,7 +65,7 @@ export default function NotFound() {
             fontFamily: IN,
             fontWeight: 300,
             fontSize: 14,
-            color: 'rgba(232,228,216,0.38)',
+            color: 'rgba(232,234,240,0.38)',
             maxWidth: 320,
             lineHeight: 1.7,
             margin: 0,
@@ -77,8 +77,8 @@ export default function NotFound() {
             <Link
               href="/"
               style={{
-                background: '#E8E4D8',
-                color: '#0C0C0C',
+                background: '#090b11',
+                color: '#e9eaf0',
                 fontFamily: IN,
                 fontWeight: 600,
                 fontSize: 11,
@@ -98,8 +98,8 @@ export default function NotFound() {
               href="/markets"
               style={{
                 background: 'transparent',
-                color: 'rgba(232,228,216,0.45)',
-                border: '1px solid rgba(232,228,216,0.15)',
+                color: 'rgba(232,234,240,0.45)',
+                border: '1px solid rgba(232,234,240,0.15)',
                 fontFamily: IN,
                 fontSize: 11,
                 padding: '12px 24px',
@@ -119,7 +119,7 @@ export default function NotFound() {
         bottom: 32,
         fontFamily: IN,
         fontSize: 10,
-        color: 'rgba(232,228,216,0.15)',
+        color: 'rgba(232,234,240,0.15)',
         letterSpacing: '0.1em',
       }}>
         vela.monolithsystematic.com

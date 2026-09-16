@@ -4,7 +4,7 @@ import { useState } from 'react'
 import HexCanvas from '@/components/HexCanvas'
 import { useAuth } from '@/lib/auth'
 
-const PF = "'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
@@ -63,43 +63,43 @@ export default function RegisterMMPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             Vela Exchange — Market Makers
           </p>
-          <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '40px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
+          <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '40px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
             Register as a Market Maker
           </span>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '480px', marginTop: '16px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '480px', marginTop: '16px' }}>
             Add your wallet to Vela&apos;s public market maker disclosure list.
           </p>
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         {status === 'success' ? (
           <div style={{ maxWidth: '480px' }}>
-            <div style={{ background: 'rgba(107,138,90,0.08)', border: '1px solid rgba(107,138,90,0.25)', borderLeft: '3px solid #6B8A5A', padding: '20px 24px' }}>
-              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 8px' }}>Registered.</p>
-              <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.6)', margin: 0 }}>
+            <div style={{ background: 'rgba(107,138,90,0.08)', border: '1px solid rgba(107,138,90,0.25)', borderLeft: '3px solid #20c98a', padding: '20px 24px' }}>
+              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 8px' }}>Registered.</p>
+              <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.6)', margin: 0 }}>
                 You will appear on{' '}
-                <a href="/operator" style={{ color: '#0C0C0C' }}>vela.monolithsystematic.com/operator</a>
+                <a href="/operator" style={{ color: '#e9eaf0' }}>vela.monolithsystematic.com/operator</a>
               </p>
             </div>
           </div>
         ) : (
           <div style={{ maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 8px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                 Wallet Address
               </p>
               {isConnected && address ? (
                 <div style={{ background: '#0C0C0C', padding: '12px 16px' }}>
-                  <span style={{ fontFamily: CN, fontSize: '12px', color: '#E8E4D8' }}>{address}</span>
+                  <span style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0' }}>{address}</span>
                 </div>
               ) : (
                 <button
                   onClick={() => connect()}
-                  style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#E8E4D8', background: '#0C0C0C', padding: '12px 24px', border: 'none', cursor: 'pointer', borderRadius: 0 }}
+                  style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', background: '#0C0C0C', padding: '12px 24px', border: 'none', cursor: 'pointer', borderRadius: 0 }}
                 >
                   Connect wallet to continue
                 </button>
@@ -109,7 +109,7 @@ export default function RegisterMMPage() {
             {isConnected && (
               <>
                 <div>
-                  <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 8px' }}>
+                  <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                     Display Name (optional)
                   </p>
                   <input
@@ -122,28 +122,28 @@ export default function RegisterMMPage() {
                       width: '100%',
                       fontFamily: IN,
                       fontSize: '13px',
-                      color: '#0C0C0C',
-                      background: 'white',
-                      border: '1px solid rgba(12,12,12,0.15)',
+                      color: '#e9eaf0',
+                      background: '#0d1018',
+                      border: '1px solid rgba(232,234,240,0.15)',
                       padding: '12px 14px',
                       outline: 'none',
                       borderRadius: 0,
                       boxSizing: 'border-box',
                     }}
                   />
-                  <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.35)', margin: '4px 0 0' }}>
+                  <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', margin: '4px 0 0' }}>
                     {displayName.length}/64
                   </p>
                 </div>
 
-                <div style={{ background: 'rgba(12,12,12,0.04)', border: '1px solid rgba(12,12,12,0.08)', padding: '14px 16px' }}>
-                  <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', lineHeight: 1.7, margin: 0 }}>
+                <div style={{ background: 'rgba(232,234,240,0.04)', border: '1px solid rgba(232,234,240,0.08)', padding: '14px 16px' }}>
+                  <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)', lineHeight: 1.7, margin: 0 }}>
                     Your wallet address will always be shown. Display name is optional. Registration requires a wallet signature.
                   </p>
                 </div>
 
                 {status === 'error' && (
-                  <p style={{ fontFamily: IN, fontSize: '12px', color: '#CC3333', margin: 0 }}>{errorMsg}</p>
+                  <p style={{ fontFamily: IN, fontSize: '12px', color: '#ef6a5b', margin: 0 }}>{errorMsg}</p>
                 )}
 
                 <button
@@ -155,7 +155,7 @@ export default function RegisterMMPage() {
                     fontSize: '12px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.15em',
-                    color: '#E8E4D8',
+                    color: '#e9eaf0',
                     background: '#0C0C0C',
                     padding: '14px 28px',
                     border: 'none',

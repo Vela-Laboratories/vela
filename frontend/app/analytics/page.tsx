@@ -10,7 +10,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import HexCanvas from '@/components/HexCanvas'
 import { useAuth } from '@/lib/auth'
 
-const PF = "'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
@@ -39,10 +39,10 @@ interface AnalyticsMarket {
 }
 
 function spreadColor(bps: number | null): string {
-  if (bps === null) return 'rgba(12,12,12,0.3)'
-  if (bps < 5) return '#6B8A5A'
-  if (bps <= 20) return 'rgba(12,12,12,0.6)'
-  return '#CC3333'
+  if (bps === null) return 'rgba(232,234,240,0.3)'
+  if (bps < 5) return '#20c98a'
+  if (bps <= 20) return 'rgba(232,234,240,0.6)'
+  return '#ef6a5b'
 }
 
 function fmtBps(v: number | null): string {
@@ -72,10 +72,10 @@ function SlippageBarChart({ slippage1k, slippage10k, slippage100k }: SlippageBar
   const max = Math.max(...values.filter((v): v is number => v !== null), 1)
 
   function barColor(v: number | null): string {
-    if (v === null) return 'rgba(232,228,216,0.1)'
-    if (v < 5) return '#6B8A5A'
-    if (v <= 20) return 'rgba(232,228,216,0.4)'
-    return '#CC3333'
+    if (v === null) return 'rgba(232,234,240,0.1)'
+    if (v < 5) return '#20c98a'
+    if (v <= 20) return 'rgba(232,234,240,0.4)'
+    return '#ef6a5b'
   }
 
   return (
@@ -84,13 +84,13 @@ function SlippageBarChart({ slippage1k, slippage10k, slippage100k }: SlippageBar
         const height = v !== null ? Math.max((v / max) * 120, 4) : 0
         return (
           <div key={labels[i]} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontFamily: IN, fontSize: '10px', color: '#E8E4D8' }}>
+            <span style={{ fontFamily: IN, fontSize: '10px', color: '#e9eaf0' }}>
               {v !== null ? `${v.toFixed(1)} bps` : '—'}
             </span>
             <div style={{ width: '48px', height: '120px', display: 'flex', alignItems: 'flex-end' }}>
               <div style={{ width: '100%', height: `${height}px`, background: barColor(v) }} />
             </div>
-            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.5)' }}>{labels[i]}</span>
+            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)' }}>{labels[i]}</span>
           </div>
         )
       })}
@@ -262,19 +262,19 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H}>
       {[0.25, 0.5, 0.75].map((f) => (
         <line key={f} x1={PAD.left} y1={PAD.top + innerH * f} x2={PAD.left + innerW} y2={PAD.top + innerH * f}
-          stroke="rgba(232,228,216,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
+          stroke="rgba(232,234,240,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
       ))}
-      <polygon points={fillPoints} fill="#6B8A5A" fillOpacity="0.08" />
-      <polyline points={linePoints} fill="none" stroke="#6B8A5A" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={toX(lastPt.ts)} cy={toY(lastPt.bps)} r="3" fill="#6B8A5A" />
+      <polygon points={fillPoints} fill="#20c98a" fillOpacity="0.08" />
+      <polyline points={linePoints} fill="none" stroke="#20c98a" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={toX(lastPt.ts)} cy={toY(lastPt.bps)} r="3" fill="#20c98a" />
       {minuteMarks.map(({ ts, label }) => (
-        <text key={label} x={toX(ts)} y={H - 6} textAnchor="middle" fontSize="9" fill="rgba(232,228,216,0.35)" fontFamily="Courier New, monospace">{label}</text>
+        <text key={label} x={toX(ts)} y={H - 6} textAnchor="middle" fontSize="9" fill="rgba(232,234,240,0.35)" fontFamily="Courier New, monospace">{label}</text>
       ))}
       {yLabels.map((v) => (
-        <text key={v} x={PAD.left - 6} y={toY(v) + 3} textAnchor="end" fontSize="9" fill="rgba(232,228,216,0.35)" fontFamily="Courier New, monospace">{v.toFixed(1)}</text>
+        <text key={v} x={PAD.left - 6} y={toY(v) + 3} textAnchor="end" fontSize="9" fill="rgba(232,234,240,0.35)" fontFamily="Courier New, monospace">{v.toFixed(1)}</text>
       ))}
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
-      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
+      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
     </svg>
   )
 }
@@ -292,8 +292,8 @@ function OFIBar({ ofi }: { ofi: number }) {
         </span>
         <span>Bid pressure</span>
       </div>
-      <div className="relative h-7 bg-[rgba(232,228,216,0.04)] overflow-hidden">
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,228,216,0.15)] z-10" />
+      <div className="relative h-7 bg-[rgba(232,234,240,0.04)] overflow-hidden">
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,234,240,0.15)] z-10" />
         {isBidHeavy ? (
           <div className="absolute top-0 bottom-0 bg-sage transition-[width] duration-300" style={{ left: '50%', width: `${bidPct}%` }} />
         ) : (
@@ -349,15 +349,15 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H}>
       {[0.25, 0.5, 0.75].map((f) => (
         <line key={f} x1={PAD.left} y1={PAD.top + innerH * f} x2={PAD.left + innerW} y2={PAD.top + innerH * f}
-          stroke="rgba(232,228,216,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
+          stroke="rgba(232,234,240,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
       ))}
-      {bidPath && (<><path d={bidPath} fill="rgba(107,138,90,0.08)" /><path d={bidPath} fill="none" stroke="#6B8A5A" strokeWidth="1.5" strokeLinejoin="round" /></>)}
-      {askPath && (<><path d={askPath} fill="rgba(204,51,51,0.08)" /><path d={askPath} fill="none" stroke="#CC3333" strokeWidth="1.5" strokeLinejoin="round" /></>)}
-      {midPrice !== null && <line x1={toX(midPrice)} y1={PAD.top} x2={toX(midPrice)} y2={bottomY} stroke="rgba(232,228,216,0.2)" strokeWidth="1" strokeDasharray="4 3" />}
-      {priceTicks.map((p, i) => <text key={i} x={toX(p)} y={H - 6} textAnchor="middle" fontSize="8.5" fill="rgba(232,228,216,0.35)" fontFamily="Courier New, monospace">{p.toFixed(2)}</text>)}
-      {cumTicks.map((c) => <text key={c} x={PAD.left - 6} y={toY(c) + 3} textAnchor="end" fontSize="8.5" fill="rgba(232,228,216,0.35)" fontFamily="Courier New, monospace">{c.toFixed(2)}</text>)}
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
-      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
+      {bidPath && (<><path d={bidPath} fill="rgba(107,138,90,0.08)" /><path d={bidPath} fill="none" stroke="#20c98a" strokeWidth="1.5" strokeLinejoin="round" /></>)}
+      {askPath && (<><path d={askPath} fill="rgba(204,51,51,0.08)" /><path d={askPath} fill="none" stroke="#ef6a5b" strokeWidth="1.5" strokeLinejoin="round" /></>)}
+      {midPrice !== null && <line x1={toX(midPrice)} y1={PAD.top} x2={toX(midPrice)} y2={bottomY} stroke="rgba(232,234,240,0.2)" strokeWidth="1" strokeDasharray="4 3" />}
+      {priceTicks.map((p, i) => <text key={i} x={toX(p)} y={H - 6} textAnchor="middle" fontSize="8.5" fill="rgba(232,234,240,0.35)" fontFamily="Courier New, monospace">{p.toFixed(2)}</text>)}
+      {cumTicks.map((c) => <text key={c} x={PAD.left - 6} y={toY(c) + 3} textAnchor="end" fontSize="8.5" fill="rgba(232,234,240,0.35)" fontFamily="Courier New, monospace">{c.toFixed(2)}</text>)}
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
+      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
     </svg>
   )
 }
@@ -423,7 +423,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
             </thead>
             <tbody>
               {rows.map((row, idx) => (
-                <tr key={row.market} className={['hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-100 border-b border-border last:border-0', idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas'].join(' ')}>
+                <tr key={row.market} className={['hover:bg-[rgba(232,234,240,0.04)] transition-colors duration-100 border-b border-border last:border-0', idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas'].join(' ')}>
                   <td className="px-5 py-3 font-semibold text-ink text-xs">{row.market}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-xs text-ink font-mono">{row.trades1m}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-xs text-ink font-mono">{row.avgSize !== null ? row.avgSize.toFixed(4) : '—'}</td>
@@ -435,8 +435,8 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                   <td className="px-5 py-3 min-w-[180px]">
                     {row.ofi !== null ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-[rgba(232,228,216,0.04)] overflow-hidden relative">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,228,216,0.15)]" />
+                        <div className="flex-1 h-1.5 bg-[rgba(232,234,240,0.04)] overflow-hidden relative">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,234,240,0.15)]" />
                           {row.ofi >= 0 ? (
                             <div className="absolute top-0 bottom-0 bg-sage transition-[width] duration-300" style={{ left: '50%', width: `${Math.abs(row.ofi) * 50}%` }} />
                           ) : (
@@ -498,22 +498,22 @@ function ToxicityChart({ points }: { points: ToxicityPoint[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H}>
       {[0.25, 0.5, 0.75].map((f) => (
         <line key={f} x1={PAD.left} y1={PAD.top + innerH * (1 - f)} x2={PAD.left + innerW} y2={PAD.top + innerH * (1 - f)}
-          stroke="rgba(232,228,216,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
+          stroke="rgba(232,234,240,0.04)" strokeWidth="0.5" strokeDasharray="3 3" />
       ))}
       <line x1={PAD.left} y1={thresholdY} x2={PAD.left + innerW} y2={thresholdY}
         stroke="rgba(204,51,51,0.3)" strokeWidth="1" strokeDasharray="4 3" />
       <text x={PAD.left + innerW - 2} y={thresholdY - 3} textAnchor="end" fontSize="8" fill="rgba(204,51,51,0.5)" fontFamily="Courier New, monospace">0.75 threshold</text>
-      <polyline points={linePoints} fill="none" stroke="rgba(232,228,216,0.7)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={linePoints} fill="none" stroke="rgba(232,234,240,0.7)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       {points.map((p, i) => (
         <circle key={i} cx={toX(p.ts)} cy={toY(p.score)} r="2.5"
-          fill={p.score > 0.75 ? '#CC3333' : p.score > 0.4 ? 'rgba(232,228,216,0.6)' : '#6B8A5A'} />
+          fill={p.score > 0.75 ? '#ef6a5b' : p.score > 0.4 ? 'rgba(232,234,240,0.6)' : '#20c98a'} />
       ))}
       {yLabels.map((v) => (
         <text key={v} x={PAD.left - 5} y={toY(v) + 3} textAnchor="end" fontSize="8.5"
-          fill="rgba(232,228,216,0.35)" fontFamily="Courier New, monospace">{v.toFixed(2)}</text>
+          fill="rgba(232,234,240,0.35)" fontFamily="Courier New, monospace">{v.toFixed(2)}</text>
       ))}
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
-      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,228,216,0.06)" strokeWidth="0.5" />
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
+      <line x1={PAD.left} y1={bottomY} x2={PAD.left + innerW} y2={bottomY} stroke="rgba(232,234,240,0.06)" strokeWidth="0.5" />
     </svg>
   )
 }
@@ -765,10 +765,10 @@ export default function AnalyticsPage() {
     fontSize: '11px',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.1em',
-    color: timeframe === tf ? '#0C0C0C' : 'rgba(12,12,12,0.35)',
+    color: timeframe === tf ? '#b8b1ff' : 'rgba(232,234,240,0.35)',
     background: 'transparent',
     border: 'none',
-    borderBottom: timeframe === tf ? '2px solid #0C0C0C' : '2px solid transparent',
+    borderBottom: timeframe === tf ? '2px solid #9488ee' : '2px solid transparent',
     padding: '8px 16px',
     cursor: 'pointer',
   })
@@ -780,26 +780,26 @@ export default function AnalyticsPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             Vela Exchange — Market Analytics
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '48px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '48px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
               Market quality.
             </span>
-            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,228,216,0.3)', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
               Measured and published.
             </span>
           </div>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '540px', marginTop: '20px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '540px', marginTop: '20px' }}>
             Spread, slippage, depth, and volume for all 16 markets. Updated every 60 seconds. No other exchange publishes this data.
           </p>
         </div>
       </div>
 
       {/* ── TIMEFRAME SELECTOR ───────────────────────────────────────────── */}
-      <div style={{ background: '#E8E4D8' }} className="px-6 lg:px-[52px]" >
-        <div style={{ paddingTop: '24px', borderBottom: '1px solid rgba(12,12,12,0.07)', display: 'flex' }}>
+      <div style={{ background: '#090b11' }} className="px-6 lg:px-[52px]" >
+        <div style={{ paddingTop: '24px', borderBottom: '1px solid rgba(232,234,240,0.07)', display: 'flex' }}>
           {(['1H', '24H', '7D'] as Timeframe[]).map((tf) => (
             <button key={tf} onClick={() => setTimeframe(tf)} style={tfBtn(tf)}>{tf}</button>
           ))}
@@ -807,25 +807,25 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── MARKET ANALYTICS TABLE ───────────────────────────────────────── */}
-      <div style={{ background: '#E8E4D8' }} className="px-6 pb-12 lg:px-[52px] lg:pb-[52px]">
+      <div style={{ background: '#090b11' }} className="px-6 pb-12 lg:px-[52px] lg:pb-[52px]">
         <div style={{ paddingTop: '28px' }}>
           {analyticsError ? (
-            <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.35)', textAlign: 'center', padding: '48px 0' }}>
+            <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.35)', textAlign: 'center', padding: '48px 0' }}>
               Analytics unavailable.
             </p>
           ) : analyticsMarkets === null ? (
             <div>
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} style={{ padding: '14px 0', borderBottom: '1px solid rgba(12,12,12,0.05)', display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px' }}>
+                <div key={i} style={{ padding: '14px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px' }}>
                   {Array.from({ length: 7 }).map((_, j) => (
-                    <div key={j} style={{ height: '12px', background: 'rgba(12,12,12,0.06)', width: `${60 + (j * 10) % 40}%` }} />
+                    <div key={j} style={{ height: '12px', background: 'rgba(232,234,240,0.06)', width: `${60 + (j * 10) % 40}%` }} />
                   ))}
                 </div>
               ))}
             </div>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(12,12,12,0.08)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(232,234,240,0.08)' }}>
                 {[
                   { label: 'MARKET', tip: undefined },
                   { label: 'SPREAD', tip: 'Current bid-ask spread in basis points (1 bps = 0.01%)' },
@@ -838,7 +838,7 @@ export default function AnalyticsPage() {
                   <span
                     key={label}
                     title={tip}
-                    style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', cursor: tip ? 'help' : undefined }}
+                    style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', cursor: tip ? 'help' : undefined }}
                   >
                     {label}
                   </span>
@@ -847,9 +847,9 @@ export default function AnalyticsPage() {
               {analyticsMarkets.map((m) => (
                 <div
                   key={m.market_id}
-                  style={{ display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px', padding: '14px 0', borderBottom: '1px solid rgba(12,12,12,0.05)', alignItems: 'center' }}
+                  style={{ display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px', padding: '14px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', alignItems: 'center' }}
                 >
-                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#0C0C0C' }}>
+                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#e9eaf0' }}>
                     {ticker(m.market_id)}/USDC
                   </span>
                   <span style={{ fontFamily: CN, fontSize: '11px', color: spreadColor(m.current_spread_bps) }}>
@@ -864,10 +864,10 @@ export default function AnalyticsPage() {
                   <span style={{ fontFamily: CN, fontSize: '11px', color: spreadColor(m.slippage_100k_usdc) }}>
                     {fmtBps(m.slippage_100k_usdc)}
                   </span>
-                  <span style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(12,12,12,0.6)' }}>
+                  <span style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(232,234,240,0.6)' }}>
                     {fmtUsd(m.total_volume_usdc)}
                   </span>
-                  <span style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(12,12,12,0.5)' }}>
+                  <span style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(232,234,240,0.5)' }}>
                     {fmtUsd(m.depth_1pct_total_usdc)}
                   </span>
                 </div>
@@ -881,13 +881,13 @@ export default function AnalyticsPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '12px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '12px' }}>
             Slippage Curves
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#E8E4D8', margin: '0 0 12px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 12px' }}>
             Cost of trading by size.
           </h2>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
             Estimated market impact for each market across standard order sizes. Lower is better.
           </p>
 
@@ -901,9 +901,9 @@ export default function AnalyticsPage() {
                   fontSize: '10px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.1em',
-                  color: slippageMarket === m.market_id ? '#0C0C0C' : 'rgba(232,228,216,0.4)',
-                  background: slippageMarket === m.market_id ? '#E8E4D8' : 'transparent',
-                  border: '1px solid rgba(232,228,216,0.15)',
+                  color: slippageMarket === m.market_id ? '#11121a' : 'rgba(232,234,240,0.4)',
+                  background: slippageMarket === m.market_id ? '#9488ee' : 'transparent',
+                  border: '1px solid rgba(232,234,240,0.15)',
                   padding: '5px 12px',
                   cursor: 'pointer',
                 }}
@@ -920,21 +920,21 @@ export default function AnalyticsPage() {
               slippage100k={slippageData.slippage_100k_usdc}
             />
           ) : (
-            <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,228,216,0.3)' }}>—</p>
+            <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.3)' }}>—</p>
           )}
         </div>
       </div>
 
       {/* ── METHODOLOGY ──────────────────────────────────────────────────── */}
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '12px' }}>
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '12px' }}>
           Methodology
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#0C0C0C', margin: '0 0 32px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 32px' }}>
           How these numbers are computed.
         </h2>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.07)' }}>
           {[
             {
               title: 'SPREAD',
@@ -949,42 +949,42 @@ export default function AnalyticsPage() {
               body: 'Market depth shows the total available liquidity within 1% of the current mid price on both the bid and ask sides. Higher depth means larger orders can be filled with less slippage.',
             },
           ].map((c) => (
-            <div key={c.title} style={{ background: 'white', padding: '28px' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>{c.title}</p>
-              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.7)', lineHeight: 1.8, margin: 0 }}>{c.body}</p>
+            <div key={c.title} style={{ background: '#0d1018', padding: '28px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>{c.title}</p>
+              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.7)', lineHeight: 1.8, margin: 0 }}>{c.body}</p>
             </div>
           ))}
         </div>
 
-        <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.35)', marginTop: '20px' }}>
+        <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', marginTop: '20px' }}>
           All analytics are computed from the live Vela order book and trade history. Methodology is open source at github.com/arpjw/vela.
         </p>
 
-        <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid rgba(12,12,12,0.07)' }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '16px' }}>
+        <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid rgba(232,234,240,0.07)' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             Engine Performance Context
           </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)', marginBottom: '16px' }}>
-            <div style={{ background: 'white', padding: '24px' }}>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#0C0C0C', margin: '0 0 4px', lineHeight: 1 }}>2.5M ops/sec</p>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 8px' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1px]" style={{ background: 'rgba(232,234,240,0.07)', marginBottom: '16px' }}>
+            <div style={{ background: '#0d1018', padding: '24px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1 }}>2.5M ops/sec</p>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                 Vela engine throughput (isolated microbench)
               </p>
-              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '11px', color: 'rgba(12,12,12,0.5)', margin: 0, lineHeight: 1.6 }}>
+              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '11px', color: 'rgba(232,234,240,0.5)', margin: 0, lineHeight: 1.6 }}>
                 vs. Hyperliquid&apos;s 200k ops/sec execution ceiling¹
               </p>
             </div>
-            <div style={{ background: 'white', padding: '24px' }}>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#0C0C0C', margin: '0 0 4px', lineHeight: 1 }}>16.9 ms</p>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 8px' }}>
+            <div style={{ background: '#0d1018', padding: '24px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1 }}>16.9 ms</p>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                 Vela end-to-end p50 (single client, loopback)
               </p>
-              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '11px', color: 'rgba(12,12,12,0.5)', margin: 0, lineHeight: 1.6 }}>
+              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '11px', color: 'rgba(232,234,240,0.5)', margin: 0, lineHeight: 1.6 }}>
                 vs. Hyperliquid&apos;s 200 ms p50 (colocated, includes HyperBFT consensus)¹
               </p>
             </div>
           </div>
-          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.35)', lineHeight: 1.7 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', lineHeight: 1.7 }}>
             ¹ Vela engine benchmarks measure the isolated matching layer only (no network transit, no BFT consensus). Hyperliquid&apos;s published figures include HyperBFT consensus and network overhead for colocated clients. Vela does not currently have a consensus layer. End-to-end figures are in-process loopback measurements. Hyperliquid&apos;s 200k ops/sec ceiling is self-reported and execution-bottlenecked per their own documentation. All comparisons should be interpreted as execution-layer vs. execution-layer, not full-system vs. full-system.
           </p>
         </div>
@@ -999,7 +999,7 @@ export default function AnalyticsPage() {
               type="button"
               onClick={() => dispatch({ type: 'SELECT_MARKET', market: m.id })}
               className={['px-3 py-1.5 text-sm font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
-                state.selectedMarket === m.id ? 'bg-[#E8E4D8] text-[#0C0C0C]' : 'border border-border text-brown bg-transparent hover:bg-canvas'].join(' ')}
+                state.selectedMarket === m.id ? 'bg-primary text-[#11121a]' : 'border border-border text-brown bg-transparent hover:bg-canvas'].join(' ')}
             >
               {m.base}/{m.quote}
             </button>

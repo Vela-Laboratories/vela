@@ -234,12 +234,12 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <rect
             x="2" y="7" width="20" height="14"
-            stroke="#6B8A5A" strokeWidth="1.5"
+            stroke="#20c98a" strokeWidth="1.5"
           />
-          <circle cx="14" cy="14" r="2" fill="#6B8A5A" />
+          <circle cx="14" cy="14" r="2" fill="#20c98a" />
           <path
             d="M17 7V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2"
-            stroke="#6B8A5A" strokeWidth="1.5" strokeLinecap="round"
+            stroke="#20c98a" strokeWidth="1.5" strokeLinecap="round"
           />
         </svg>
       </div>
@@ -432,7 +432,7 @@ function FillHistoryTable({
                   <tr
                     key={f.key}
                     className={[
-                      'hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 border-b border-border last:border-0',
+                      'hover:bg-[rgba(232,234,240,0.04)] transition-colors duration-75 border-b border-border last:border-0',
                       idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                     ].join(' ')}
                   >
@@ -513,7 +513,7 @@ function PublicFeed({
               className={[
                 'px-2.5 py-1 text-xs font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 publicMarket === m.id
-                  ? 'bg-[#E8E4D8] text-[#0C0C0C]'
+                  ? 'bg-primary text-[#11121a]'
                   : 'border border-border text-brown hover:bg-canvas',
               ].join(' ')}
             >
@@ -544,7 +544,7 @@ function PublicFeed({
               {trades.map((t) => (
                 <tr
                   key={t.key}
-                  className="hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(232,234,240,0.04)] transition-colors duration-75 border-b border-border last:border-0"
                 >
                   <td className="px-5 py-[3px] text-[11px] tabular-nums text-brown font-mono">
                     {fmtTime(t.ts)}

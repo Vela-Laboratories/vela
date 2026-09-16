@@ -38,7 +38,7 @@ function AssetBadge({ asset }: { asset: string }) {
           fontSize: 8,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          color: '#6B8A5A',
+          color: '#20c98a',
           border: '1px solid rgba(107,138,90,0.3)',
           padding: '1px 5px',
           marginLeft: 6,
@@ -55,8 +55,8 @@ function AssetBadge({ asset }: { asset: string }) {
         fontSize: 8,
         letterSpacing: '0.1em',
         textTransform: 'uppercase',
-        color: 'rgba(232,228,216,0.25)',
-        border: '1px solid rgba(232,228,216,0.08)',
+        color: 'rgba(232,234,240,0.25)',
+        border: '1px solid rgba(232,234,240,0.08)',
         padding: '1px 5px',
         marginLeft: 6,
         borderRadius: 0,
@@ -91,15 +91,15 @@ function ConnectGate() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#00D2D2"
+              stroke="#9488ee"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#00D2D2" />
+            <circle cx="14" cy="14" r="2" fill="#9488ee" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#00D2D2"
+              stroke="#9488ee"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -310,7 +310,7 @@ export default function DepositPage() {
         <div
           className="mb-6"
           style={{
-            borderLeft: '3px solid #00D2D2',
+            borderLeft: '3px solid #9488ee',
             background: 'rgba(0,210,210,0.04)',
             padding: '12px 16px',
           }}
@@ -376,7 +376,7 @@ export default function DepositPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[0.7rem] font-medium uppercase tracking-[0.12em] mb-7"
-                style={{ color: '#00D2D2' }}
+                style={{ color: '#9488ee' }}
               >
                 VIEW ON BLOCK EXPLORER ↗
               </a>
@@ -385,7 +385,7 @@ export default function DepositPage() {
             <Link
               href="/markets/ETH-USDC"
               className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150"
-              style={{ background: '#00D2D2', borderRadius: 0 }}
+              style={{ background: '#9488ee', borderRadius: 0 }}
             >
               VIEW MARKETS
             </Link>
@@ -454,7 +454,7 @@ export default function DepositPage() {
 
             <div className="mb-5">
               {ON_CHAIN_ASSETS.has(selectedAsset) ? (
-                <p className="text-[0.72rem] font-medium" style={{ color: '#00D2D2' }}>
+                <p className="text-[0.72rem] font-medium" style={{ color: '#9488ee' }}>
                   {selectedVerifiedDepositReady
                     ? `● ${VERIFIED_DEPOSIT_CONFIG?.chainName} verified custody deposit`
                     : '● Verified deposits unavailable until the Base vault is configured'}
@@ -482,7 +482,7 @@ export default function DepositPage() {
                     style={{
                       fontFamily: 'var(--font-inter)',
                       fontSize: 10,
-                      color: 'rgba(232,228,216,0.3)',
+                      color: 'rgba(232,234,240,0.3)',
                       marginTop: 4,
                       display: 'inline-block',
                       textDecoration: 'none',
@@ -535,7 +535,7 @@ export default function DepositPage() {
             </div>
 
             {error && (
-              <p className="text-xs mb-4" style={{ color: '#00D2D2' }}>
+              <p className="text-xs mb-4" style={{ color: '#9488ee' }}>
                 {error}
               </p>
             )}
@@ -543,7 +543,7 @@ export default function DepositPage() {
             {stepLabel && (
               <p
                 className="text-xs mb-3"
-                style={{ color: 'rgba(232,228,216,0.35)', fontSize: 10, fontFamily: 'var(--font-inter)' }}
+                style={{ color: 'rgba(232,234,240,0.35)', fontSize: 10, fontFamily: 'var(--font-inter)' }}
               >
                 {stepLabel}
               </p>
@@ -557,7 +557,7 @@ export default function DepositPage() {
                 || (ON_CHAIN_ASSETS.has(selectedAsset) && !selectedVerifiedDepositReady)
               }
               className="w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 disabled:opacity-50"
-              style={{ background: '#00D2D2', borderRadius: 0 }}
+              style={{ background: '#9488ee', borderRadius: 0 }}
             >
               {submitting && <Spinner size="xs" className="text-white" />}
               DEPOSIT {amount || '0'} {selectedAsset}

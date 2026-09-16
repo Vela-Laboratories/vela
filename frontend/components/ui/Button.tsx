@@ -16,22 +16,22 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<Variant, string> = {
   primary: [
-    'bg-ochre text-ink',
-    'hover:bg-[#00AAAA] active:bg-[#009090]',
+    'bg-ochre text-[#11121a]',
+    'hover:bg-[#a79ef2] active:bg-[#8179d9]',
     'focus-visible:ring-2 focus-visible:ring-ochre/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   buy: [
     'bg-sage text-parchment',
-    'hover:bg-[#007A70] active:bg-[#006B60]',
+    'hover:bg-[#27b47d] active:bg-[#168f63]',
     'focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   sell: [
     'bg-terra text-parchment',
-    'hover:bg-[#AA2222] active:bg-[#991111]',
+    'hover:bg-[#dc5f52] active:bg-[#bc4e44]',
     'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
@@ -45,14 +45,14 @@ const variantStyles: Record<Variant, string> = {
 
   ghost: [
     'bg-transparent text-brown',
-    'hover:bg-[rgba(14,26,32,0.06)] hover:text-ink active:bg-[rgba(14,26,32,0.1)]',
+    'hover:bg-[rgba(255,255,255,0.04)] hover:text-ink active:bg-[rgba(255,255,255,0.07)]',
     'focus-visible:ring-2 focus-visible:ring-brown/30 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   danger: [
     'bg-terra text-parchment',
-    'hover:bg-[#AA2222] active:bg-[#991111]',
+    'hover:bg-[#dc5f52] active:bg-[#bc4e44]',
     'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),

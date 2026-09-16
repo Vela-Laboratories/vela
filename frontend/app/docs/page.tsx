@@ -51,7 +51,7 @@ export default function DocsIndex() {
           fontFamily: 'var(--font-inter)',
           fontWeight: 700,
           fontSize: '2rem',
-          color: '#1A0608',
+          color: '#e9eaf0',
           marginBottom: '8px',
           lineHeight: 1.2,
         }}
@@ -64,7 +64,7 @@ export default function DocsIndex() {
           fontWeight: 400,
           fontSize: '1rem',
           lineHeight: 1.8,
-          color: '#3A2A1A',
+          color: '#a2a9b7',
           marginBottom: '48px',
           maxWidth: '560px',
         }}
@@ -87,8 +87,9 @@ export default function DocsIndex() {
             style={{
               display: 'block',
               padding: '24px',
-              backgroundColor: '#F7F5F0',
-              border: '1px solid rgba(26,18,8,0.08)',
+              backgroundColor: '#0d1018',
+              border: '1px solid rgba(137,148,174,0.08)',
+              borderRadius: '10px',
               textDecoration: 'none',
             }}
           >
@@ -97,7 +98,7 @@ export default function DocsIndex() {
                 fontSize: '0.875rem',
                 fontWeight: 600,
                 fontFamily: 'var(--font-inter)',
-                color: '#1A0608',
+                color: '#e9eaf0',
                 marginBottom: '8px',
               }}
             >
@@ -107,7 +108,7 @@ export default function DocsIndex() {
               style={{
                 fontSize: '0.875rem',
                 fontFamily: 'var(--font-inter)',
-                color: '#6B4F2E',
+                color: '#7d8597',
                 lineHeight: 1.6,
                 marginBottom: '16px',
               }}
@@ -118,7 +119,7 @@ export default function DocsIndex() {
               style={{
                 fontSize: '0.8rem',
                 fontFamily: 'var(--font-inter)',
-                color: '#C41E3A',
+                color: '#9488ee',
                 fontWeight: 500,
               }}
             >

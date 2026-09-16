@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 
-const PF = "var(--font-playfair), 'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = "var(--font-inter-sans), 'Inter', sans-serif"
 const CN = "'Courier New', monospace"
 
-const CRIMSON = '#CC3333'
-const INK = '#0C0C0C'
-const PARCHMENT = '#E8E4D8'
+const CRIMSON = '#ef6a5b'
+const INK = '#e9eaf0'
+const PARCHMENT = '#090b11'
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -40,14 +40,14 @@ const SCOPE_NOTE = 'These benchmarks prove the matching algorithm is fast in iso
 
 function StatCard({ label, value, sublabel }: { label: string; value: string; sublabel: string }) {
   return (
-    <div style={{ background: '#ffffff', borderTop: `3px solid ${CRIMSON}`, padding: '28px 24px 26px' }}>
+    <div style={{ background: '#0d1018', borderTop: `3px solid ${CRIMSON}`, padding: '28px 24px 26px' }}>
       <div style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: INK, lineHeight: 1.05, marginBottom: '8px' }}>
         {value}
       </div>
-      <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase' as const, letterSpacing: '0.2em', color: 'rgba(12,12,12,0.35)', marginBottom: '4px' }}>
+      <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase' as const, letterSpacing: '0.2em', color: 'rgba(232,234,240,0.35)', marginBottom: '4px' }}>
         {label}
       </div>
-      <div style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', lineHeight: 1.5 }}>
+      <div style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', lineHeight: 1.5 }}>
         {sublabel}
       </div>
     </div>
@@ -56,7 +56,7 @@ function StatCard({ label, value, sublabel }: { label: string; value: string; su
 
 function SectionLabel({ text }: { text: string }) {
   return (
-    <div style={{ fontFamily: IN, fontSize: '9px', fontVariant: 'small-caps', textTransform: 'uppercase' as const, letterSpacing: '0.24em', color: 'rgba(12,12,12,0.35)', marginBottom: '20px' }}>
+    <div style={{ fontFamily: IN, fontSize: '9px', fontVariant: 'small-caps', textTransform: 'uppercase' as const, letterSpacing: '0.24em', color: 'rgba(232,234,240,0.35)', marginBottom: '20px' }}>
       {text}
     </div>
   )
@@ -64,8 +64,8 @@ function SectionLabel({ text }: { text: string }) {
 
 function ChartBox({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ background: '#ffffff', padding: '24px 20px 20px' }}>
-      <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', color: 'rgba(12,12,12,0.28)', marginBottom: '20px' }}>
+    <div style={{ background: '#0d1018', padding: '24px 20px 20px' }}>
+      <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '20px' }}>
         {title}
       </div>
       {children}
@@ -75,9 +75,9 @@ function ChartBox({ title, children }: { title: string; children: ReactNode }) {
 
 // ── SVG chart helpers ──────────────────────────────────────────────────────────
 
-const AXIS = 'rgba(12,12,12,0.1)'
-const GRID = 'rgba(12,12,12,0.05)'
-const TICK = 'rgba(12,12,12,0.35)'
+const AXIS = 'rgba(232,234,240,0.1)'
+const GRID = 'rgba(232,234,240,0.05)'
+const TICK = 'rgba(232,234,240,0.35)'
 
 // ── Tier 1: Throughput bar chart ───────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ function ThroughputBarChart() {
   // Engine-layer isolation only — Hyperliquid is a system-level figure and lives in Table 2 below.
   const bars = [
     { label: 'Vela (M3)', value: 2_500_000, display: '2.5M', fill: CRIMSON },
-    { label: 'Pulse (M2 Pro)', value: 125_000, display: '125k', fill: 'rgba(12,12,12,0.18)' },
+    { label: 'Pulse (M2 Pro)', value: 125_000, display: '125k', fill: 'rgba(232,234,240,0.18)' },
   ]
   const W = 360, H = 220
   const pad = { t: 36, r: 16, b: 42, l: 40 }
@@ -116,8 +116,8 @@ function ThroughputBarChart() {
           <g key={b.label}>
             <rect x={x} y={y} width={bW} height={bH} fill={b.fill} />
             <text x={x + bW / 2} y={y - 7} textAnchor="middle" fontSize="10.5" fontWeight="600"
-              fill={i === 0 ? CRIMSON : 'rgba(12,12,12,0.4)'} fontFamily={IN}>{b.display}</text>
-            <text x={x + bW / 2} y={H - 8} textAnchor="middle" fontSize="9" fill="rgba(12,12,12,0.45)" fontFamily={IN}>{b.label}</text>
+              fill={i === 0 ? CRIMSON : 'rgba(232,234,240,0.4)'} fontFamily={IN}>{b.display}</text>
+            <text x={x + bW / 2} y={H - 8} textAnchor="middle" fontSize="9" fill="rgba(232,234,240,0.45)" fontFamily={IN}>{b.label}</text>
           </g>
         )
       })}
@@ -165,7 +165,7 @@ function LatencyBarChart() {
             <rect x={x} y={y} width={bW} height={bH} fill={`rgba(204,51,51,${alpha})`} />
             <text x={x + bW / 2} y={y - 7} textAnchor="middle" fontSize="10.5" fontWeight="600"
               fill={`rgba(204,51,51,${alpha})`} fontFamily={IN}>{b.value}µs</text>
-            <text x={x + bW / 2} y={H - 8} textAnchor="middle" fontSize="9" fill="rgba(12,12,12,0.45)" fontFamily={IN}>{b.label}</text>
+            <text x={x + bW / 2} y={H - 8} textAnchor="middle" fontSize="9" fill="rgba(232,234,240,0.45)" fontFamily={IN}>{b.label}</text>
           </g>
         )
       })}
@@ -199,7 +199,7 @@ function ComponentBreakdownChart() {
         return (
           <g key={item.label}>
             <text x={pad.l - 10} y={y + rowH / 2 + 4} textAnchor="end"
-              fontSize="10.5" fill="rgba(12,12,12,0.55)" fontFamily={IN}>{item.label}</text>
+              fontSize="10.5" fill="rgba(232,234,240,0.55)" fontFamily={IN}>{item.label}</text>
             <rect x={pad.l} y={y + rowH * 0.2} width={bW} height={rowH * 0.6}
               fill={`rgba(204,51,51,${opacity})`} />
             <text x={pad.l + bW + 8} y={y + rowH / 2 + 4} textAnchor="start"
@@ -261,18 +261,18 @@ function E2EBarChart() {
             <text x={p99x + bW / 2} y={p99y - 5} textAnchor="middle"
               fontSize="8.5" fill="rgba(204,51,51,0.75)" fontFamily={CN}>{g.p99}ms</text>
             <text x={cx} y={H - pad.b + 14} textAnchor="middle"
-              fontSize="9.5" fontWeight="500" fill="rgba(12,12,12,0.6)" fontFamily={IN}>{g.label}</text>
+              fontSize="9.5" fontWeight="500" fill="rgba(232,234,240,0.6)" fontFamily={IN}>{g.label}</text>
             <text x={cx} y={H - pad.b + 26} textAnchor="middle"
-              fontSize="8" fill="rgba(12,12,12,0.35)" fontFamily={IN}>{g.sub}</text>
+              fontSize="8" fill="rgba(232,234,240,0.35)" fontFamily={IN}>{g.sub}</text>
           </g>
         )
       })}
       <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + iH} stroke={AXIS} strokeWidth="0.5" />
       {/* Legend */}
       <rect x={pad.l} y={10} width={10} height={10} fill={CRIMSON} />
-      <text x={pad.l + 14} y={19} fontSize="9" fill="rgba(12,12,12,0.55)" fontFamily={IN}>p50</text>
+      <text x={pad.l + 14} y={19} fontSize="9" fill="rgba(232,234,240,0.55)" fontFamily={IN}>p50</text>
       <rect x={pad.l + 52} y={10} width={10} height={10} fill="rgba(204,51,51,0.5)" />
-      <text x={pad.l + 66} y={19} fontSize="9" fill="rgba(12,12,12,0.55)" fontFamily={IN}>p99</text>
+      <text x={pad.l + 66} y={19} fontSize="9" fill="rgba(232,234,240,0.55)" fontFamily={IN}>p99</text>
     </svg>
   )
 }
@@ -326,19 +326,19 @@ function ThroughputTimeSeriesChart() {
       <path d={fillD} fill="rgba(204,51,51,0.07)" />
       {/* Mean line */}
       <line x1={pad.l} y1={meanY} x2={W - pad.r} y2={meanY}
-        stroke="rgba(12,12,12,0.3)" strokeWidth="1" strokeDasharray="6 4" />
+        stroke="rgba(232,234,240,0.3)" strokeWidth="1" strokeDasharray="6 4" />
       <text x={W - pad.r + 4} y={meanY + 4} textAnchor="start" fontSize="8.5"
-        fill="rgba(12,12,12,0.4)" fontFamily={CN}>μ=134</text>
+        fill="rgba(232,234,240,0.4)" fontFamily={CN}>μ=134</text>
       {/* Data line */}
       <polyline points={linePoints} fill="none" stroke={CRIMSON} strokeWidth="1.75"
         strokeLinejoin="round" strokeLinecap="round" />
       {/* Nonce pool exhaustion marker */}
       <line x1={exhaustionX} y1={pad.t} x2={exhaustionX} y2={pad.t + iH}
-        stroke="rgba(12,12,12,0.28)" strokeWidth="1" strokeDasharray="4 3" />
+        stroke="rgba(232,234,240,0.28)" strokeWidth="1" strokeDasharray="4 3" />
       <text x={exhaustionX + 5} y={pad.t + 16} textAnchor="start" fontSize="8"
-        fill="rgba(12,12,12,0.5)" fontFamily={IN}>nonce pool</text>
+        fill="rgba(232,234,240,0.5)" fontFamily={IN}>nonce pool</text>
       <text x={exhaustionX + 5} y={pad.t + 26} textAnchor="start" fontSize="8"
-        fill="rgba(12,12,12,0.5)" fontFamily={IN}>exhaustion</text>
+        fill="rgba(232,234,240,0.5)" fontFamily={IN}>exhaustion</text>
       {/* Axes */}
       <line x1={pad.l} y1={pad.t + iH} x2={W - pad.r} y2={pad.t + iH} stroke={AXIS} strokeWidth="0.5" />
       <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + iH} stroke={AXIS} strokeWidth="0.5" />
@@ -346,7 +346,7 @@ function ThroughputTimeSeriesChart() {
         <text key={t} x={x} y={H - 7} textAnchor="middle" fontSize="8.5" fill={TICK} fontFamily={CN}>{t}s</text>
       ))}
       <text x={12} y={pad.t + iH / 2 + 3} textAnchor="middle" fontSize="8.5"
-        fill="rgba(12,12,12,0.35)" fontFamily={IN}
+        fill="rgba(232,234,240,0.35)" fontFamily={IN}
         transform={`rotate(-90, 12, ${pad.t + iH / 2})`}>ops/sec</text>
     </svg>
   )
@@ -384,8 +384,8 @@ function MemoryChart() {
           </g>
         )
       })}
-      {fillD && <path d={fillD} fill="rgba(12,12,12,0.04)" />}
-      <polyline points={linePoints} fill="none" stroke="rgba(12,12,12,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
+      {fillD && <path d={fillD} fill="rgba(232,234,240,0.04)" />}
+      <polyline points={linePoints} fill="none" stroke="rgba(232,234,240,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
       {pts.map((p) => (
         <g key={p.t}>
           <circle cx={toX(p.t)} cy={toY(p.mb)} r="3.5" fill={INK} />
@@ -410,7 +410,7 @@ export default function BenchmarksPage() {
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="px-6 pt-16 pb-10 lg:px-[52px] lg:pt-[88px] lg:pb-[60px]">
-        <div style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.22em', color: 'rgba(12,12,12,0.35)', marginBottom: '24px' }}>
+        <div style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.22em', color: 'rgba(232,234,240,0.35)', marginBottom: '24px' }}>
           BENCHMARK REPORT · ENGINE V0.2.0 · 2026-05-20 · APPLE SILICON M3
         </div>
         <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', color: INK, lineHeight: 0.95, margin: '0 0 28px' }}
@@ -454,8 +454,8 @@ export default function BenchmarksPage() {
             <E2EBarChart />
           </ChartBox>
           {/* Metrics table */}
-          <div style={{ background: '#ffffff', padding: '24px 20px' }}>
-            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(12,12,12,0.28)', marginBottom: '16px' }}>
+          <div style={{ background: '#0d1018', padding: '24px 20px' }}>
+            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '16px' }}>
               Scenario metrics
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -463,7 +463,7 @@ export default function BenchmarksPage() {
                 <thead>
                   <tr>
                     {['Scenario', 'p50', 'p99', 'p99.9', 'p99.99', 'Throughput'].map((h) => (
-                      <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.28)', padding: '0 16px 10px 0', textAlign: 'left', borderBottom: '1px solid rgba(12,12,12,0.06)', whiteSpace: 'nowrap' as const }}>
+                      <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.28)', padding: '0 16px 10px 0', textAlign: 'left', borderBottom: '1px solid rgba(232,234,240,0.06)', whiteSpace: 'nowrap' as const }}>
                         {h}
                       </th>
                     ))}
@@ -471,16 +471,16 @@ export default function BenchmarksPage() {
                 </thead>
                 <tbody>
                   {TIER2_ROWS.map((row, i) => (
-                    <tr key={row.id} style={{ borderBottom: i < TIER2_ROWS.length - 1 ? '1px solid rgba(12,12,12,0.04)' : 'none' }}>
+                    <tr key={row.id} style={{ borderBottom: i < TIER2_ROWS.length - 1 ? '1px solid rgba(232,234,240,0.04)' : 'none' }}>
                       <td style={{ padding: '12px 16px 12px 0' }}>
                         <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: INK }}>{row.id}</span>
-                        <span style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.35)', marginLeft: '8px' }}>{row.sub}</span>
+                        <span style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', marginLeft: '8px' }}>{row.sub}</span>
                       </td>
                       <td style={{ fontFamily: CN, fontSize: '11.5px', color: CRIMSON, padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p50}</td>
                       <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(204,51,51,0.7)', padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p99}</td>
-                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(12,12,12,0.4)', padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p999}</td>
-                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(12,12,12,0.3)', padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p9999}</td>
-                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(12,12,12,0.45)', padding: '12px 0 12px 0', whiteSpace: 'nowrap' as const }}>{row.tput}</td>
+                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(232,234,240,0.4)', padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p999}</td>
+                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(232,234,240,0.3)', padding: '12px 16px 12px 0', whiteSpace: 'nowrap' as const }}>{row.p9999}</td>
+                      <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(232,234,240,0.45)', padding: '12px 0 12px 0', whiteSpace: 'nowrap' as const }}>{row.tput}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -496,22 +496,22 @@ export default function BenchmarksPage() {
         <div className="grid gap-[1px]" style={{ background: PARCHMENT }}>
           <ChartBox title="Throughput time series — ops/sec per 5-second bucket">
             <ThroughputTimeSeriesChart />
-            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.38)', marginTop: '12px', lineHeight: 1.7, maxWidth: '680px' }}>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.38)', marginTop: '12px', lineHeight: 1.7, maxWidth: '680px' }}>
               The ~40% throughput drop at t=120 s is expected: each MM agent exhausts its resting-order queue within two minutes. The dominant operation shifts from new orders (1 round-trip) to cancel-repost (2 round-trips), halving raw request count while preserving equivalent trading activity. Throughput stabilizes at ~130 ops/sec.
             </p>
           </ChartBox>
-          <div style={{ background: '#ffffff', padding: '24px 20px 20px' }}>
-            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(12,12,12,0.28)', marginBottom: '20px' }}>
+          <div style={{ background: '#0d1018', padding: '24px 20px 20px' }}>
+            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '20px' }}>
               Memory usage (RSS)
             </div>
             <MemoryChart />
-            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.38)', marginTop: '12px', lineHeight: 1.6 }}>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.38)', marginTop: '12px', lineHeight: 1.6 }}>
               Memory grows ~17 MB over 300 seconds with 5 active market-makers. No unbounded growth observed.
             </p>
           </div>
           {/* Tier 3 summary stats */}
-          <div style={{ background: '#ffffff', padding: '24px 20px' }}>
-            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(12,12,12,0.28)', marginBottom: '16px' }}>
+          <div style={{ background: '#0d1018', padding: '24px 20px' }}>
+            <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '16px' }}>
               300-second summary
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: PARCHMENT }}>
@@ -525,9 +525,9 @@ export default function BenchmarksPage() {
                 { v: '35.6 ms', l: 'p50 match latency' },
                 { v: '63.1 ms', l: 'p99 match latency' },
               ].map(({ v, l }) => (
-                <div key={l} style={{ background: '#ffffff', padding: '16px 16px 14px' }}>
+                <div key={l} style={{ background: '#0d1018', padding: '16px 16px 14px' }}>
                   <div style={{ fontFamily: PF, fontWeight: 900, fontSize: '22px', color: INK, lineHeight: 1.1 }}>{v}</div>
-                  <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'rgba(12,12,12,0.35)', marginTop: '5px' }}>{l}</div>
+                  <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'rgba(232,234,240,0.35)', marginTop: '5px' }}>{l}</div>
                 </div>
               ))}
             </div>
@@ -538,12 +538,12 @@ export default function BenchmarksPage() {
       {/* ── Table 1: Engine-layer isolation ───────────────────────────────── */}
       <section className="px-6 pb-10 lg:px-[52px]">
         <SectionLabel text="Table 1 — Engine-layer isolation · Both measured in isolation, no consensus, no networking, no signature verification on hot path" />
-        <div style={{ background: '#ffffff', overflowX: 'auto' }}>
+        <div style={{ background: '#0d1018', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
             <thead>
               <tr>
                 {['Engine', 'Hardware', 'Throughput ceiling', 'Methodology'].map((h) => (
-                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(12,12,12,0.08)', color: 'rgba(12,12,12,0.3)', whiteSpace: 'nowrap' as const, background: '#ffffff' }}>
+                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#0d1018' }}>
                     {h}
                   </th>
                 ))}
@@ -551,17 +551,17 @@ export default function BenchmarksPage() {
             </thead>
             <tbody>
               {ENGINE_LAYER_ROWS.map((row, i) => (
-                <tr key={row.engine} style={{ borderBottom: i < ENGINE_LAYER_ROWS.length - 1 ? '1px solid rgba(12,12,12,0.04)' : 'none' }}>
+                <tr key={row.engine} style={{ borderBottom: i < ENGINE_LAYER_ROWS.length - 1 ? '1px solid rgba(232,234,240,0.04)' : 'none' }}>
                   <td style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: i === 0 ? CRIMSON : INK, padding: '14px 20px', borderLeft: i === 0 ? `3px solid ${CRIMSON}` : '3px solid transparent' }}>{row.engine}</td>
-                  <td style={{ fontFamily: IN, fontSize: '11.5px', color: 'rgba(12,12,12,0.55)', padding: '14px 20px' }}>{row.hw}</td>
-                  <td style={{ fontFamily: CN, fontSize: '11.5px', color: i === 0 ? CRIMSON : 'rgba(12,12,12,0.45)', padding: '14px 20px', whiteSpace: 'nowrap' as const }}>{row.throughput}</td>
-                  <td style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', padding: '14px 20px' }}>{row.methodology}</td>
+                  <td style={{ fontFamily: IN, fontSize: '11.5px', color: 'rgba(232,234,240,0.55)', padding: '14px 20px' }}>{row.hw}</td>
+                  <td style={{ fontFamily: CN, fontSize: '11.5px', color: i === 0 ? CRIMSON : 'rgba(232,234,240,0.45)', padding: '14px 20px', whiteSpace: 'nowrap' as const }}>{row.throughput}</td>
+                  <td style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', padding: '14px 20px' }}>{row.methodology}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(12,12,12,0.04)' }}>
-            <p style={{ fontFamily: IN, fontSize: '9.5px', color: 'rgba(12,12,12,0.3)', margin: 0, lineHeight: 1.6 }}>
+          <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(232,234,240,0.04)' }}>
+            <p style={{ fontFamily: IN, fontSize: '9.5px', color: 'rgba(232,234,240,0.3)', margin: 0, lineHeight: 1.6 }}>
               M3 vs M2 Pro is the only hardware confound. ¹ Pulse published figure, not independently verified.
             </p>
           </div>
@@ -571,12 +571,12 @@ export default function BenchmarksPage() {
       {/* ── Table 2: System-level reference ───────────────────────────────── */}
       <section className="px-6 pb-16 lg:px-[52px]">
         <SectionLabel text="Table 2 — System-level reference · Hyperliquid published figures · Includes HyperBFT consensus and real networking · Not directly comparable to Table 1" />
-        <div style={{ background: '#ffffff', overflowX: 'auto' }}>
+        <div style={{ background: '#0d1018', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
             <thead>
               <tr>
                 {['Metric', 'Hyperliquid (published)', 'Includes'].map((h) => (
-                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(12,12,12,0.08)', color: 'rgba(12,12,12,0.3)', whiteSpace: 'nowrap' as const, background: '#ffffff' }}>
+                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#0d1018' }}>
                     {h}
                   </th>
                 ))}
@@ -584,16 +584,16 @@ export default function BenchmarksPage() {
             </thead>
             <tbody>
               {SYSTEM_REF_ROWS.map((row, i) => (
-                <tr key={row.metric} style={{ borderBottom: i < SYSTEM_REF_ROWS.length - 1 ? '1px solid rgba(12,12,12,0.04)' : 'none' }}>
-                  <td style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.55)', padding: '14px 20px', lineHeight: 1.5 }}>{row.metric}</td>
-                  <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(12,12,12,0.45)', padding: '14px 20px', whiteSpace: 'nowrap' as const }}>{row.value}</td>
-                  <td style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', padding: '14px 20px', lineHeight: 1.5 }}>{row.includes}</td>
+                <tr key={row.metric} style={{ borderBottom: i < SYSTEM_REF_ROWS.length - 1 ? '1px solid rgba(232,234,240,0.04)' : 'none' }}>
+                  <td style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,234,240,0.55)', padding: '14px 20px', lineHeight: 1.5 }}>{row.metric}</td>
+                  <td style={{ fontFamily: CN, fontSize: '11.5px', color: 'rgba(232,234,240,0.45)', padding: '14px 20px', whiteSpace: 'nowrap' as const }}>{row.value}</td>
+                  <td style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', padding: '14px 20px', lineHeight: 1.5 }}>{row.includes}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(12,12,12,0.04)' }}>
-            <p style={{ fontFamily: IN, fontSize: '9.5px', color: 'rgba(12,12,12,0.3)', margin: 0, lineHeight: 1.6 }}>
+          <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(232,234,240,0.04)' }}>
+            <p style={{ fontFamily: IN, fontSize: '9.5px', color: 'rgba(232,234,240,0.3)', margin: 0, lineHeight: 1.6 }}>
               Hyperliquid figures from official Hyperliquid documentation. Vela has no comparable system-level figure yet — these will be published once a consensus layer and real-networking benchmark exist.
             </p>
           </div>
@@ -602,11 +602,11 @@ export default function BenchmarksPage() {
 
       {/* ── Scope and limitations ──────────────────────────────────────────── */}
       <section className="px-6 pb-20 lg:px-[52px]">
-        <div style={{ borderTop: '1px solid rgba(12,12,12,0.08)', paddingTop: '24px' }}>
-          <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.25)', marginBottom: '10px' }}>
+        <div style={{ borderTop: '1px solid rgba(232,234,240,0.08)', paddingTop: '24px' }}>
+          <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.25)', marginBottom: '10px' }}>
             Scope and limitations
           </div>
-          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.38)', lineHeight: 1.8, maxWidth: '760px', margin: 0 }}>
+          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.38)', lineHeight: 1.8, maxWidth: '760px', margin: 0 }}>
             {SCOPE_NOTE}
           </p>
         </div>

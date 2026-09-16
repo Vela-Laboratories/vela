@@ -99,7 +99,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               fontSize: '0.625rem',
               fontWeight: 600,
               letterSpacing: '0.12em',
-              color: '#8B6E5A',
+              color: '#666f82',
               textTransform: 'uppercase' as const,
               padding: '0 20px',
               marginBottom: '6px',
@@ -121,9 +121,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                   fontSize: '0.875rem',
                   fontWeight: 400,
                   fontFamily: 'var(--font-inter)',
-                  color: active ? '#1A0608' : '#6B4F2E',
-                  backgroundColor: active ? 'rgba(196,30,58,0.04)' : 'transparent',
-                  borderLeft: active ? '2px solid #C41E3A' : '2px solid transparent',
+                  color: active ? '#e9eaf0' : '#737b8e',
+                  backgroundColor: active ? 'rgba(148,136,238,0.1)' : 'transparent',
+                  borderLeft: active ? '2px solid #9488ee' : '2px solid transparent',
                   textDecoration: 'none',
                   transition: 'color 0.15s, background-color 0.15s',
                   lineHeight: '1.6',
@@ -139,24 +139,24 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 60px)' }}>
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 74px)', background: '#090b11' }}>
       <aside
         className="hidden md:block"
         style={{
           width: '260px',
           flexShrink: 0,
-          backgroundColor: '#F7F5F0',
-          borderRight: '1px solid rgba(26,18,8,0.08)',
+          backgroundColor: '#0d1018',
+          borderRight: '1px solid rgba(137,148,174,0.08)',
           position: 'sticky',
-          top: '60px',
-          height: 'calc(100vh - 60px)',
+          top: 0,
+          height: 'calc(100vh - 74px)',
           overflowY: 'auto',
         }}
       >
         <div
           style={{
             padding: '16px 20px 12px',
-            borderBottom: '1px solid rgba(26,18,8,0.08)',
+            borderBottom: '1px solid rgba(137,148,174,0.08)',
           }}
         >
           <Link
@@ -165,7 +165,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               fontSize: '0.65rem',
               fontWeight: 700,
               letterSpacing: '0.12em',
-              color: '#C41E3A',
+              color: '#9488ee',
               textTransform: 'uppercase' as const,
               textDecoration: 'none',
               fontFamily: 'var(--font-inter)',
@@ -191,16 +191,16 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             style={{
               width: '280px',
               height: '100%',
-              backgroundColor: '#F7F5F0',
+              backgroundColor: '#0d1018',
               overflowY: 'auto',
-              borderRight: '1px solid rgba(26,18,8,0.08)',
+              borderRight: '1px solid rgba(137,148,174,0.08)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
                 padding: '16px 20px',
-                borderBottom: '1px solid rgba(26,18,8,0.08)',
+                borderBottom: '1px solid rgba(137,148,174,0.08)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -211,7 +211,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                   fontSize: '0.65rem',
                   fontWeight: 700,
                   letterSpacing: '0.12em',
-                  color: '#C41E3A',
+                  color: '#9488ee',
                   textTransform: 'uppercase' as const,
                   fontFamily: 'var(--font-inter)',
                 }}
@@ -225,7 +225,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '1rem',
-                  color: '#6B4F2E',
+                  color: '#7d8597',
                   lineHeight: 1,
                   padding: '4px',
                 }}
@@ -243,8 +243,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           className="md:hidden"
           style={{
             padding: '12px 24px',
-            borderBottom: '1px solid rgba(26,18,8,0.08)',
-            backgroundColor: '#F7F5F0',
+            borderBottom: '1px solid rgba(137,148,174,0.08)',
+            backgroundColor: '#0d1018',
           }}
         >
           <button
@@ -254,7 +254,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               border: 'none',
               cursor: 'pointer',
               fontSize: '0.875rem',
-              color: '#1A0608',
+              color: '#e9eaf0',
               fontFamily: 'var(--font-inter)',
               fontWeight: 500,
               display: 'flex',
@@ -263,7 +263,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             }}
           >
             <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-              <path d="M0 0h16v2H0zm0 5h16v2H0zm0 5h16v2H0z" fill="#1A0608" />
+              <path d="M0 0h16v2H0zm0 5h16v2H0zm0 5h16v2H0z" fill="#e9eaf0" />
             </svg>
             Documentation
           </button>

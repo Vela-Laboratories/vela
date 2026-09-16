@@ -8,7 +8,7 @@ function H1({ children }: { children: ReactNode }) {
         fontFamily: 'var(--font-inter)',
         fontWeight: 700,
         fontSize: '2rem',
-        color: '#1A0608',
+        color: '#e9eaf0',
         marginBottom: '8px',
         lineHeight: 1.2,
       }}
@@ -26,13 +26,13 @@ function H2({ children }: { children: ReactNode }) {
           fontFamily: 'var(--font-inter)',
           fontWeight: 600,
           fontSize: '1.3rem',
-          color: '#1A0608',
+          color: '#e9eaf0',
           marginBottom: '8px',
         }}
       >
         {children}
       </h2>
-      <div style={{ height: '1px', backgroundColor: 'rgba(26,18,8,0.1)' }} />
+      <div style={{ height: '1px', backgroundColor: 'rgba(137,148,174,0.1)' }} />
     </div>
   )
 }
@@ -44,7 +44,7 @@ function H3({ children }: { children: ReactNode }) {
         fontFamily: 'var(--font-inter)',
         fontWeight: 600,
         fontSize: '1rem',
-        color: '#1A0608',
+        color: '#e9eaf0',
         marginTop: '32px',
         marginBottom: '12px',
       }}
@@ -62,7 +62,7 @@ function P({ children }: { children: ReactNode }) {
         fontWeight: 400,
         fontSize: '1rem',
         lineHeight: 1.8,
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         marginBottom: '16px',
       }}
     >
@@ -77,10 +77,10 @@ function C({ children }: { children: ReactNode }) {
       style={{
         fontFamily: 'var(--font-mono)',
         fontSize: '0.85rem',
-        backgroundColor: 'rgba(196,30,58,0.06)',
-        color: '#8B0F22',
+        backgroundColor: 'rgba(148,136,238,0.11)',
+        color: '#b8b0f2',
         padding: '2px 6px',
-        borderRadius: '2px',
+        borderRadius: '5px',
       }}
     >
       {children}
@@ -92,13 +92,13 @@ function Pre({ children }: { children: ReactNode }) {
   return (
     <pre
       style={{
-        backgroundColor: '#F7F5F0',
-        border: '1px solid rgba(26,18,8,0.1)',
+        backgroundColor: '#0d1018',
+        border: '1px solid rgba(137,148,174,0.1)',
         padding: '20px 24px',
         fontFamily: 'var(--font-mono)',
         fontSize: '0.85rem',
-        color: '#1A0608',
-        borderRadius: 0,
+        color: '#e9eaf0',
+        borderRadius: 8,
         overflowX: 'auto',
         margin: '24px 0',
         lineHeight: 1.7,
@@ -120,7 +120,7 @@ function Note({ children }: { children: ReactNode }) {
         margin: '24px 0',
         fontFamily: 'var(--font-inter)',
         fontSize: '0.9375rem',
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         lineHeight: 1.7,
       }}
     >
@@ -133,13 +133,13 @@ function Warning({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
-        borderLeft: '3px solid #C41E3A',
-        backgroundColor: 'rgba(196,30,58,0.05)',
+        borderLeft: '3px solid #9488ee',
+        backgroundColor: 'rgba(148,136,238,0.08)',
         padding: '16px 20px',
         margin: '24px 0',
         fontFamily: 'var(--font-inter)',
         fontSize: '0.9375rem',
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         lineHeight: 1.7,
       }}
     >
@@ -158,7 +158,7 @@ function Tip({ children }: { children: ReactNode }) {
         margin: '24px 0',
         fontFamily: 'var(--font-inter)',
         fontSize: '0.9375rem',
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         lineHeight: 1.7,
       }}
     >
@@ -175,7 +175,7 @@ function Ul({ children }: { children: ReactNode }) {
         paddingLeft: '24px',
         fontFamily: 'var(--font-inter)',
         fontSize: '1rem',
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         lineHeight: 1.8,
       }}
     >
@@ -192,7 +192,7 @@ function Ol({ children }: { children: ReactNode }) {
         paddingLeft: '24px',
         fontFamily: 'var(--font-inter)',
         fontSize: '1rem',
-        color: '#3A2A1A',
+        color: '#a2a9b7',
         lineHeight: 1.8,
       }}
     >
@@ -215,16 +215,16 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
               <th
                 key={h}
                 style={{
-                  backgroundColor: '#F7F5F0',
+                  backgroundColor: '#0d1018',
                   fontFamily: 'var(--font-inter)',
                   fontSize: '0.7rem',
                   fontWeight: 600,
                   textTransform: 'uppercase' as const,
                   letterSpacing: '0.1em',
-                  color: '#6B4F2E',
+                  color: '#7d8597',
                   padding: '12px 16px',
                   textAlign: 'left' as const,
-                  borderBottom: '1px solid rgba(26,18,8,0.1)',
+                  borderBottom: '1px solid rgba(137,148,174,0.1)',
                 }}
               >
                 {h}
@@ -241,9 +241,9 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
                   style={{
                     fontFamily: 'var(--font-inter)',
                     fontSize: '0.9375rem',
-                    color: '#3A2A1A',
+                    color: '#a2a9b7',
                     padding: '12px 16px',
-                    borderBottom: '1px solid rgba(26,18,8,0.08)',
+                    borderBottom: '1px solid rgba(137,148,174,0.08)',
                   }}
                 >
                   {cell}
@@ -263,7 +263,7 @@ function Subtitle({ children }: { children: ReactNode }) {
       style={{
         fontFamily: 'var(--font-inter)',
         fontSize: '1.1rem',
-        color: '#6B4F2E',
+        color: '#7d8597',
         lineHeight: 1.6,
         marginBottom: '40px',
         marginTop: '4px',

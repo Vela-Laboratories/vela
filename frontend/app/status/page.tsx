@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import HexCanvas from '@/components/HexCanvas'
 import Skeleton from '@/components/ui/Skeleton'
 
-const PF = "'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
@@ -141,10 +141,10 @@ export default function StatusPage() {
   const effectiveStatus = walDegraded && data?.status === 'operational' ? 'degraded' : (data?.status ?? null)
 
   const dotColor = effectiveStatus === 'operational'
-    ? '#6B8A5A'
+    ? '#20c98a'
     : effectiveStatus === 'degraded'
-    ? '#CC3333'
-    : 'rgba(232,228,216,0.4)'
+    ? '#ef6a5b'
+    : 'rgba(232,234,240,0.4)'
 
   const statusLabel = effectiveStatus === 'operational'
     ? 'OPERATIONAL'
@@ -153,19 +153,19 @@ export default function StatusPage() {
     : 'STARTING'
 
   const statusColor = effectiveStatus === 'operational'
-    ? '#6B8A5A'
+    ? '#20c98a'
     : effectiveStatus === 'degraded'
-    ? '#CC3333'
-    : 'rgba(232,228,216,0.4)'
+    ? '#ef6a5b'
+    : 'rgba(232,234,240,0.4)'
 
-  const walSeqColor = '#0C0C0C'
+  const walSeqColor = '#e9eaf0'
   const walEntriesColor = walStats == null
-    ? 'rgba(12,12,12,0.6)'
+    ? 'rgba(232,234,240,0.6)'
     : walStats.entries_since_checkpoint > 5000
-    ? '#CC3333'
+    ? '#ef6a5b'
     : walStats.entries_since_checkpoint > 1000
     ? 'rgba(180,140,60,0.8)'
-    : 'rgba(12,12,12,0.6)'
+    : 'rgba(232,234,240,0.6)'
 
   const metrics = data ? [
     { label: 'ENGINE UPTIME', value: formatUptime(data.engine_uptime_seconds) },
@@ -183,24 +183,24 @@ export default function StatusPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             Vela Exchange — System Status
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
               Status
             </span>
-            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,228,216,0.3)', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
               Always published.
             </span>
           </div>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '520px', marginTop: '20px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '520px', marginTop: '20px' }}>
             Engine health, uptime, and incident history. Published in real time. Exchanges hide downtime. Vela doesn&apos;t.
           </p>
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '40px' }}>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
@@ -232,36 +232,36 @@ export default function StatusPage() {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ background: '#E8E4D8', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
+              <div key={i} style={{ background: '#090b11', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
                 <Skeleton className="w-24 h-2 mb-3" />
                 <Skeleton className="w-16 h-8" />
               </div>
             ))}
           </div>
         ) : data ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
             {metrics.map((m) => (
-              <div key={m.label} style={{ background: 'rgba(12,12,12,0.04)', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
-                <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+              <div key={m.label} style={{ background: 'rgba(232,234,240,0.04)', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
+                <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 10px' }}>
                   {m.label}
                 </p>
-                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '20px', color: '#0C0C0C', margin: 0 }}>
+                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '20px', color: '#e9eaf0', margin: 0 }}>
                   {m.value}
                 </p>
               </div>
             ))}
-            <div style={{ background: 'rgba(12,12,12,0.04)', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+            <div style={{ background: 'rgba(232,234,240,0.04)', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 10px' }}>
                 WAL SEQUENCE
               </p>
               <p style={{ fontFamily: CN, fontWeight: 600, fontSize: '14px', color: walSeqColor, margin: 0 }}>
                 {walStats != null ? walStats.current_sequence.toLocaleString() : '—'}
               </p>
             </div>
-            <div style={{ background: 'rgba(12,12,12,0.04)', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+            <div style={{ background: 'rgba(232,234,240,0.04)', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 10px' }}>
                 ENTRIES SINCE CHECKPOINT
               </p>
               <p style={{ fontFamily: CN, fontWeight: 600, fontSize: '14px', color: walEntriesColor, margin: 0 }}>
@@ -270,13 +270,13 @@ export default function StatusPage() {
             </div>
           </div>
         ) : (
-          <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.4)', textAlign: 'center', padding: '40px 0' }}>
+          <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.4)', textAlign: 'center', padding: '40px 0' }}>
             Unable to load status. The engine may be offline.
           </p>
         )}
 
         {lastUpdated && (
-          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.35)', marginTop: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', marginTop: '16px' }}>
             Updated {lastUpdated.toLocaleTimeString()} · Auto-refreshes every 30s
           </p>
         )}
@@ -285,13 +285,13 @@ export default function StatusPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Incident History
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#E8E4D8', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 16px' }}>
             The complete record.
           </h2>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,228,216,0.35)', maxWidth: '500px', marginBottom: '32px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.35)', maxWidth: '500px', marginBottom: '32px' }}>
             Every engine restart, snapshot restore, and degraded performance event is logged here permanently. This record starts from Vela&apos;s first deployment.
           </p>
 
@@ -302,18 +302,18 @@ export default function StatusPage() {
           ) : incidentData.all_clear ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '40px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '8px', height: '8px', background: '#6B8A5A', borderRadius: '50%' }} />
-                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#6B8A5A' }}>All Systems Operational</span>
+                <div style={{ width: '8px', height: '8px', background: '#20c98a', borderRadius: '50%' }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#20c98a' }}>All Systems Operational</span>
               </div>
-              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)', marginTop: '8px' }}>
+              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,234,240,0.3)', marginTop: '8px' }}>
                 No incidents recorded in the last 30 days.
               </span>
             </div>
           ) : (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(232,228,216,0.08)', marginBottom: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(232,234,240,0.08)', marginBottom: '4px' }}>
                 {['STARTED', 'TYPE', 'DESCRIPTION', 'IMPACT'].map(h => (
-                  <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.25)' }}>{h}</span>
+                  <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.25)' }}>{h}</span>
                 ))}
               </div>
               {incidentData.incidents.map(inc => {
@@ -321,17 +321,17 @@ export default function StatusPage() {
                   ? { bg: 'rgba(204,51,51,0.1)', border: 'rgba(204,51,51,0.3)', text: 'rgba(204,51,51,0.7)' }
                   : { bg: 'rgba(180,140,60,0.1)', border: 'rgba(180,140,60,0.3)', text: 'rgba(180,140,60,0.7)' }
                 return (
-                  <div key={inc.id} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '10px 0', borderBottom: '1px solid rgba(232,228,216,0.05)', alignItems: 'start' }}>
-                    <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.35)' }}>
+                  <div key={inc.id} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '10px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', alignItems: 'start' }}>
+                    <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.35)' }}>
                       {formatIncidentDate(inc.started_at)}
                     </span>
                     <span style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: typeColor.text, background: typeColor.bg, border: `1px solid ${typeColor.border}`, padding: '2px 6px', display: 'inline-block' }}>
                       {inc.incident_type.replace('_', ' ')}
                     </span>
-                    <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.7)', lineHeight: 1.5 }}>
+                    <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.7)', lineHeight: 1.5 }}>
                       {inc.description}
                     </span>
-                    <span style={{ fontFamily: IN, fontSize: '11px', color: inc.resolved_at ? 'rgba(232,228,216,0.35)' : '#CC3333', lineHeight: 1.5 }}>
+                    <span style={{ fontFamily: IN, fontSize: '11px', color: inc.resolved_at ? 'rgba(232,234,240,0.35)' : '#ef6a5b', lineHeight: 1.5 }}>
                       {inc.resolved_at
                         ? formatResolution(inc.started_at, inc.resolved_at)
                         : '● Ongoing'}
@@ -344,7 +344,7 @@ export default function StatusPage() {
         </div>
       </div>
 
-      <div style={{ background: '#0C0C0C', borderTop: '1px solid rgba(232,228,216,0.06)' }} className="px-6 py-6 lg:px-[52px]">
+      <div style={{ background: '#0C0C0C', borderTop: '1px solid rgba(232,234,240,0.06)' }} className="px-6 py-6 lg:px-[52px]">
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           {[
             { href: '/', label: 'Home' },
@@ -356,9 +356,9 @@ export default function StatusPage() {
             <a
               key={href}
               href={href}
-              style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.1em' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.35)')}
+              style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.1em' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.7)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.35)')}
             >
               {label}
             </a>

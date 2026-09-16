@@ -717,6 +717,15 @@ Work should begin in this order. Each item should land as a small, independently
     - Use the public testnet leaderboard as contextual network activity while explicitly avoiding unsupported follower counts, follow actions, biographies, social graphs, or performance endorsements.
     - Preserve the terminal shell for disconnected users with a private-data authentication gate, public live market discovery, degraded reference state, responsive layouts, keyboard focus treatment, and reduced-motion behavior.
     - Verify the profile route through type checking, lint, production build, frontend tests, and browser review at a narrow viewport. Full mobile-wallet compatibility, production account statements, historical equity-series reporting, and legal accessibility review remain launch gates.
+42. [x] **EX-042: Cohesive terminal shell across the consumer product**
+    - Extend the terminal-native top chrome to every frontend route while preserving the immersive market and profile workspaces and the documentation-specific navigation model.
+    - Add a shared desktop workspace rail for discovery, account, transparency, research, and advanced routes, with active-route treatment, testnet context, and a compact operational footer.
+    - Migrate legacy editorial pages and shared UI primitives onto the dark Vela canvas, restrained rounded surfaces, terminal purple focus/selection language, accessible contrast, and consistent sans-serif product typography.
+    - Remove residual light-theme sections, white hover states, dark-on-dark selected controls, and route-specific border-radius conventions from analytics, batches, benchmarks, decisions, operator, proofs, status, TEE, transparency, verification, and account funding surfaces.
+    - Bring the internal documentation index and article layout into the same shell without forcing the product rail into documentation reading space.
+    - Preserve mobile access through the existing compact menu while hiding the desktop workspace rail below the product breakpoint.
+    - Verify all 27 application routes through TypeScript, ESLint, the 14-test frontend suite, a production build, and browser review across public data, authenticated account, docs, analytics, operator, leaderboard, and transparency route families.
+    - This chapter is a visual and navigation consolidation. It does not complete mobile-wallet compatibility, legal accessibility review, or the remaining route-specific loading and recovery-state work.
 
 ## Parallel nonengineering work
 

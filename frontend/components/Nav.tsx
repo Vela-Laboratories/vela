@@ -219,7 +219,7 @@ export default function Nav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [marketSearch, setMarketSearch] = useState('')
   const marketSearchRef = useRef<HTMLInputElement>(null)
-  const usesTerminalShell = /^\/markets\/[^/]+/.test(pathname) || pathname === '/profile'
+  const usesTerminalShell = true
 
   useEffect(() => {
     if (!mobileMenuOpen) return

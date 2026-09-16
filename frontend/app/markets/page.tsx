@@ -89,10 +89,10 @@ function MarketCard({
       className="market-card p-4 sm:p-[24px] lg:p-[24px]"
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontFamily: IN, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(232,228,216,0.55)' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontFamily: IN, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(232,234,240,0.55)' }}>
           <TokenIcon ticker={info.ticker} /> {info.ticker} / USDC
         </span>
-        <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,228,216,0.12)', padding: '2px 6px', color: 'rgba(232,228,216,0.3)' }}>
+        <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,234,240,0.12)', padding: '2px 6px', color: 'rgba(232,234,240,0.3)' }}>
           BINANCE SPOT
         </span>
       </div>
@@ -105,7 +105,7 @@ function MarketCard({
         <span style={{ fontFamily: IN, fontWeight: 650, fontSize: 11, color: isPositive ? '#21E6A3' : '#FF5C7C' }}>
           {changeStr}
         </span>
-        <span style={{ fontFamily: IN, fontSize: 10, color: 'rgba(232,228,216,0.2)' }}>
+        <span style={{ fontFamily: IN, fontSize: 10, color: 'rgba(232,234,240,0.2)' }}>
           Vol {formatVolume(market?.quoteVolume24h)} USDC
         </span>
       </div>
@@ -121,7 +121,7 @@ function MarketCard({
             topBids.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: CN, fontSize: 11, color: '#21E6A3' }}>{fmtBookPrice(lvl.price)}</span>
-                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,234,240,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
           )}
@@ -136,7 +136,7 @@ function MarketCard({
             topAsks.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: CN, fontSize: 11, color: '#FF5C7C' }}>{fmtBookPrice(lvl.price)}</span>
-                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,234,240,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
           )}
@@ -159,7 +159,7 @@ function SkeletonCard() {
   return (
     <div style={{
       background: '#111110',
-      border: '1px solid rgba(232,228,216,0.04)',
+      border: '1px solid rgba(232,234,240,0.04)',
       display: 'flex',
       flexDirection: 'column',
       padding: '24px 28px',
@@ -242,13 +242,13 @@ export default function MarketsPage() {
               <span style={{ fontFamily: IN, fontWeight: 700, fontSize: 20, color: '#F6F8FF' }}>Explore markets</span>
               <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 650, fontSize: 9, letterSpacing: '0.08em', color: '#66c9b4' }}>· LIVE</span>
             </div>
-            <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
+            <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,234,240,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
               Binance Spot reference data · Synthetic Vela testnet books · Updating every 2s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#66c9b4', flexShrink: 0 }} />
-            <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,228,216,0.22)', textTransform: 'uppercase' }}>
+            <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,234,240,0.22)', textTransform: 'uppercase' }}>
               Binance live feed
             </span>
           </div>
@@ -279,12 +279,12 @@ export default function MarketsPage() {
               { label: 'NETWORK', value: 'Sepolia' },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.18)' }}>{label}</span>
-                <span style={{ fontFamily: CN, fontSize: 12, color: 'rgba(232,228,216,0.55)' }}>{value}</span>
+                <span style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.18)' }}>{label}</span>
+                <span style={{ fontFamily: CN, fontSize: 12, color: 'rgba(232,234,240,0.55)' }}>{value}</span>
               </div>
             ))}
           </div>
-          <span style={{ fontFamily: IN, fontSize: 9, color: 'rgba(232,228,216,0.15)', letterSpacing: '0.1em' }}>
+          <span style={{ fontFamily: IN, fontSize: 9, color: 'rgba(232,234,240,0.15)', letterSpacing: '0.1em' }}>
             Choose a testnet market →
           </span>
         </div>

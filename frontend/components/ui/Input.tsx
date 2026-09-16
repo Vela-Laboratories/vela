@@ -35,8 +35,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             'flex items-center gap-2 h-10 px-3',
             'bg-parchment border transition-colors duration-150',
             hasError
-              ? 'border-terra focus-within:border-terra focus-within:shadow-[0_0_0_2px_rgba(204,51,51,0.2)]'
-              : 'border-border focus-within:border-ochre focus-within:shadow-[0_0_0_2px_rgba(0,210,210,0.2)]',
+              ? 'border-terra focus-within:border-terra focus-within:shadow-[0_0_0_2px_rgba(239,106,91,0.16)]'
+              : 'border-border focus-within:border-ochre focus-within:shadow-[0_0_0_2px_rgba(148,136,238,0.16)]',
           ].join(' ')}
         >
           {startAdornment && (

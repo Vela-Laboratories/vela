@@ -7,7 +7,7 @@ import HexCanvas from '@/components/HexCanvas'
 import Skeleton from '@/components/ui/Skeleton'
 import { COMPLETE_COUNT } from '@/lib/transparency-score'
 
-const PF = "'Playfair Display', serif"
+const PF = "var(--font-inter-sans), 'Inter', sans-serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
@@ -157,44 +157,44 @@ export default function TransparencyPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             Monolith Systematic — Vela Exchange
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
               Transparency
             </span>
-            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,228,216,0.3)', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
               by default.
             </span>
           </div>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '560px', marginTop: '20px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '560px', marginTop: '20px' }}>
             Inspect the current testnet engine, aggregate demo liabilities, local commitments, and roadmap limitations. These views are operational telemetry, not production attestations.
           </p>
-          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', marginTop: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.3)', marginTop: '16px' }}>
             {COMPLETE_COUNT}/25 transparency criteria complete ·{' '}
-            <Link href="/transparency-score" style={{ color: 'rgba(232,228,216,0.45)', textDecoration: 'underline' }}>
+            <Link href="/transparency-score" style={{ color: 'rgba(232,234,240,0.45)', textDecoration: 'underline' }}>
               View scorecard →
             </Link>
           </p>
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
           Testnet Balance Comparison
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: 0 }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: 0 }}>
           Compare public testnet balances.
         </h2>
-        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginTop: '12px', marginBottom: '32px' }}>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.45)', maxWidth: '500px', marginTop: '12px', marginBottom: '32px' }}>
           This compares Sepolia ETH held by VelaSettlement with aggregate ETH credits reported by the demo engine. It is not a production proof of reserves or an independent reconciliation.
         </p>
 
         {contractEth === null ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
             {[0, 1, 2].map((i) => (
-              <div key={i} style={{ background: 'white', padding: '28px 32px' }}>
+              <div key={i} style={{ background: '#0d1018', padding: '28px 32px' }}>
                 <Skeleton className="w-28 h-2" />
                 <Skeleton className="w-20 h-10 mt-3" />
                 <Skeleton className="w-36 h-2 mt-2" />
@@ -202,55 +202,55 @@ export default function TransparencyPage() {
             ))}
           </div>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
-          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
-            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
+          <div style={{ background: '#0d1018', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
               ETH In Contract
             </p>
-            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#0C0C0C', margin: '0 0 6px' }}>
+            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#e9eaf0', margin: '0 0 6px' }}>
               {contractEth !== null ? `${contractEth.toFixed(4)} ETH` : '—'}
             </p>
-            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', margin: '0 0 10px' }}>
               Locked in VelaSettlement.sol
             </p>
             <a
               href={`https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}
+              style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}
             >
               View on Etherscan →
             </a>
           </div>
 
-          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
-            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+          <div style={{ background: '#0d1018', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
               ETH Credited
             </p>
-            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#0C0C0C', margin: '0 0 6px' }}>
+            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#e9eaf0', margin: '0 0 6px' }}>
               {engineEth !== null ? `${engineEth.toFixed(4)} ETH` : '—'}
             </p>
-            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', margin: 0 }}>
               Aggregate demo-engine liability
             </p>
           </div>
 
-          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
-            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+          <div style={{ background: '#0d1018', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>
               Status
             </p>
             {contractEth === null || engineEth === null ? (
-              <p style={{ fontFamily: IN, fontSize: '14px', color: 'rgba(12,12,12,0.3)', margin: 0 }}>Checking…</p>
+              <p style={{ fontFamily: IN, fontSize: '14px', color: 'rgba(232,234,240,0.3)', margin: 0 }}>Checking…</p>
             ) : coverageObserved ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                    <circle cx="16" cy="16" r="15" stroke="#6B8A5A" strokeWidth="2" />
-                    <path d="M9 16.5L13.5 21L23 11" stroke="#6B8A5A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="16" cy="16" r="15" stroke="#20c98a" strokeWidth="2" />
+                    <path d="M9 16.5L13.5 21L23 11" stroke="#20c98a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#6B8A5A' }}>COVERAGE OBSERVED</span>
+                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#20c98a' }}>COVERAGE OBSERVED</span>
                 </div>
-                <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', margin: 0 }}>
+                <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', margin: 0 }}>
                   Sepolia contract ETH is at least the engine-reported ETH credits at this snapshot.
                 </p>
               </>
@@ -258,13 +258,13 @@ export default function TransparencyPage() {
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                    <path d="M16 3L29 28H3L16 3Z" stroke="#CC3333" strokeWidth="2" fill="none" />
-                    <path d="M16 12V18" stroke="#CC3333" strokeWidth="2.5" strokeLinecap="round" />
-                    <circle cx="16" cy="23" r="1.5" fill="#CC3333" />
+                    <path d="M16 3L29 28H3L16 3Z" stroke="#ef6a5b" strokeWidth="2" fill="none" />
+                    <path d="M16 12V18" stroke="#ef6a5b" strokeWidth="2.5" strokeLinecap="round" />
+                    <circle cx="16" cy="23" r="1.5" fill="#ef6a5b" />
                   </svg>
-                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#CC3333' }}>UNDERCOLLATERALIZED</span>
+                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#ef6a5b' }}>UNDERCOLLATERALIZED</span>
                 </div>
-                <p style={{ fontFamily: IN, fontSize: '11px', color: '#CC3333', margin: 0 }}>
+                <p style={{ fontFamily: IN, fontSize: '11px', color: '#ef6a5b', margin: 0 }}>
                   Contract balance is below engine credits.
                 </p>
               </>
@@ -276,44 +276,44 @@ export default function TransparencyPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '20px' }}>
           <button
             onClick={fetchReserves}
-            style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', background: 'transparent', border: '1px solid rgba(12,12,12,0.15)', padding: '6px 14px', cursor: 'pointer' }}
+            style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)', background: 'transparent', border: '1px solid rgba(232,234,240,0.15)', padding: '6px 14px', cursor: 'pointer' }}
           >
             Refresh
           </button>
           {reservesUpdated && (
-            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.3)' }}>
+            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.3)' }}>
               Last updated {reservesUpdated.toLocaleTimeString()}
             </span>
           )}
         </div>
 
         <div style={{ marginTop: '20px' }}>
-          <a
+          <Link
             href="/batches"
-            style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.4)', textDecoration: 'none' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#0C0C0C')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(12,12,12,0.4)')}
+            style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.4)', textDecoration: 'none' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#b8b1ff')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.4)')}
           >
             View on-chain state root anchors →
-          </a>
+          </Link>
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>
           Exchange Revenue
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 12px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 12px' }}>
           Published in real time.
         </h2>
-        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginBottom: '32px' }}>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.45)', maxWidth: '500px', marginBottom: '32px' }}>
           This view reports fee counters emitted by the current demo engine. It is operational telemetry, not audited revenue or an authoritative financial ledger.
         </p>
 
         {!feeData ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
             {[0, 1, 2].map((i) => (
-              <div key={i} style={{ background: 'white', padding: '28px 32px' }}>
+              <div key={i} style={{ background: '#0d1018', padding: '28px 32px' }}>
                 <Skeleton className="w-28 h-2" />
                 <Skeleton className="w-20 h-10 mt-3" />
                 <Skeleton className="w-36 h-2 mt-2" />
@@ -321,43 +321,43 @@ export default function TransparencyPage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
-            <div style={{ background: 'white', padding: '28px 32px' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
+            <div style={{ background: '#0d1018', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
                 Taker Fees Collected
               </p>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#0C0C0C', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#e9eaf0', margin: '0 0 6px' }}>
                 ${feeData.total_taker_fees_collected_usdc}
               </p>
-              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', margin: 0 }}>
                 Since launch
               </p>
             </div>
-            <div style={{ background: 'white', padding: '28px 32px' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+            <div style={{ background: '#0d1018', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
                 Maker Rebates Paid
               </p>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#6B8A5A', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#20c98a', margin: '0 0 6px' }}>
                 ${feeData.total_maker_rebates_paid_usdc}
               </p>
-              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', margin: 0 }}>
                 Paid to market makers
               </p>
             </div>
-            <div style={{ background: 'white', padding: '28px 32px' }}>
-              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+            <div style={{ background: '#0d1018', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
                 Net Exchange Revenue
               </p>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#0C0C0C', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#e9eaf0', margin: '0 0 6px' }}>
                 ${feeData.net_exchange_revenue_usdc}
               </p>
-              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)', margin: 0 }}>
                 Fees minus rebates
               </p>
             </div>
           </div>
         )}
-        <p style={{ fontFamily: IN, fontSize: '9px', color: 'rgba(12,12,12,0.3)', marginTop: '16px' }}>
+        <p style={{ fontFamily: IN, fontSize: '9px', color: 'rgba(232,234,240,0.3)', marginTop: '16px' }}>
           Fee rate: -1 bps maker rebate · 5 bps taker fee · Net margin: 4 bps per matched trade
         </p>
       </div>
@@ -365,17 +365,17 @@ export default function TransparencyPage() {
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', margin: '0 0 12px' }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>
             Live Trade Feed
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#E8E4D8', margin: '0 0 12px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 12px' }}>
             Every trade. Unfiltered.
           </h2>
-          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
             Every fill that executes on Vela is published here in real time. No anonymization. No aggregation. Every counterparty, every price, every timestamp.
           </p>
 
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(232,228,216,0.07)', marginBottom: '0', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(232,234,240,0.07)', marginBottom: '0', overflowX: 'auto' }}>
             {MARKETS.map((m) => (
               <button
                 key={m}
@@ -385,10 +385,10 @@ export default function TransparencyPage() {
                   fontSize: '10px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.1em',
-                  color: activeMarket === m ? '#E8E4D8' : 'rgba(232,228,216,0.28)',
+                  color: activeMarket === m ? '#e9eaf0' : 'rgba(232,234,240,0.28)',
                   background: 'transparent',
                   border: 'none',
-                  borderBottom: activeMarket === m ? '2px solid #E8E4D8' : '2px solid transparent',
+                  borderBottom: activeMarket === m ? '2px solid #e9eaf0' : '2px solid transparent',
                   padding: '8px 16px',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
@@ -400,9 +400,9 @@ export default function TransparencyPage() {
             ))}
           </div>
 
-          <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(232,228,216,0.06)' }} className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]">
+          <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(232,234,240,0.06)' }} className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]">
             {['Time', 'Market', 'Price', 'Size', 'Maker', 'Taker'].map((h, i) => (
-              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.2)' }} className={i >= 4 ? 'hidden lg:block' : ''}>{h}</span>
+              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.2)' }} className={i >= 4 ? 'hidden lg:block' : ''}>{h}</span>
             ))}
           </div>
 
@@ -410,7 +410,7 @@ export default function TransparencyPage() {
             Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
-                style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,234,240,0.04)', alignItems: 'center' }}
                 className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]"
               >
                 <Skeleton className="w-20 h-3" />
@@ -422,7 +422,7 @@ export default function TransparencyPage() {
               </div>
             ))
           ) : trades.length === 0 ? (
-            <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.2)', textAlign: 'center', padding: '48px 0' }}>
+            <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,234,240,0.2)', textAlign: 'center', padding: '48px 0' }}>
               No trades yet. Be the first to trade on Vela.
             </p>
           ) : (
@@ -432,31 +432,31 @@ export default function TransparencyPage() {
               return (
                 <div
                   key={trade.id}
-                  style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                  style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,234,240,0.04)', alignItems: 'center' }}
                   className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]"
                 >
-                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.3)' }}>
+                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.3)' }}>
                     {new Date(trade.timestamp / 1000).toLocaleTimeString()}
                   </span>
-                  <span style={{ fontFamily: IN, fontWeight: 500, fontSize: '11px', color: '#E8E4D8' }}>{trade.market_id}</span>
-                  <span style={{ fontFamily: CN, fontSize: '11px', color: trade.side === 'bid' ? '#6B8A5A' : '#CC3333' }}>
+                  <span style={{ fontFamily: IN, fontWeight: 500, fontSize: '11px', color: '#e9eaf0' }}>{trade.market_id}</span>
+                  <span style={{ fontFamily: CN, fontSize: '11px', color: trade.side === 'bid' ? '#20c98a' : '#ef6a5b' }}>
                     {formatPrice(priceNum)}
                   </span>
-                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.6)' }}>{sizeNum.toFixed(4)}</span>
+                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.6)' }}>{sizeNum.toFixed(4)}</span>
                   <a
                     href={`/orders/${trade.maker_order_id}`}
-                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)', textDecoration: 'none' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.7)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.4)')}
                     className="hidden lg:block"
                   >
                     {truncateAddress(trade.maker_address)}
                   </a>
                   <a
                     href={`/orders/${trade.taker_order_id}`}
-                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)', textDecoration: 'none' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.7)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.4)')}
                     className="hidden lg:block"
                   >
                     {truncateAddress(trade.taker_address)}
@@ -468,18 +468,18 @@ export default function TransparencyPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>
           Order Audit Trail
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 12px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 12px' }}>
           Every order has a permanent record.
         </h2>
-        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginBottom: '28px' }}>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.45)', maxWidth: '500px', marginBottom: '28px' }}>
           Every order ever placed on Vela is accessible at vela.monolithsystematic.com/orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
         </p>
 
-        <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', display: 'block', marginBottom: '8px' }}>
+        <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', display: 'block', marginBottom: '8px' }}>
           Look up an order ID:
         </label>
         <div className="flex flex-col sm:flex-row gap-0">
@@ -492,9 +492,9 @@ export default function TransparencyPage() {
             style={{
               fontFamily: CN,
               fontSize: '13px',
-              color: '#0C0C0C',
-              background: 'white',
-              border: '1px solid rgba(12,12,12,0.15)',
+              color: '#e9eaf0',
+              background: '#0d1018',
+              border: '1px solid rgba(232,234,240,0.15)',
               borderRight: 'none',
               padding: '10px 16px',
               outline: 'none',
@@ -508,7 +508,7 @@ export default function TransparencyPage() {
               fontFamily: IN,
               fontSize: '12px',
               fontWeight: 600,
-              color: '#E8E4D8',
+              color: '#e9eaf0',
               background: '#0C0C0C',
               border: 'none',
               padding: '10px 20px',
@@ -518,20 +518,20 @@ export default function TransparencyPage() {
             Look up →
           </button>
         </div>
-        <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.3)', marginTop: '10px' }}>
+        <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.3)', marginTop: '10px' }}>
           Order IDs are shown in your trade history after placing orders.
         </p>
       </div>
 
-      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>
           Go Deeper
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 32px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 32px' }}>
           Go deeper.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.07)' }}>
           {[
             {
               href: '/transparency-score',
@@ -579,13 +579,13 @@ export default function TransparencyPage() {
             <a
               key={card.href}
               href={card.href}
-              style={{ background: 'white', padding: '28px', textDecoration: 'none', display: 'block' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#F5F2E8')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+              style={{ background: '#0d1018', padding: '28px', textDecoration: 'none', display: 'block' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#141824')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#0d1018')}
             >
-              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 10px' }}>{card.title}</p>
-              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.55)', lineHeight: 1.8, margin: '0 0 16px' }}>{card.desc}</p>
-              <span style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}>{card.link}</span>
+              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 10px' }}>{card.title}</p>
+              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.55)', lineHeight: 1.8, margin: '0 0 16px' }}>{card.desc}</p>
+              <span style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}>{card.link}</span>
             </a>
           ))}
         </div>

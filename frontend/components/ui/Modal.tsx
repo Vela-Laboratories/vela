@@ -75,22 +75,22 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
         className={[
-          'relative w-full bg-white rounded-2xl shadow-modal z-10',
+          'relative w-full bg-canvas border border-border rounded-xl shadow-modal z-10',
           'flex flex-col',
           sizeStyles[size],
         ].join(' ')}
       >
         {/* Header */}
         {(title ?? description) && (
-          <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-neutral-100">
+          <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-border">
             <div>
               {title && (
-                <h2 id="modal-title" className="text-lg font-semibold text-neutral-900">
+                <h2 id="modal-title" className="text-lg font-semibold text-ink">
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="mt-1 text-sm text-neutral-500">{description}</p>
+                <p className="mt-1 text-sm text-brown">{description}</p>
               )}
             </div>
             {!lockClose && (
@@ -119,7 +119,7 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="px-6 pb-6 pt-4 border-t border-neutral-100 flex justify-end gap-3">
+          <div className="px-6 pb-6 pt-4 border-t border-border flex justify-end gap-3">
             {footer}
           </div>
         )}

@@ -23,7 +23,7 @@ export function Card({
   return (
     <div
       className={[
-        'bg-canvas border border-border shadow-card',
+        'bg-canvas border border-border rounded-xl shadow-card',
         hoverable && 'transition-colors duration-200 hover:border-ochre/30 cursor-pointer',
         paddingStyles[padding],
         className,

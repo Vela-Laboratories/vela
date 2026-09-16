@@ -200,7 +200,7 @@ export default function WithdrawPage() {
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           WITHDRAW FUNDS
         </p>
-        <div className="mb-6 border-l-[3px] border-[#00D2D2] bg-[rgba(0,210,210,0.04)] px-4 py-3">
+        <div className="mb-6 border-l-[3px] border-[#9488ee] bg-[rgba(0,210,210,0.04)] px-4 py-3">
           <p className="text-[0.8rem] text-ink leading-relaxed">
             A wallet signature authorizes one exact request. Vela reserves the balance atomically
             before review, signing, or broadcast. This build does not issue custody signatures yet.
@@ -269,7 +269,7 @@ export default function WithdrawPage() {
           <button
             type="submit"
             disabled={submitting || !amount || amountExceedsBalance}
-            className="w-full flex items-center justify-center gap-2 h-10 bg-[#00D2D2] text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 h-10 bg-[#9488ee] text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink disabled:opacity-50"
           >
             {submitting && <Spinner size="xs" className="text-ink" />}
             RESERVE WITHDRAWAL
