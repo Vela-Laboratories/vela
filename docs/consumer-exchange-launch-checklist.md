@@ -572,12 +572,12 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Support mobile wallets.
 - [ ] Support WalletConnect.
 - [ ] Test browser and wallet compatibility.
-- [ ] Add loading, empty, disconnected, degraded, and error states.
+- [ ] Add loading, empty, disconnected, degraded, and error states across every consumer flow; the trading terminal states are complete.
 - [x] Distinguish live external reference prices from synthetic Vela testnet order books on market discovery and trading surfaces.
 - [x] Remove unverified hard-coded latency and throughput claims from the consumer market interface.
 - [x] Make market discovery cards and terminal market selection keyboard-accessible semantic links.
-- [ ] Add clear order rejection explanations.
-- [ ] Add fee previews before order submission.
+- [x] Surface backend order-rejection explanations in the trading ticket without converting unsupported order semantics into misleading controls.
+- [x] Add authoritative maker/taker tier fee previews before order submission.
 - [ ] Add balance, available, locked, and pending distinctions.
 - [ ] Add deposit and withdrawal limits to the UI.
 - [ ] Add account statements.

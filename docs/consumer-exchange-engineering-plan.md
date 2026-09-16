@@ -701,6 +701,10 @@ Work should begin in this order. Each item should land as a small, independently
     - Distinguish live Binance Spot reference prices from synthetic Vela testnet books throughout market discovery and trading surfaces; remove unverified hard-coded latency and throughput claims.
     - Replace pointer-only market cards and selector rows with semantic Next.js links that support keyboard navigation and expose useful accessible names and current-page state.
     - Refine the primary navigation, market grid, terminal panels, order ticket, profile surfaces, spacing, borders, and typography around a restrained rounded-surface system without importing third-party branding or assets.
+    - Rebuild the desktop terminal as a three-column discovery, execution, and context workspace; move the synthetic order book into a tabbed activity dock with public trades, account fills, and open orders instead of permanently consuming a fourth column.
+    - Add Binance reference OHLCV volume, range and interval controls, auto-fit, log scale, fullscreen, chart export, a live OHLC legend, searchable and sortable market discovery, watchlist affordances, and a compact reference/status footer.
+    - Drive the ticket fee preview and tier from the authoritative fee endpoints, show available balances and Vela best prices, and remove stop and post-only controls that the current signed order contract does not enforce.
+    - Add explicit mobile chart, trade, and book modes plus compact loading, disconnected, empty, degraded, focus, and reduced-motion states for the terminal.
     - Verify the reference-data routes, markets grid, terminal, disconnected profile state, WebSocket stream, frontend tests, type checking, lint, and production build.
     - This chapter improves the testnet consumer surface and claim integrity. It does not expand the ETH/USDC real-money launch scope, make synthetic liquidity real, complete mobile-wallet compatibility, or satisfy legal accessibility review.
 

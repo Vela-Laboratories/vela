@@ -183,6 +183,55 @@ export function getBook(market: string): Promise<ApiResponse<BookResponse>> {
   return apiFetch(`/markets/${encodeURIComponent(market)}/book`)
 }
 
+export interface PublicTrade {
+  id: string
+  market_id: string
+  price: number
+  quantity: number
+  timestamp: number
+  side: string
+  synthetic: boolean
+}
+
+/** GET /trades/:market — newest public fills for one market. */
+export function getPublicTrades(market: string): Promise<ApiResponse<PublicTrade[]>> {
+  return apiFetch(`/trades/${encodeURIComponent(market)}`, { cache: 'no-store' })
+}
+
+export interface FeeTier {
+  tier: number
+  min_30d_volume_usdc: string
+  maker_bps: number
+  taker_bps: number
+}
+
+export interface FeeSchedule {
+  window_days: number
+  tiers: FeeTier[]
+  notes: string
+}
+
+/** GET /fees/schedule — public, authoritative fee tiers. */
+export function getFeeSchedule(): Promise<ApiResponse<FeeSchedule>> {
+  return apiFetch('/fees/schedule', { cache: 'no-store' })
+}
+
+export interface AccountFeeTier {
+  address: string
+  computed_tier: number
+  cached_tier: number
+  volume_30d_usdc: string
+  maker_bps: number
+  taker_bps: number
+  next_tier_threshold_usdc: string | null
+  note: string
+}
+
+/** GET /fees/tier/:address — the authenticated user's effective schedule. */
+export function getAccountFeeTier(address: string): Promise<ApiResponse<AccountFeeTier>> {
+  return apiFetch(`/fees/tier/${encodeURIComponent(address)}`, { cache: 'no-store' })
+}
+
 // ---------------------------------------------------------------------------
 // Authenticated endpoints
 // ---------------------------------------------------------------------------
