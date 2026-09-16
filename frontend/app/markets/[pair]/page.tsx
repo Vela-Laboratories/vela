@@ -91,8 +91,9 @@ function MarketHeader({ pair, reference, sourceLive, bids, asks }: { pair: strin
     ['Vela spread', spread !== undefined && spread >= 0 ? spread.toFixed(decimals) : '—', ''],
   ]
   return <header className="terminal-market-header">
-    <div className="terminal-market-identity"><TokenIcon ticker={info.ticker} size="lg" /><div><div className="terminal-pair">{info.ticker}<span>/ {info.quoteTicker}</span></div><div className="terminal-product">Spot · Vela Sepolia testnet</div></div></div>
-    <div className="terminal-reference-price"><span>Binance Spot reference</span>{reference ? <strong>{reference.price.toFixed(decimals)}</strong> : sourceLive === null ? <Skeleton className="w-28 h-6" /> : <strong>—</strong>}</div>
+    <div className="terminal-header-glow" aria-hidden="true" />
+    <div className="terminal-market-identity"><div className="terminal-asset-icon"><TokenIcon ticker={info.ticker} size="lg" /><span className="terminal-asset-verified">✓</span></div><div className="terminal-market-copy"><small>{info.name} market</small><div className="terminal-pair">{info.ticker}<span>/ {info.quoteTicker}</span><b>Spot</b></div><div className="terminal-product">Vela Sepolia execution</div></div></div>
+    <div className="terminal-reference-price"><span>Binance Spot reference <b>REF</b></span>{reference ? <strong>{reference.price.toFixed(decimals)}</strong> : sourceLive === null ? <Skeleton className="w-28 h-6" /> : <strong>—</strong>}</div>
     <div className="terminal-header-stats">{stats.map(([label, value, tone]) => <div key={label} className="terminal-header-stat"><span>{label}</span><strong className={tone}>{value}</strong></div>)}</div>
     <div className={`terminal-source-state ${sourceLive === false ? 'is-offline' : ''}`}><i />{sourceLive === false ? 'Reference unavailable' : 'Reference live'}</div>
   </header>
@@ -115,18 +116,20 @@ function MarketRail({ currentPair, markets, onCollapse }: { currentPair: string;
     setFavorites((current) => current.includes(pair) ? current.filter((item) => item !== pair) : [...current, pair])
   }
   return <aside className="terminal-market-rail">
-    <div className="terminal-rail-heading"><strong>Discover</strong><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><Icon name="collapse" /></button></div>
+    <div className="terminal-rail-heading"><span><strong>Discover</strong><small>{markets.length} live references</small></span><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><Icon name="collapse" /></button></div>
     <nav className="terminal-rail-tabs" aria-label="Discovery"><span className="is-active">Markets</span><Link href="/history">Activity</Link><Link href="/leaderboard">Leaders</Link></nav>
     <label className="terminal-rail-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets" /></label>
     <div className="terminal-rail-filters">{(['all', 'movers', 'volume'] as const).map((item) => <button key={item} type="button" className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'Watchlist' : item}</button>)}</div>
+    <div className="terminal-rail-insight"><span>◆</span><p><strong>Live reference data</strong><small>Binance pricing · Vela testnet execution</small></p><i>↗</i></div>
+    <div className="terminal-market-list-head"><span>Markets</span><span>Price / 24h</span></div>
     <div className="terminal-market-list" role="list">
       {pairs.map((pair) => {
         const market = byId[pair]; const info = getMarketInfo(pair); const change = market?.change24h; const favorite = favorites.includes(pair)
         return <div key={pair} className={`terminal-market-row${pair === currentPair ? ' is-active' : ''}`}>
           <button type="button" aria-label={`${favorite ? 'Remove' : 'Add'} ${info.ticker} ${favorite ? 'from' : 'to'} watchlist`} className={favorite ? 'is-favorite' : ''} onClick={(event) => toggleFavorite(event, pair)}><Icon name="star" size={13} /></button>
           <Link href={`/markets/${pair}`} aria-current={pair === currentPair ? 'page' : undefined} aria-label={`${info.ticker} ${info.quoteTicker}, ${market ? market.price.toFixed(getPriceDecimals(pair)) : 'price unavailable'}, ${change === undefined ? 'change unavailable' : `${change.toFixed(2)} percent`}`}>
-            <TokenIcon ticker={info.ticker} size="sm" />
-            <span className="terminal-market-name"><strong>{info.ticker}</strong><small>{info.quoteTicker}</small></span>
+            <TokenIcon ticker={info.ticker} size="md" />
+            <span className="terminal-market-name"><strong>{info.ticker}<i>SPOT</i></strong><small>{market ? `${fmtCompact(market.quoteVolume24h)} 24h vol` : `${info.quoteTicker} reference`}</small></span>
             <span className="terminal-market-values"><strong>{market ? market.price.toFixed(getPriceDecimals(pair)) : '—'}</strong><small className={change !== undefined && change >= 0 ? 'positive' : 'negative'}>{change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}</small></span>
           </Link>
         </div>

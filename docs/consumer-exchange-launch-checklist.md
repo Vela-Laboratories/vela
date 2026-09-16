@@ -576,6 +576,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Distinguish live external reference prices from synthetic Vela testnet order books on market discovery and trading surfaces.
 - [x] Remove unverified hard-coded latency and throughput claims from the consumer market interface.
 - [x] Make market discovery cards and terminal market selection keyboard-accessible semantic links.
+- [x] Add a cohesive, brand-specific visual treatment to the terminal header and token rail without importing third-party branding or presenting invented market, holder, or social metrics.
 - [x] Surface backend order-rejection explanations in the trading ticket without converting unsupported order semantics into misleading controls.
 - [x] Add authoritative maker/taker tier fee previews before order submission.
 - [ ] Add balance, available, locked, and pending distinctions.
