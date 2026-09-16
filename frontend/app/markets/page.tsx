@@ -2,13 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { listMarkets, getBook, type MarketResponse, type BookLevel } from '@/lib/api'
-import {
-  ORDERED_PAIRS,
-  getMarketInfo,
-  pairChange,
-  sparklineBars,
-} from '@/lib/markets'
+import { getBook, type BookLevel } from '@/lib/api'
+import { ORDERED_PAIRS, getMarketInfo } from '@/lib/markets'
+import { fetchReferenceCandles, fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 import Skeleton from '@/components/ui/Skeleton'
 
 interface SparklineBar {
@@ -17,12 +13,10 @@ interface SparklineBar {
 }
 
 async function fetchSparkline(marketId: string): Promise<SparklineBar[]> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
   try {
-    const res = await fetch(`${apiUrl}/ohlcv/${marketId}?timeframe=1H&limit=12`, { cache: 'no-store' })
-    const data = await res.json()
-    if (!data.ok || !data.data?.candles || data.data.candles.length < 3) return []
-    const candles: { open: number; close: number }[] = data.data.candles
+    const data = await fetchReferenceCandles(marketId, '1H', 24)
+    const candles = data.candles
+    if (candles.length < 3) return []
     const closes = candles.map((c) => c.close)
     const minClose = Math.min(...closes)
     const maxClose = Math.max(...closes)
@@ -43,6 +37,7 @@ const CN = "'Courier New', monospace"
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   if (price >= 1) return price.toFixed(2)
+  if (price < 0.01) return price.toFixed(8)
   return price.toFixed(4)
 }
 
@@ -51,11 +46,9 @@ function fmtBookPrice(v: string): string {
   return isNaN(n) ? '—' : formatPrice(n)
 }
 
-function fmtBidPrice(v: string | undefined): string {
-  if (!v) return '—'
-  const n = parseFloat(v)
-  if (isNaN(n)) return '—'
-  return formatPrice(n)
+function formatVolume(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value)
 }
 
 function MarketCard({
@@ -66,21 +59,21 @@ function MarketCard({
   onClick,
 }: {
   pair: string
-  market: MarketResponse | undefined
+  market: ReferenceMarket | undefined
   book: { bids: BookLevel[]; asks: BookLevel[] } | undefined
   sparkline: SparklineBar[]
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   const info = getMarketInfo(pair)
-  const change = pairChange(pair)
-  const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
-  const isPositive = change >= 0
-  const bars = sparkline.length >= 3 ? sparkline : sparklineBars(pair)
+  const change = market?.change24h
+  const changeStr = change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
+  const isPositive = (change ?? 0) >= 0
+  const bars = sparkline
 
   const topBids = book?.bids.slice(0, 3) ?? []
   const topAsks = book?.asks.slice(0, 3) ?? []
-  const priceValue = market?.best_bid ? parseFloat(market.best_bid) : 0
+  const priceValue = market?.price ?? 0
   const priceFontSize = priceValue > 10000 ? 22 : 28
 
   return (
@@ -104,12 +97,12 @@ function MarketCard({
           {info.ticker} / USDC
         </span>
         <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,228,216,0.12)', padding: '2px 6px', color: 'rgba(232,228,216,0.3)' }}>
-          SPOT
+          BINANCE SPOT
         </span>
       </div>
 
       <div style={{ fontFamily: PF, fontWeight: 900, fontSize: priceFontSize, color: '#E8E4D8', lineHeight: 1, marginBottom: 4 }}>
-        {fmtBidPrice(market?.best_bid)}
+        {market ? formatPrice(market.price) : '—'}
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
@@ -117,14 +110,14 @@ function MarketCard({
           {changeStr}
         </span>
         <span style={{ fontFamily: IN, fontSize: 10, color: 'rgba(232,228,216,0.2)' }}>
-          Vol {info.vol}
+          Vol {formatVolume(market?.quoteVolume24h)} USDC
         </span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div>
           <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(107,138,90,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            BIDS
+            VELA BIDS
           </div>
           {topBids.length === 0 ? (
             <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(107,138,90,0.3)' }}>—</span>
@@ -139,7 +132,7 @@ function MarketCard({
         </div>
         <div>
           <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(204,51,51,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            ASKS
+            VELA ASKS
           </div>
           {topAsks.length === 0 ? (
             <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(204,51,51,0.3)' }}>—</span>
@@ -154,8 +147,8 @@ function MarketCard({
         </div>
       </div>
 
-      <div style={{ marginTop: 14, height: 28, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-        {bars.map((bar, i) => (
+      <div style={{ marginTop: 14, height: 28, display: 'flex', alignItems: 'flex-end', gap: 2 }} aria-label="24 hour Binance reference trend">
+        {bars.length === 0 ? <span style={{ fontFamily: IN, fontSize: 9, color: '#69697A' }}>Market data unavailable</span> : bars.map((bar, i) => (
           <div
             key={i}
             style={{ flex: 1, height: `${bar.height}%`, background: bar.up ? '#6B8A5A' : '#CC3333' }}
@@ -189,14 +182,14 @@ function SkeletonCard() {
 
 export default function MarketsPage() {
   const router = useRouter()
-  const [markets, setMarkets] = useState<MarketResponse[] | null>(null)
+  const [markets, setMarkets] = useState<ReferenceMarket[] | null>(null)
   const [books, setBooks] = useState<Record<string, { bids: BookLevel[]; asks: BookLevel[] }>>({})
   const [sparklines, setSparklines] = useState<Record<string, SparklineBar[]>>({})
 
   const fetchMarkets = useCallback(async () => {
     try {
-      const res = await listMarkets()
-      if (res.ok && res.data) setMarkets(res.data)
+      const snapshot = await fetchReferenceMarkets()
+      setMarkets(snapshot.markets)
     } catch {}
   }, [])
 
@@ -225,20 +218,23 @@ export default function MarketsPage() {
   }, [])
 
   useEffect(() => {
-    fetchMarkets()
-    fetchBooks()
-    fetchSparklines()
-    const mi = setInterval(fetchMarkets, 3000)
+    const initial = window.setTimeout(() => {
+      void fetchMarkets()
+      void fetchBooks()
+      void fetchSparklines()
+    }, 0)
+    const mi = setInterval(fetchMarkets, 2_000)
     const bi = setInterval(fetchBooks, 5000)
     const si = setInterval(fetchSparklines, 5 * 60 * 1000)
     return () => {
+      clearTimeout(initial)
       clearInterval(mi)
       clearInterval(bi)
       clearInterval(si)
     }
   }, [fetchMarkets, fetchBooks, fetchSparklines])
 
-  const marketsById = Object.fromEntries((markets ?? []).map((m) => [m.id, m]))
+  const marketsById = Object.fromEntries((markets ?? []).map((m) => [m.market, m]))
 
   return (
     <>
@@ -253,13 +249,13 @@ export default function MarketsPage() {
               <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>Live</span>
             </div>
             <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
-              16 markets · Ethereum Sepolia · Updating every 3s
+              16 Binance Spot references · Vela execution on Ethereum Sepolia · Updating every 2s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
             <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,228,216,0.22)', textTransform: 'uppercase' }}>
-              Live feed
+              Binance live feed
             </span>
           </div>
         </div>

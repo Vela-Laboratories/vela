@@ -12,18 +12,17 @@ import {
   getPortfolio,
   getReferral,
   getWithdrawals,
-  listMarkets,
   type AccountFill,
   type BalanceResponse,
   type DepositStatus,
   type LeaderboardData,
-  type MarketResponse,
   type Order,
   type PortfolioResponse,
   type ReferralData,
   type WithdrawalStatus,
 } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
+import { fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 
 interface ProfileData {
   balances: BalanceResponse[]
@@ -34,7 +33,7 @@ interface ProfileData {
   portfolio: PortfolioResponse | null
   referral: ReferralData | null
   leaderboard: LeaderboardData | null
-  markets: MarketResponse[]
+  markets: ReferenceMarket[]
 }
 
 interface ActivityItem {
@@ -94,14 +93,10 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function marketPrice(asset: string, markets: MarketResponse[]): number {
+function marketPrice(asset: string, markets: ReferenceMarket[]): number {
   if (asset.toUpperCase() === 'USDC') return 1
-  const market = markets.find((item) => item.base.toUpperCase() === asset.toUpperCase())
-  if (!market) return 0
-  const bid = toNumber(market.best_bid)
-  const ask = toNumber(market.best_ask)
-  if (bid > 0 && ask > 0) return (bid + ask) / 2
-  return bid || ask
+  const market = markets.find((item) => item.market.split('-')[0] === asset.toUpperCase())
+  return market?.price ?? 0
 }
 
 function ConnectProfile({ onConnect, isConnected }: { onConnect: () => Promise<string>; isConnected: boolean }) {
@@ -149,7 +144,7 @@ export default function ProfilePage() {
     if (!address || !isAuthenticated) return
     setLoading(true)
     setError(null)
-    const [balances, orders, fills, deposits, withdrawals, portfolio, referral, leaderboard, markets] = await Promise.all([
+    const [balances, orders, fills, deposits, withdrawals, portfolio, referral, leaderboard, marketSnapshot] = await Promise.all([
       getBalances(address),
       getOrders(address),
       getAccountFills(address),
@@ -158,10 +153,10 @@ export default function ProfilePage() {
       getPortfolio(address),
       getReferral(address),
       getLeaderboard(),
-      listMarkets(),
+      fetchReferenceMarkets().catch(() => null),
     ])
 
-    const successfulResponses = [balances, orders, fills, deposits, withdrawals, markets].filter((response) => response.ok).length
+    const successfulResponses = [balances, orders, fills, deposits, withdrawals].filter((response) => response.ok).length
     setData({
       balances: balances.ok ? balances.data ?? [] : [],
       orders: orders.ok ? orders.data ?? [] : [],
@@ -171,7 +166,7 @@ export default function ProfilePage() {
       portfolio: portfolio.ok ? portfolio.data ?? null : null,
       referral: referral.ok ? referral.data ?? null : null,
       leaderboard: leaderboard.ok ? leaderboard.data ?? null : null,
-      markets: markets.ok ? markets.data ?? [] : [],
+      markets: marketSnapshot?.markets ?? [],
     })
     if (successfulResponses === 0) setError('Account data is temporarily unavailable. Your funds and orders have not been changed.')
     setLoading(false)
@@ -302,7 +297,7 @@ export default function ProfilePage() {
         <article>
           <span>Portfolio value</span>
           <strong>{formatMoney(accountValue)}</strong>
-          <small>Live indicative marks</small>
+          <small>Binance Spot USDC reference marks</small>
         </article>
         <article>
           <span>Available cash</span>

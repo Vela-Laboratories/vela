@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth'
-import { getBalances, listMarkets, type BalanceResponse, type MarketResponse } from '@/lib/api'
+import { getBalances, type BalanceResponse } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ORDERED_PAIRS } from '@/lib/markets'
+import { fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 
 const PRIMARY_LINKS = [
   { href: '/markets/BTC-USDC', label: 'Trade', match: '/markets' },
@@ -36,15 +37,10 @@ function formatMoney(value: number): string {
   })
 }
 
-function accountValue(balances: BalanceResponse[], markets: MarketResponse[]): number {
+function accountValue(balances: BalanceResponse[], markets: ReferenceMarket[]): number {
   const prices = new Map<string, number>()
   for (const market of markets) {
-    const bid = Number(market.best_bid)
-    const ask = Number(market.best_ask)
-    const price = Number.isFinite(bid) && Number.isFinite(ask)
-      ? (bid + ask) / 2
-      : Number.isFinite(bid) ? bid : ask
-    if (Number.isFinite(price)) prices.set(market.base.toUpperCase(), price)
+    if (Number.isFinite(market.price)) prices.set(market.market.split('-')[0], market.price)
   }
 
   return balances.reduce((total, balance) => {
@@ -75,7 +71,7 @@ function AccountControls({
   signOut: () => void
 }) {
   const [balances, setBalances] = useState<BalanceResponse[]>([])
-  const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [markets, setMarkets] = useState<ReferenceMarket[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -83,16 +79,16 @@ function AccountControls({
     if (!isAuthenticated) return
     let cancelled = false
     const refresh = async () => {
-      const [balanceResult, marketResult] = await Promise.all([
+      const [balanceResult, marketSnapshot] = await Promise.all([
         getBalances(address),
-        listMarkets(),
+        fetchReferenceMarkets().catch(() => null),
       ])
       if (cancelled) return
       if (balanceResult.ok && balanceResult.data) setBalances(balanceResult.data)
-      if (marketResult.ok && marketResult.data) setMarkets(marketResult.data)
+      if (marketSnapshot) setMarkets(marketSnapshot.markets)
     }
     void refresh()
-    const interval = window.setInterval(refresh, 15_000)
+    const interval = window.setInterval(refresh, 5_000)
     return () => {
       cancelled = true
       window.clearInterval(interval)

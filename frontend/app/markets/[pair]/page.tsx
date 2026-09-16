@@ -11,11 +11,8 @@ import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-c
 import {
   getOrders,
   getBalances,
-  listMarkets,
   postOrder,
   cancelOrder,
-  fetchOHLCV,
-  type MarketResponse,
   type Order,
   type PostOrderBody,
   type CancelOrderBody,
@@ -24,11 +21,12 @@ import { signOrder, signCancel } from '@/lib/signing'
 import { useAuth } from '@/lib/auth'
 import { velaWs } from '@/lib/ws'
 import { ORDERED_PAIRS, getMarketInfo, getPriceDecimals } from '@/lib/markets'
+import { fetchReferenceCandles, fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 
 type OrderSide = 'buy' | 'sell'
 type OrderEntryType = 'limit' | 'market' | 'stop'
 type Timeframe = '1m' | '5m' | '15m' | '1H' | '4H' | '1D'
-type LiveMode = 'data' | 'prices' | 'simulated' | null
+type LiveMode = 'reference' | 'unavailable' | null
 
 interface Toast {
   id: number
@@ -36,37 +34,8 @@ interface Toast {
   variant: 'success' | 'error'
 }
 
-const TIMEFRAME_SECONDS: Record<Timeframe, number> = {
-  '1m': 60, '5m': 300, '15m': 900, '1H': 3600, '4H': 14400, '1D': 86400,
-}
-
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
-
-function generateCandles(midPrice: number, timeframe: Timeframe, count = 80): CandlestickData<Time>[] {
-  const tfSeconds = TIMEFRAME_SECONDS[timeframe]
-  const now = Math.floor(Date.now() / 1000)
-  const candles: CandlestickData<Time>[] = []
-  let price = midPrice * 0.92
-  for (let i = count; i >= 0; i--) {
-    const time = (now - i * tfSeconds) as Time
-    const volatility = 0.008
-    const change = (Math.random() - 0.48) * volatility
-    const open = price
-    const close = price * (1 + change)
-    const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5)
-    const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5)
-    candles.push({
-      time,
-      open: +open.toFixed(4),
-      high: +high.toFixed(4),
-      low: +low.toFixed(4),
-      close: +close.toFixed(4),
-    })
-    price = close
-  }
-  return candles
-}
 
 function fmtPrice(v: string | number | undefined, decimals = 2): string {
   if (v == null || v === '') return '—'
@@ -79,6 +48,11 @@ function fmtSize(v: string | number | undefined, ticker = 'BTC'): string {
   const n = typeof v === 'string' ? parseFloat(v) : v
   if (isNaN(n)) return '—'
   return ['BTC', 'ETH'].includes(ticker.toUpperCase()) ? n.toFixed(4) : n.toFixed(2)
+}
+
+function fmtCompact(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value)
 }
 
 function fmtOrderTime(ts: number): string {
@@ -135,16 +109,11 @@ function StatGroup({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TopBar({ pair, market }: { pair: string; market: MarketResponse | undefined }) {
+function TopBar({ pair, reference, sourceLive }: { pair: string; reference: ReferenceMarket | undefined; sourceLive: boolean | null }) {
   const info = getMarketInfo(pair)
   const decimals = getPriceDecimals(pair)
-
-  const bid = market?.best_bid ? parseFloat(market.best_bid) : null
-  const ask = market?.best_ask ? parseFloat(market.best_ask) : null
-  const mid = bid && ask ? (bid + ask) / 2 : bid ?? ask ?? null
-
-  const midStr = mid ? mid.toFixed(decimals) : '—'
-  const spread = market?.spread ? fmtPrice(market.spread, decimals) : '—'
+  const change = reference?.change24h
+  const changeText = change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
 
   return (
     <div className="terminal-market-bar">
@@ -153,24 +122,24 @@ function TopBar({ pair, market }: { pair: string; market: MarketResponse | undef
         <div className="asset-mark">{info.ticker.slice(0, 1)}</div>
         <div>
           <div className="terminal-pair">{info.ticker}<span>/ {info.quoteTicker}</span></div>
-          <div className="terminal-product">Spot · Sepolia</div>
+          <div className="terminal-product">Binance Spot · USDC reference</div>
         </div>
       </div>
 
       <div className="terminal-mark-price">
-        <span>Mark price</span>
-        {market === undefined ? <Skeleton className="w-24 h-5 inline-block" /> : <strong>{midStr}</strong>}
+        <span>Reference price</span>
+        {reference ? <strong>{reference.price.toFixed(decimals)}</strong> : sourceLive === null ? <Skeleton className="w-24 h-5 inline-block" /> : <strong>—</strong>}
       </div>
 
       <div className="terminal-stats">
-        <StatGroup label="Best bid" value={bid ? bid.toFixed(decimals) : '—'} />
-        <StatGroup label="Best ask" value={ask ? ask.toFixed(decimals) : '—'} />
-        <StatGroup label="Spread" value={spread} />
+        <StatGroup label="24H change" value={changeText} />
+        <StatGroup label="24H high" value={reference ? reference.high24h.toFixed(decimals) : '—'} />
+        <StatGroup label="24H volume" value={reference ? `${fmtCompact(reference.quoteVolume24h)} USDC` : '—'} />
       </div>
 
-      <div className="terminal-connection">
-        <span />
-        Live
+      <div className="terminal-connection" style={sourceLive === false ? { color: '#CC6B6B' } : undefined}>
+        <span style={sourceLive === false ? { background: '#CC6B6B' } : undefined} />
+        {sourceLive === false ? 'Source unavailable' : 'Binance live'}
       </div>
     </div>
   )
@@ -179,12 +148,8 @@ function TopBar({ pair, market }: { pair: string; market: MarketResponse | undef
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1H', '4H', '1D']
 
 function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; onChange: (tf: Timeframe) => void; isLive: LiveMode }) {
-  const liveLabel =
-    isLive === 'data' ? '● LIVE DATA' :
-    isLive === 'prices' ? '● LIVE PRICES' :
-    isLive === 'simulated' ? '○ SIMULATED' : null
-  const liveColor =
-    isLive === 'data' || isLive === 'prices' ? '#6B8A5A' : 'rgba(232,228,216,0.25)'
+  const liveLabel = isLive === 'reference' ? '● BINANCE LIVE' : isLive === 'unavailable' ? '○ DATA UNAVAILABLE' : null
+  const liveColor = isLive === 'reference' ? '#6B8A5A' : '#CC6B6B'
 
   return (
     <div className="terminal-timeframes">
@@ -226,35 +191,23 @@ function TimeframeRow({ timeframe, onChange, isLive }: { timeframe: Timeframe; o
   )
 }
 
-async function getChartCandles(pair: string, timeframe: string): Promise<{ candles: CandlestickData<Time>[]; hasRealData: boolean; hasLivePrices: boolean }> {
-  const { candles, hasRealData, hasLivePrices } = await fetchOHLCV(pair, timeframe, 200)
-  if ((!hasRealData && !hasLivePrices) || candles.length < 2)
-    return { candles: [], hasRealData: false, hasLivePrices: false }
-  return {
-    candles: candles.map((c) => ({
+async function getChartCandles(pair: string, timeframe: Timeframe, limit: number): Promise<CandlestickData<Time>[]> {
+  const snapshot = await fetchReferenceCandles(pair, timeframe, limit)
+  return snapshot.candles.map((c) => ({
       time: c.time as Time,
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
-    })),
-    hasRealData,
-    hasLivePrices,
-  }
+    }))
 }
 
-function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; midPrice: number | null; timeframe: Timeframe; onLiveChange: (isLive: LiveMode) => void }) {
+function ChartArea({ pair, timeframe, onLiveChange }: { pair: string; timeframe: Timeframe; onLiveChange: (isLive: LiveMode) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
-  const midPriceRef = useRef<number | null>(null)
-  const timeframeRef = useRef<Timeframe>(timeframe)
-  const pairRef = useRef<string>(pair)
-  const isLiveRef = useRef<LiveMode>(null)
-
-  useEffect(() => { midPriceRef.current = midPrice }, [midPrice])
-  useEffect(() => { timeframeRef.current = timeframe }, [timeframe])
-  useEffect(() => { pairRef.current = pair }, [pair])
+  const [chartReady, setChartReady] = useState(false)
+  const [hasCandles, setHasCandles] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -299,6 +252,7 @@ function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; 
 
       chartRef.current = chart
       seriesRef.current = series
+      setChartReady(true)
 
       const ro = new ResizeObserver(() => {
         if (container && chartRef.current) {
@@ -312,6 +266,7 @@ function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; 
         chart.remove()
         chartRef.current = null
         seriesRef.current = null
+        setChartReady(false)
       }
     })()
 
@@ -322,89 +277,60 @@ function ChartArea({ pair, midPrice, timeframe, onLiveChange }: { pair: string; 
   }, [])
 
   useEffect(() => {
-    if (!seriesRef.current) return
+    if (!chartReady || !seriesRef.current) return
     let cancelled = false
+    let interval: ReturnType<typeof setInterval> | null = null
 
-    async function load() {
-      const { candles: realCandles, hasRealData, hasLivePrices } = await getChartCandles(pair, timeframe)
-      if (cancelled) return
-
-      if (realCandles.length >= 2) {
-        const sorted = [...realCandles].sort((a, b) => (a.time as number) - (b.time as number))
-        seriesRef.current?.setData(sorted)
+    async function loadInitial() {
+      try {
+        const candles = await getChartCandles(pair, timeframe, 200)
+        if (cancelled || candles.length < 2) return
+        seriesRef.current?.setData(candles)
         chartRef.current?.timeScale().fitContent()
-        const mode: LiveMode = hasRealData ? 'data' : 'prices'
-        isLiveRef.current = mode
-        onLiveChange(mode)
-      } else {
-        const price = midPriceRef.current ?? 100
-        seriesRef.current?.setData(generateCandles(price, timeframe))
-        chartRef.current?.timeScale().fitContent()
-        isLiveRef.current = 'simulated'
-        onLiveChange('simulated')
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [timeframe, pair, onLiveChange])
-
-  useEffect(() => {
-    if (midPrice && (isLiveRef.current === null || isLiveRef.current === 'simulated') && seriesRef.current) {
-      seriesRef.current.setData(generateCandles(midPrice, timeframeRef.current))
-      chartRef.current?.timeScale().fitContent()
-    }
-  }, [midPrice])
-
-  useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
-    const wsBase = apiUrl.replace(/^https/, 'wss').replace(/^http(?!s)/, 'ws')
-    let ws: WebSocket | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
-
-    function connect() {
-      if (cancelled) return
-      ws = new WebSocket(`${wsBase}/feed/ohlcv/${pair}/${timeframe}`)
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string)
-          const candle = msg?.data?.candle ?? msg?.candle
-          if (!candle || !seriesRef.current) return
-          seriesRef.current.update({
-            time: candle.time as Time,
-            open: candle.open,
-            high: candle.high,
-            low: candle.low,
-            close: candle.close,
-          })
-          if (isLiveRef.current === null || isLiveRef.current === 'simulated') {
-            isLiveRef.current = 'prices'
-            onLiveChange('prices')
-          }
-        } catch { /* ignore malformed messages */ }
-      }
-
-      ws.onclose = () => {
+        setHasCandles(true)
+        onLiveChange('reference')
+      } catch {
         if (!cancelled) {
-          reconnectTimer = setTimeout(connect, 5_000)
+          setHasCandles(false)
+          seriesRef.current?.setData([])
+          onLiveChange('unavailable')
         }
       }
     }
 
-    connect()
+    async function refreshLatest() {
+      try {
+        const candles = await getChartCandles(pair, timeframe, 2)
+        if (cancelled) return
+        const latestCandle = candles.at(-1)
+        if (latestCandle) {
+          seriesRef.current?.update(latestCandle)
+          setHasCandles(true)
+          onLiveChange('reference')
+        }
+      } catch {
+        if (!cancelled) onLiveChange('unavailable')
+      }
+    }
+
+    void loadInitial().then(() => {
+      if (!cancelled) interval = setInterval(() => void refreshLatest(), 3_000)
+    })
 
     return () => {
       cancelled = true
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      ws?.close()
+      if (interval) clearInterval(interval)
     }
-  }, [timeframe, pair, onLiveChange])
+  }, [chartReady, timeframe, pair, onLiveChange])
 
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      {!hasCandles ? (
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', color: '#69697A', fontFamily: IN, fontSize: 12 }}>
+          Waiting for Binance market data
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -509,7 +435,7 @@ function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: strin
   )
 }
 
-function ChartColumn({ pair, midPrice, onToast }: { pair: string; midPrice: number | null; onToast: (msg: string, v: 'success' | 'error') => void }) {
+function ChartColumn({ pair, onToast }: { pair: string; onToast: (msg: string, v: 'success' | 'error') => void }) {
   const [timeframe, setTimeframe] = useState<Timeframe>('1H')
   const [isLive, setIsLive] = useState<LiveMode>(null)
   const handleLiveChange = useCallback((live: LiveMode) => setIsLive(live), [])
@@ -517,7 +443,7 @@ function ChartColumn({ pair, midPrice, onToast }: { pair: string; midPrice: numb
   return (
     <div className="terminal-chart-column" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <TimeframeRow timeframe={timeframe} onChange={setTimeframe} isLive={isLive} />
-      <ChartArea pair={pair} midPrice={midPrice} timeframe={timeframe} onLiveChange={handleLiveChange} />
+      <ChartArea pair={pair} timeframe={timeframe} onLiveChange={handleLiveChange} />
       <OpenOrdersPanel pair={pair} onToast={onToast} />
     </div>
   )
@@ -558,7 +484,7 @@ function OrderBookPanel({
     <div className="terminal-orderbook" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
         <span style={{ fontFamily: IN, fontSize: 12, fontWeight: 600, color: '#D6D6DF' }}>
-          ORDER BOOK
+          VELA TESTNET BOOK
         </span>
       </div>
 
@@ -623,10 +549,10 @@ function OrderBookPanel({
   )
 }
 
-function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; markets: MarketResponse[] }) {
+function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; markets: ReferenceMarket[] }) {
   const router = useRouter()
 
-  const marketsById = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets])
+  const marketsById = useMemo(() => Object.fromEntries(markets.map((m) => [m.market, m])), [markets])
 
   return (
     <div className="terminal-market-list" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -640,9 +566,8 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
           const market = marketsById[pair]
           const info = getMarketInfo(pair)
           const isActive = pair === currentPair
-          const bid = market?.best_bid ? parseFloat(market.best_bid) : null
           const decimals = getPriceDecimals(pair)
-          const spread = market?.spread ? fmtPrice(market.spread, decimals) : '—'
+          const change = market?.change24h
 
           return (
             <div
@@ -663,12 +588,14 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
                 <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 12, color: '#F4F4F5' }}>{info.ticker}</span>
                 <span style={{ fontFamily: CN, fontSize: 11, color: '#F4F4F5' }}>
-                  {bid ? bid.toFixed(decimals) : '—'}
+                  {market ? market.price.toFixed(decimals) : '—'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: IN, fontSize: 10, color: '#69697A' }}>USDC</span>
-                <span style={{ fontFamily: IN, fontSize: 10, color: '#777789' }}>Spread {spread}</span>
+                <span style={{ fontFamily: IN, fontSize: 10, color: change !== undefined && change >= 0 ? '#2ED67B' : '#FF5C67' }}>
+                  {change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}
+                </span>
               </div>
             </div>
           )
@@ -981,16 +908,16 @@ function OrderEntryPanel({
 
 function MobileTerminal({
   pair,
-  midPrice,
-  market,
+  reference,
+  sourceLive,
   bids,
   asks,
   loading,
   onToast,
 }: {
   pair: string
-  midPrice: number | null
-  market: MarketResponse | undefined
+  reference: ReferenceMarket | undefined
+  sourceLive: boolean | null
   bids: { price: string; quantity: string }[]
   asks: { price: string; quantity: string }[]
   loading: boolean
@@ -1000,9 +927,9 @@ function MobileTerminal({
 
   return (
     <div className="mobile-terminal">
-      <TopBar pair={pair} market={market} />
+      <TopBar pair={pair} reference={reference} sourceLive={sourceLive} />
       <div className="mobile-terminal__chart">
-        <ChartColumn pair={pair} midPrice={midPrice} onToast={onToast} />
+        <ChartColumn pair={pair} onToast={onToast} />
       </div>
       <div className="mobile-terminal__tabs" role="tablist" aria-label="Trading panel">
         <button type="button" role="tab" aria-selected={panel === 'trade'} onClick={() => setPanel('trade')}>Trade</button>
@@ -1026,16 +953,10 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
   const [bids, setBids] = useState<{ price: string; quantity: string }[]>([])
   const [asks, setAsks] = useState<{ price: string; quantity: string }[]>([])
   const [bookLoaded, setBookLoaded] = useState(false)
-  const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [referenceMarkets, setReferenceMarkets] = useState<ReferenceMarket[]>([])
+  const [referenceSourceLive, setReferenceSourceLive] = useState<boolean | null>(null)
 
-  const market = useMemo(() => markets.find((m) => m.id === pair), [markets, pair])
-
-  const midPrice = useMemo(() => {
-    const bid = bids[0] ? parseFloat(bids[0].price) : null
-    const ask = asks[0] ? parseFloat(asks[0].price) : null
-    if (bid && ask) return (bid + ask) / 2
-    return bid ?? ask ?? null
-  }, [bids, asks])
+  const reference = useMemo(() => referenceMarkets.find((market) => market.market === pair), [referenceMarkets, pair])
 
   useEffect(() => {
     velaWs.connect()
@@ -1051,14 +972,24 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
   }, [pair])
 
   useEffect(() => {
-    const fetchMarkets = () => {
-      listMarkets().then((res) => {
-        if (res.ok && res.data) setMarkets(res.data)
-      }).catch(() => {})
+    let cancelled = false
+    const refreshReferenceMarkets = async () => {
+      try {
+        const snapshot = await fetchReferenceMarkets()
+        if (!cancelled) {
+          setReferenceMarkets(snapshot.markets)
+          setReferenceSourceLive(true)
+        }
+      } catch {
+        if (!cancelled) setReferenceSourceLive(false)
+      }
     }
-    fetchMarkets()
-    const interval = setInterval(fetchMarkets, 10_000)
-    return () => clearInterval(interval)
+    void refreshReferenceMarkets()
+    const interval = setInterval(() => void refreshReferenceMarkets(), 2_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -1073,8 +1004,8 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
       <>
         <MobileTerminal
           pair={pair}
-          midPrice={midPrice}
-          market={market}
+          reference={reference}
+          sourceLive={referenceSourceLive}
           bids={bids}
           asks={asks}
           loading={!bookLoaded}
@@ -1098,11 +1029,11 @@ export default function TradingPage(props: { params: Promise<{ pair: string }> }
       `}</style>
 
       <div className="trade-terminal" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TopBar pair={pair} market={market} />
+        <TopBar pair={pair} reference={reference} sourceLive={referenceSourceLive} />
 
         <div className="trade-terminal__grid">
-          <MarketSelectorColumn currentPair={pair} markets={markets} />
-          <ChartColumn pair={pair} midPrice={midPrice} onToast={addToast} />
+          <MarketSelectorColumn currentPair={pair} markets={referenceMarkets} />
+          <ChartColumn pair={pair} onToast={addToast} />
           <OrderBookPanel bids={bids} asks={asks} pair={pair} loading={!bookLoaded} />
           <OrderEntryPanel pair={pair} bids={bids} asks={asks} onToast={addToast} />
         </div>
