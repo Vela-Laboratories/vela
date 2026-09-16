@@ -630,11 +630,11 @@ function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; m
 
   return (
     <div className="terminal-market-list" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: IN, fontSize: 12, fontWeight: 600, color: '#D6D6DF' }}>
-          Markets
-        </span>
-      </div>
+      <nav className="terminal-rail-tabs" aria-label="Discovery">
+        <span className="is-active">Markets</span>
+        <Link href="/history">Activity</Link>
+        <Link href="/leaderboard">Leaders</Link>
+      </nav>
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {ORDERED_PAIRS.map((pair) => {
           const market = marketsById[pair]

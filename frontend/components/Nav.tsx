@@ -2,25 +2,59 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth'
+import { getBalances, listMarkets, type BalanceResponse, type MarketResponse } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ORDERED_PAIRS } from '@/lib/markets'
 
 const PRIMARY_LINKS = [
-  { href: '/markets', label: 'Trade' },
-  { href: '/portfolio', label: 'Portfolio' },
-  { href: '/dashboard', label: 'Orders' },
-  { href: '/history', label: 'History' },
+  { href: '/markets/BTC-USDC', label: 'Trade', match: '/markets' },
+  { href: '/profile', label: 'Profile', match: '/profile' },
+  { href: '/dashboard', label: 'Orders', match: '/dashboard' },
+  { href: '/history', label: 'Activity', match: '/history' },
 ]
 
 const SECONDARY_LINKS = [
+  { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/analytics', label: 'Analytics' },
   { href: '/transparency', label: 'Transparency' },
-  { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/portfolio', label: 'Tax lots' },
   { href: '/benchmarks', label: 'Benchmarks' },
   { href: '/decisions', label: 'Decisions' },
 ]
+
+function formatMoney(value: number): string {
+  if (!Number.isFinite(value)) return '$0.00'
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`
+  if (Math.abs(value) >= 10_000) return `$${(value / 1_000).toFixed(1)}K`
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function accountValue(balances: BalanceResponse[], markets: MarketResponse[]): number {
+  const prices = new Map<string, number>()
+  for (const market of markets) {
+    const bid = Number(market.best_bid)
+    const ask = Number(market.best_ask)
+    const price = Number.isFinite(bid) && Number.isFinite(ask)
+      ? (bid + ask) / 2
+      : Number.isFinite(bid) ? bid : ask
+    if (Number.isFinite(price)) prices.set(market.base.toUpperCase(), price)
+  }
+
+  return balances.reduce((total, balance) => {
+    const quantity = Number(balance.total)
+    if (!Number.isFinite(quantity)) return total
+    const asset = balance.asset.toUpperCase()
+    if (asset === 'USDC') return total + quantity
+    return total + quantity * (prices.get(asset) ?? 0)
+  }, 0)
+}
 
 function SearchIcon() {
   return (
@@ -28,6 +62,89 @@ function SearchIcon() {
       <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.5" />
       <path d="m10.25 10.25 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
+  )
+}
+
+function AccountControls({
+  address,
+  isAuthenticated,
+  signOut,
+}: {
+  address: string
+  isAuthenticated: boolean
+  signOut: () => void
+}) {
+  const [balances, setBalances] = useState<BalanceResponse[]>([])
+  const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    let cancelled = false
+    const refresh = async () => {
+      const [balanceResult, marketResult] = await Promise.all([
+        getBalances(address),
+        listMarkets(),
+      ])
+      if (cancelled) return
+      if (balanceResult.ok && balanceResult.data) setBalances(balanceResult.data)
+      if (marketResult.ok && marketResult.data) setMarkets(marketResult.data)
+    }
+    void refresh()
+    const interval = window.setInterval(refresh, 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [address, isAuthenticated])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuOpen])
+
+  const cash = Number(balances.find((balance) => balance.asset.toUpperCase() === 'USDC')?.available ?? 0)
+  const equity = useMemo(() => accountValue(balances, markets), [balances, markets])
+
+  return (
+    <div className="account-controls">
+      <Link href="/deposit" className="account-tile">
+        <strong>{isAuthenticated ? formatMoney(cash) : 'Locked'}</strong>
+        <span>{isAuthenticated ? 'Cash · Deposit' : 'Authenticate'}</span>
+      </Link>
+      <Link href="/profile" className="account-tile account-tile--equity">
+        <strong>{isAuthenticated ? formatMoney(equity) : '—'}</strong>
+        <span>Portfolio</span>
+      </Link>
+      <div className="account-menu" ref={menuRef}>
+        <button
+          type="button"
+          className="account-avatar"
+          aria-label="Open account menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {address.slice(2, 4).toUpperCase()}
+        </button>
+        {menuOpen ? (
+          <div className="account-menu__panel">
+            <div className="account-menu__identity">
+              <span>Connected wallet</span>
+              <strong>{address.slice(0, 6)}…{address.slice(-4)}</strong>
+            </div>
+            <Link href="/profile" onClick={() => setMenuOpen(false)}>View profile</Link>
+            <Link href="/deposit" onClick={() => setMenuOpen(false)}>Deposit funds</Link>
+            <Link href="/withdraw" onClick={() => setMenuOpen(false)}>Withdraw funds</Link>
+            <button type="button" onClick={signOut}>Sign out</button>
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -63,13 +180,13 @@ function MobileMenu({
   return (
     <div className="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation">
       <div className="mobile-nav__header">
-        <Link href="/" onClick={onClose} className="vela-wordmark">Vela</Link>
+        <Link href="/markets/BTC-USDC" onClick={onClose} className="vela-wordmark">Vela</Link>
         <button type="button" onClick={onClose} className="icon-button" aria-label="Close menu">×</button>
       </div>
 
       <nav className="mobile-nav__links">
         {links.map(({ href, label }) => (
-          <Link key={href} href={href} onClick={onClose} className={pathname.startsWith(href) ? 'is-active' : ''}>
+          <Link key={href} href={href} onClick={onClose} className={pathname.startsWith(href.split('/').slice(0, 2).join('/')) ? 'is-active' : ''}>
             {label}
           </Link>
         ))}
@@ -89,7 +206,7 @@ function MobileMenu({
           </>
         ) : (
           <button type="button" className="wallet-button wallet-button--primary" onClick={handleConnect} disabled={connecting}>
-            {connecting && <Spinner size="xs" className="text-ink" />}
+            {connecting ? <Spinner size="xs" className="text-ink" /> : null}
             Connect wallet
           </button>
         )}
@@ -101,7 +218,7 @@ function MobileMenu({
 export default function Nav() {
   const pathname = usePathname()
   const router = useRouter()
-  const { address, isConnected, connect, signOut } = useAuth()
+  const { address, isConnected, isAuthenticated, connect, signOut } = useAuth()
   const [connecting, setConnecting] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [marketSearch, setMarketSearch] = useState('')
@@ -154,40 +271,35 @@ export default function Nav() {
     <>
       <header className={`app-nav${isTrading ? ' app-nav--terminal' : ''}`}>
         <div className="app-nav__inner">
-          <Link href="/" className="vela-wordmark" aria-label="Vela home">Vela</Link>
+          <Link href="/markets/BTC-USDC" className="vela-wordmark" aria-label="Vela trading home">Vela</Link>
 
           <nav className="app-nav__primary" aria-label="Primary navigation">
-            {PRIMARY_LINKS.map(({ href, label }) => (
-              <Link key={href} href={href} className={pathname.startsWith(href) ? 'is-active' : ''}>
+            {PRIMARY_LINKS.map(({ href, label, match }) => (
+              <Link key={href} href={href} className={pathname.startsWith(match) ? 'is-active' : ''}>
                 {label}
               </Link>
             ))}
           </nav>
 
-          {isTrading && (
+          {isTrading ? (
             <form className="market-search" role="search" onSubmit={handleMarketSearch}>
               <SearchIcon />
               <input ref={marketSearchRef} value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder="Search markets" aria-label="Search markets" />
               <kbd>/</kbd>
             </form>
-          )}
+          ) : null}
 
           <div className="app-nav__actions">
             <div className="app-nav__secondary">
+              <Link href="/leaderboard">Leaderboard</Link>
               <Link href="/transparency">Transparency</Link>
-              <a href="https://monolithsystematicllc.mintlify.app" target="_blank" rel="noopener noreferrer">Docs</a>
             </div>
 
             {isConnected && address ? (
-              <>
-                <Link href="/deposit" className="deposit-link">Deposit</Link>
-                <button type="button" onClick={signOut} className="wallet-button">
-                  {address.slice(0, 6)}…{address.slice(-4)}
-                </button>
-              </>
+              <AccountControls address={address} isAuthenticated={isAuthenticated} signOut={signOut} />
             ) : (
               <button type="button" onClick={handleConnect} disabled={connecting} className="wallet-button wallet-button--primary">
-                {connecting && <Spinner size="xs" className="text-ink" />}
+                {connecting ? <Spinner size="xs" className="text-ink" /> : null}
                 Connect wallet
               </button>
             )}
@@ -200,9 +312,9 @@ export default function Nav() {
         </div>
       </header>
 
-      {mobileMenuOpen && (
+      {mobileMenuOpen ? (
         <MobileMenu onClose={() => setMobileMenuOpen(false)} address={address} isConnected={isConnected} connect={connect} signOut={signOut} />
-      )}
+      ) : null}
     </>
   )
 }
