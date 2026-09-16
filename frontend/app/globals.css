@@ -502,7 +502,8 @@
   min-height: 44px;
 }
 
-.trade-terminal {
+.trade-terminal,
+.profile-terminal {
   height: calc(100vh - 86px);
   min-height: 620px;
   color: var(--foreground);
@@ -1463,10 +1464,15 @@
 }
 
 .trade-terminal button,
-.trade-terminal input { font: inherit; }
+.trade-terminal input,
+.profile-terminal button,
+.profile-terminal input { font: inherit; }
 .trade-terminal button:focus-visible,
 .trade-terminal a:focus-visible,
-.trade-terminal input:focus-visible { outline: 2px solid #9488ee; outline-offset: -2px; }
+.trade-terminal input:focus-visible,
+.profile-terminal button:focus-visible,
+.profile-terminal a:focus-visible,
+.profile-terminal input:focus-visible { outline: 2px solid #9488ee; outline-offset: -2px; }
 .positive { color: var(--terminal-buy) !important; }
 .negative { color: var(--terminal-sell) !important; }
 
@@ -1703,6 +1709,137 @@
 .terminal-toast { width: min(320px, calc(100vw - 32px)); padding: 10px 12px; color: #d8dbe3; background: #121722; border: 1px solid var(--terminal-border); border-left: 3px solid var(--terminal-buy); border-radius: 8px; font-size: .7rem; box-shadow: 0 15px 40px rgba(0,0,0,.35); }
 .terminal-toast--error { border-left-color: var(--terminal-sell); }
 
+/* EX-041: terminal-native, ledger-backed customer profile */
+.profile-terminal__grid { min-height: 0; flex: 1; position: relative; display: grid; grid-template-columns: 304px minmax(660px, 1fr) 300px; overflow: hidden; }
+.profile-terminal__grid.is-rail-collapsed { grid-template-columns: minmax(660px, 1fr) 300px; }
+.profile-market-rail { grid-column: 1; }
+.profile-market-rail .terminal-rail-tabs--primary a,
+.profile-market-rail .terminal-rail-tabs--primary span { padding-inline: 7px; font-size: .64rem; }
+.profile-workspace { min-width: 0; min-height: 0; padding: 10px 12px 18px; overflow-y: auto; background: #090b11; border-left: 1px solid rgba(137,148,174,.06); }
+.profile-cover { min-height: 116px; padding: 14px 17px; position: relative; display: flex; align-items: flex-start; justify-content: space-between; overflow: hidden; color: #7e879a; background: linear-gradient(130deg, #121724 0%, #15152a 52%, #10131d 100%); border: 1px solid var(--terminal-border); border-radius: 12px; font: 600 .56rem var(--font-mono), monospace; letter-spacing: .12em; text-transform: uppercase; }
+.profile-cover::before { content: ''; position: absolute; inset: -50% 44% -80% -15%; background: radial-gradient(circle, rgba(129,121,217,.27), transparent 68%); }
+.profile-cover::after { content: ''; position: absolute; width: 220px; height: 220px; right: 9%; top: -145px; border: 1px solid rgba(212,162,76,.18); border-radius: 50%; box-shadow: 0 0 0 36px rgba(212,162,76,.025), 0 0 0 72px rgba(129,121,217,.02); }
+.profile-cover__grid { position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 32px 32px; mask-image: linear-gradient(90deg, #000, transparent); }
+.profile-cover > span,
+.profile-cover > small { position: relative; z-index: 1; }
+.profile-cover > small { color: #9488ee; font-size: .53rem; }
+.profile-terminal-identity { min-height: 102px; padding: 0 4px 12px; display: flex; align-items: center; gap: 13px; border-bottom: 1px solid var(--terminal-border); }
+.profile-terminal-avatar { width: 72px; height: 72px; margin: -29px 2px 0 5px; position: relative; z-index: 2; display: grid; place-items: center; flex: 0 0 auto; color: #10111a; background: linear-gradient(145deg, #b8b0f2, #7166c2); border: 5px solid #090b11; border-radius: 50%; font-size: 1.2rem; font-weight: 780; box-shadow: 0 7px 20px rgba(0,0,0,.28); }
+.profile-terminal-avatar i { position: absolute; right: -1px; bottom: 1px; width: 18px; height: 18px; display: grid; place-items: center; color: #07100d; background: var(--terminal-buy); border: 3px solid #090b11; border-radius: 50%; font-size: .52rem; font-style: normal; }
+.profile-terminal-name { min-width: 180px; display: grid; gap: 2px; }
+.profile-terminal-name > span { color: #697185; font-size: .58rem; text-transform: uppercase; letter-spacing: .07em; }
+.profile-terminal-name h1 { margin: 0; color: #f0f1f5; font: 650 1rem var(--font-mono), monospace; letter-spacing: -.02em; }
+.profile-terminal-name > div { display: flex; gap: 10px; color: #6e7689; font-size: .59rem; }
+.profile-terminal-name b { color: var(--terminal-buy); font-weight: 500; }
+.profile-terminal-social { margin-left: auto; display: flex; align-items: center; }
+.profile-terminal-social > div { min-width: 78px; padding: 6px 14px; display: grid; justify-items: center; gap: 2px; border-left: 1px solid rgba(137,148,174,.09); }
+.profile-terminal-social strong { color: #e9eaf0; font: 600 .8rem var(--font-mono), monospace; }
+.profile-terminal-social span { color: #687083; font-size: .55rem; }
+.profile-terminal-actions { margin-left: 14px; display: flex; gap: 6px; }
+.profile-terminal-actions button,
+.profile-terminal-actions a,
+.profile-equity-panel footer a { height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #b7bdc9; background: #11151e; border: 1px solid rgba(137,148,174,.18); border-radius: 7px; font-size: .63rem; font-weight: 600; text-decoration: none; }
+.profile-terminal-actions .is-primary,
+.profile-equity-panel footer .is-primary { color: #11121a; background: #9488ee; border-color: #9488ee; }
+.profile-terminal-error { margin: 9px 0 0; }
+.profile-dashboard { min-height: 450px; padding-top: 12px; display: grid; grid-template-columns: minmax(340px, 1.05fr) minmax(310px, .95fr); gap: 12px; }
+.profile-dashboard__summary { min-width: 0; display: grid; align-content: start; gap: 12px; }
+.profile-equity-panel,
+.profile-positions-panel,
+.profile-activity-panel { overflow: hidden; background: #0d1018; border: 1px solid var(--terminal-border); border-radius: 10px; }
+.profile-equity-panel > header { min-height: 69px; padding: 11px 12px 8px; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(137,148,174,.07); }
+.profile-equity-panel > header > div { display: grid; gap: 2px; }
+.profile-equity-panel > header span { color: #7d8597; font-size: .59rem; }
+.profile-equity-panel > header strong { color: #f0f1f5; font: 600 1.48rem var(--font-mono), monospace; letter-spacing: -.04em; }
+.profile-equity-panel > header small { font: 500 .61rem var(--font-mono), monospace; }
+.profile-equity-panel > header nav { height: 27px; padding: 2px; display: flex; gap: 1px; background: #080b11; border: 1px solid rgba(137,148,174,.12); border-radius: 7px; }
+.profile-equity-panel > header nav a,
+.profile-equity-panel > header nav span { padding: 4px 8px; color: #626a7c; border-radius: 5px; font-size: .56rem; text-decoration: none; }
+.profile-equity-panel > header nav .is-active { color: #e3e5ea; background: #171b26; }
+.profile-allocation { min-height: 190px; padding: 18px 12px 10px; display: grid; align-content: space-between; gap: 22px; }
+.profile-allocation__chart { min-height: 95px; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
+.profile-allocation__baseline { position: absolute; inset: 10px 0 21px; background: repeating-linear-gradient(0deg, transparent 0 26px, rgba(137,148,174,.06) 26px 27px); border-bottom: 1px solid rgba(137,148,174,.07); }
+.profile-allocation__value { position: relative; margin-bottom: auto; display: flex; align-items: center; gap: 7px; color: #626b7e; font-size: .59rem; }
+.profile-allocation__bar { height: 7px; position: relative; display: flex; overflow: hidden; background: #171b25; border-radius: 999px; box-shadow: 0 0 0 1px rgba(137,148,174,.08); }
+.profile-allocation__bar i { min-width: 2px; }
+.allocation-0 { background: #9488ee !important; }
+.allocation-1 { background: #20c98a !important; }
+.allocation-2 { background: #d4a24c !important; }
+.allocation-3 { background: #4f90d9 !important; }
+.allocation-4 { background: #dc70aa !important; }
+.allocation-5 { background: #ef6a5b !important; }
+.profile-allocation__legend { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 7px 12px; }
+.profile-allocation__legend > span { grid-column: 1 / -1; color: #646d80; font-size: .65rem; }
+.profile-allocation__legend > div { min-width: 0; display: grid; grid-template-columns: 7px 1fr auto; align-items: center; gap: 5px; color: #7e8698; font-size: .57rem; }
+.profile-allocation__legend i { width: 7px; height: 7px; border-radius: 2px; }
+.profile-allocation__legend strong { color: #bdc1ca; font: 500 .57rem var(--font-mono), monospace; }
+.profile-allocation__legend small { grid-column: 2 / -1; color: #575f71; font: .51rem var(--font-mono), monospace; }
+.profile-equity-panel > footer { min-height: 55px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(137,148,174,.08); }
+.profile-equity-panel > footer > div { display: flex; align-items: center; gap: 7px; }
+.profile-equity-panel footer p { margin: 0; display: grid; gap: 1px; }
+.profile-equity-panel footer small { color: #646d7f; font-size: .54rem; }
+.profile-equity-panel footer strong { color: #d9dce3; font: 550 .7rem var(--font-mono), monospace; }
+.profile-cash-mark { width: 31px; height: 31px; display: grid; place-items: center; color: #c5c9d2; background: #121620; border: 1px solid rgba(137,148,174,.16); border-radius: 50%; font: 600 .8rem var(--font-mono), monospace; }
+.profile-positions-panel > header,
+.profile-activity-panel > header { min-height: 38px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(137,148,174,.08); }
+.profile-positions-panel > header > div { display: flex; align-items: center; gap: 7px; }
+.profile-positions-panel > header span { color: #d8dae1; font-size: .66rem; font-weight: 600; }
+.profile-positions-panel > header small { color: #5e6679; font-size: .55rem; }
+.profile-positions-panel > header a,
+.profile-activity-panel > header > a { color: #9488ee; font-size: .57rem; text-decoration: none; }
+.profile-positions-head,
+.profile-positions-table > a { min-height: 31px; padding: 0 10px; display: grid; grid-template-columns: 1fr .8fr .8fr .8fr; align-items: center; gap: 8px; }
+.profile-positions-head { color: #586073; font-size: .54rem; border-bottom: 1px solid rgba(137,148,174,.06); }
+.profile-positions-table > a { color: #8c94a6; border-bottom: 1px solid rgba(137,148,174,.045); font: .59rem var(--font-mono), monospace; text-decoration: none; }
+.profile-positions-table > a:hover { background: rgba(255,255,255,.018); }
+.profile-positions-table > a > span:first-child { display: flex; align-items: center; gap: 6px; }
+.profile-positions-table > a strong { color: #d8dbe2; font-weight: 550; }
+.profile-activity-panel { min-width: 0; min-height: 420px; }
+.profile-activity-panel > header > div { height: 100%; display: flex; gap: 14px; }
+.profile-activity-panel > header button { color: #666f82; background: transparent; border: 0; border-bottom: 2px solid transparent; font-size: .62rem; }
+.profile-activity-panel > header button[aria-selected='true'] { color: #e2e4e9; border-bottom-color: #9488ee; }
+.profile-activity-head { min-height: 29px; padding: 0 11px 0 42px; display: grid; grid-template-columns: 1.2fr 1fr .65fr .55fr; align-items: center; gap: 8px; color: #555d6f; border-bottom: 1px solid rgba(137,148,174,.06); font-size: .54rem; }
+.profile-terminal-activity > div { min-height: 47px; padding: 5px 11px; display: grid; grid-template-columns: 23px 1.2fr 1fr .65fr .55fr; align-items: center; gap: 8px; color: #8b93a4; border-bottom: 1px solid rgba(137,148,174,.05); font: .57rem var(--font-mono), monospace; }
+.profile-terminal-activity > div:hover { background: rgba(255,255,255,.015); }
+.profile-terminal-activity > div > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.profile-terminal-activity strong { overflow: hidden; color: #d6d9e0; font: 600 .6rem var(--font-inter-sans), sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.profile-terminal-activity small { color: #555e70; font: .51rem var(--font-inter-sans), sans-serif; }
+.profile-terminal-activity time { color: #626b7d; }
+.profile-event-mark { width: 22px; height: 22px; display: grid; place-items: center; color: #a8afbd; background: #181d28; border-radius: 50%; font: 650 .55rem var(--font-inter-sans), sans-serif; }
+.profile-event-mark.is-buy { color: var(--terminal-buy); background: rgba(32,201,138,.1); }
+.profile-event-mark.is-sell { color: var(--terminal-sell); background: rgba(239,106,91,.1); }
+.profile-panel-empty { min-height: 105px; display: grid; place-content: center; justify-items: center; gap: 5px; color: #5d6577; font-size: .61rem; text-align: center; }
+.profile-panel-empty strong { color: #9299a8; font-size: .65rem; }
+.profile-panel-empty--tall { min-height: 310px; }
+.profile-trader-rail { min-width: 0; padding: 14px 12px; overflow-y: auto; background: #080a10; border-left: 1px solid var(--terminal-border); }
+.profile-trader-rail > header { display: flex; align-items: center; justify-content: space-between; }
+.profile-trader-rail > header > div { display: grid; gap: 2px; }
+.profile-trader-rail header span { color: #5f687a; font-size: .53rem; text-transform: uppercase; letter-spacing: .08em; }
+.profile-trader-rail h2 { margin: 0; color: #e0e2e8; font-size: .78rem; font-weight: 650; }
+.profile-trader-rail > header a { color: #8f86dd; font-size: .56rem; text-decoration: none; }
+.profile-trader-rail > p { margin: 10px 0 12px; color: #626a7c; font-size: .58rem; line-height: 1.45; }
+.profile-trader-list { display: grid; }
+.profile-trader { min-height: 48px; padding: 6px 2px; display: grid; grid-template-columns: 32px minmax(0,1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid rgba(137,148,174,.055); }
+.profile-trader.is-current { margin-inline: -5px; padding-inline: 7px; background: rgba(129,121,217,.09); border-radius: 7px; }
+.profile-trader__avatar { width: 31px; height: 31px; display: grid; place-items: center; color: #171923; background: linear-gradient(145deg, #9d95dc, #665cae); border-radius: 50%; font-size: .56rem; font-weight: 750; }
+.profile-trader > div:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.profile-trader strong { overflow: hidden; color: #d5d8df; font: 550 .59rem var(--font-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
+.profile-trader span { color: #5f687a; font-size: .52rem; }
+.profile-trader > b { color: #8279cb; font: 550 .56rem var(--font-mono), monospace; }
+.profile-trader-empty { padding: 30px 10px; color: #626a7c; text-align: center; font-size: .61rem; line-height: 1.5; }
+.profile-trader-rail > section { margin-top: 16px; padding: 11px; display: grid; gap: 5px; background: linear-gradient(140deg, rgba(129,121,217,.1), rgba(18,22,32,.65)); border: 1px solid rgba(129,121,217,.15); border-radius: 9px; }
+.profile-trader-rail > section > span { color: #7770b6; font-size: .51rem; text-transform: uppercase; letter-spacing: .08em; }
+.profile-trader-rail > section strong { color: #c9c6e2; font-size: .63rem; }
+.profile-trader-rail > section p { margin: 1px 0 3px; color: #697185; font-size: .56rem; line-height: 1.45; }
+.profile-trader-rail > section a { color: #958ce0; font-size: .56rem; text-decoration: none; }
+.profile-terminal-gate { max-width: 430px; margin: 14vh auto 0; padding: 32px; display: grid; justify-items: center; gap: 9px; text-align: center; background: #0d1018; border: 1px solid var(--terminal-border); border-radius: 13px; box-shadow: 0 22px 70px rgba(0,0,0,.22); }
+.profile-terminal-gate__mark { width: 54px; height: 54px; display: grid; place-items: center; color: #aaa1e9; background: rgba(129,121,217,.12); border: 1px solid rgba(129,121,217,.22); border-radius: 50%; }
+.profile-terminal-gate > span { color: #777f91; font-size: .58rem; text-transform: uppercase; letter-spacing: .1em; }
+.profile-terminal-gate h1 { margin: 0; color: #ebecef; font-size: 1.25rem; }
+.profile-terminal-gate p { max-width: 330px; margin: 2px 0 8px; color: #737b8e; font-size: .68rem; line-height: 1.55; }
+.profile-terminal-gate > button { min-width: 180px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; color: #11121a; background: #9488ee; border: 0; border-radius: 7px; font-size: .67rem; font-weight: 650; }
+.profile-terminal-gate > a { color: #827aca; font-size: .61rem; text-decoration: none; }
+
 .mobile-terminal { min-height: calc(100vh - 74px); background: var(--terminal-bg, #080a10); }
 .mobile-terminal__tabs { grid-template-columns: repeat(3, 1fr); }
 .mobile-terminal__panel { min-height: 580px; display: block; padding: 8px; }
@@ -1711,6 +1848,8 @@
 
 @media (max-width: 1420px) {
   .trade-terminal__grid { grid-template-columns: 260px minmax(0, 1fr); }
+  .profile-terminal__grid { grid-template-columns: 260px minmax(620px, 1fr) 270px; }
+  .profile-terminal__grid.is-rail-collapsed { grid-template-columns: minmax(620px, 1fr) 270px; }
   .terminal-stage__body { grid-template-columns: minmax(480px, 1fr) 330px; }
   .terminal-header-stat { min-width: 88px; padding-inline: 9px; }
   .terminal-toolbar-ranges > span { display: none; }
@@ -1718,6 +1857,8 @@
 
 @media (max-width: 1160px) {
   .trade-terminal__grid { grid-template-columns: minmax(0, 1fr); }
+  .profile-terminal__grid,
+  .profile-terminal__grid.is-rail-collapsed { grid-template-columns: minmax(0, 1fr) 270px; }
   .terminal-stage__body { grid-template-columns: minmax(500px, 1fr) 320px; }
   .terminal-market-rail { display: none; }
   .terminal-header-stat:nth-child(3),
@@ -1727,6 +1868,11 @@
 @media (max-width: 900px) {
   .terminal-header-stats { display: none; }
   .terminal-toolbar-ranges { display: none; }
+  .profile-terminal__grid,
+  .profile-terminal__grid.is-rail-collapsed { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .profile-trader-rail { display: none; }
+  .profile-terminal-social { display: none; }
+  .profile-dashboard { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 759px) {
@@ -1749,10 +1895,32 @@
   .mobile-terminal__tabs { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
   .terminal-chart-toolbar { overflow-x: auto; }
   .terminal-chart-legend i:nth-of-type(n+3) { display: none; }
+  .profile-terminal { min-height: calc(100vh - 74px); height: auto; overflow: visible; }
+  .profile-terminal__grid,
+  .profile-terminal__grid.is-rail-collapsed { overflow: visible; }
+  .profile-workspace { padding: 8px; overflow: visible; }
+  .profile-cover { min-height: 88px; }
+  .profile-terminal-identity { padding-bottom: 11px; flex-wrap: wrap; }
+  .profile-terminal-avatar { width: 60px; height: 60px; margin-top: -24px; }
+  .profile-terminal-actions { width: 100%; margin-left: 0; }
+  .profile-terminal-actions button,
+  .profile-terminal-actions a { flex: 1; padding-inline: 8px; }
+  .profile-terminal-name > div span:last-child { display: none; }
+  .profile-dashboard { min-height: 0; }
+  .profile-allocation__legend { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .profile-activity-panel { min-height: 360px; }
+  .profile-activity-head { display: none; }
+  .profile-terminal-activity > div { grid-template-columns: 23px 1fr auto; }
+  .profile-terminal-activity > div > span:nth-child(3),
+  .profile-terminal-activity > div > span:nth-child(4) { display: none; }
+  .profile-panel-empty--tall { min-height: 250px; }
+  .profile-terminal > .terminal-footer { overflow-x: auto; }
+  .profile-terminal > .terminal-footer nav { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .trade-terminal *,
+  .profile-terminal *,
   .terminal-toasts * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
 

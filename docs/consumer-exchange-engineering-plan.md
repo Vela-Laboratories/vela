@@ -709,6 +709,14 @@ Work should begin in this order. Each item should land as a small, independently
     - Add explicit mobile chart, trade, and book modes plus compact loading, disconnected, empty, degraded, focus, and reduced-motion states for the terminal.
     - Verify the reference-data routes, markets grid, terminal, disconnected profile state, WebSocket stream, frontend tests, type checking, lint, and production build.
     - This chapter improves the testnet consumer surface and claim integrity. It does not expand the ETH/USDC real-money launch scope, make synthetic liquidity real, complete mobile-wallet compatibility, or satisfy legal accessibility review.
+41. [x] **EX-041: Terminal-native customer profile workspace**
+    - Extend the terminal shell onto the private profile route so the Vela mark, centered market search, account controls, inset discovery rail, and live reference ticker remain spatially consistent with the trading surface.
+    - Replace the generic account dashboard with a compact identity header, authenticated wallet state, ledger-backed portfolio value, current asset allocation, cash balance, positions, open-order count, referrals, and total realized-plus-unrealized PnL.
+    - Keep the account visualization data-honest by showing a current marked allocation snapshot instead of fabricating an equity-history curve that the backend does not provide.
+    - Add filterable fills, orders, and funding activity, plus semantic deposit, withdrawal, portfolio, history, and market actions driven by existing protected account endpoints.
+    - Use the public testnet leaderboard as contextual network activity while explicitly avoiding unsupported follower counts, follow actions, biographies, social graphs, or performance endorsements.
+    - Preserve the terminal shell for disconnected users with a private-data authentication gate, public live market discovery, degraded reference state, responsive layouts, keyboard focus treatment, and reduced-motion behavior.
+    - Verify the profile route through type checking, lint, production build, frontend tests, and browser review at a narrow viewport. Full mobile-wallet compatibility, production account statements, historical equity-series reporting, and legal accessibility review remain launch gates.
 
 ## Parallel nonengineering work
 

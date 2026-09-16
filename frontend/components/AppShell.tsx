@@ -13,15 +13,15 @@ import BetaBanner from '@/components/BetaBanner'
 /// force a client boundary.
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isTrading = /^\/markets\/[^/]+/.test(pathname)
+  const usesTerminalShell = /^\/markets\/[^/]+/.test(pathname) || pathname === '/profile'
 
   return (
     <Providers>
-      <div className={`relative z-10 app-shell${isTrading ? ' app-shell--terminal' : ''}`}>
+      <div className={`relative z-10 app-shell${usesTerminalShell ? ' app-shell--terminal' : ''}`}>
         <BetaBanner />
         <Nav />
         <main className="app-main">
-          {isTrading ? children : <AnimatePresence mode="wait">
+          {usesTerminalShell ? children : <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
               initial={{ opacity: 0, y: 16 }}

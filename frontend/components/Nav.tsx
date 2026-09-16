@@ -219,7 +219,7 @@ export default function Nav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [marketSearch, setMarketSearch] = useState('')
   const marketSearchRef = useRef<HTMLInputElement>(null)
-  const isTrading = /^\/markets\/[^/]+/.test(pathname)
+  const usesTerminalShell = /^\/markets\/[^/]+/.test(pathname) || pathname === '/profile'
 
   useEffect(() => {
     if (!mobileMenuOpen) return
@@ -231,7 +231,7 @@ export default function Nav() {
   }, [mobileMenuOpen])
 
   useEffect(() => {
-    if (!isTrading) return
+    if (!usesTerminalShell) return
     const focusSearch = (event: KeyboardEvent) => {
       if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
         event.preventDefault()
@@ -240,7 +240,7 @@ export default function Nav() {
     }
     window.addEventListener('keydown', focusSearch)
     return () => window.removeEventListener('keydown', focusSearch)
-  }, [isTrading])
+  }, [usesTerminalShell])
 
   async function handleConnect() {
     setConnecting(true)
@@ -265,11 +265,11 @@ export default function Nav() {
 
   return (
     <>
-      <header className={`app-nav${isTrading ? ' app-nav--terminal' : ''}`}>
+      <header className={`app-nav${usesTerminalShell ? ' app-nav--terminal' : ''}`}>
         <div className="app-nav__inner">
           <Link href="/markets/BTC-USDC" className="vela-wordmark" aria-label="Vela trading home">Vela</Link>
 
-          {!isTrading ? <nav className="app-nav__primary" aria-label="Primary navigation">
+          {!usesTerminalShell ? <nav className="app-nav__primary" aria-label="Primary navigation">
             {PRIMARY_LINKS.map(({ href, label, match }) => (
               <Link key={href} href={href} className={pathname.startsWith(match) ? 'is-active' : ''}>
                 {label}
@@ -277,7 +277,7 @@ export default function Nav() {
             ))}
           </nav> : null}
 
-          {isTrading ? (
+          {usesTerminalShell ? (
             <form className="market-search" role="search" onSubmit={handleMarketSearch}>
               <SearchIcon />
               <input ref={marketSearchRef} value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder="Search markets" aria-label="Search markets" />
@@ -286,7 +286,7 @@ export default function Nav() {
           ) : null}
 
           <div className="app-nav__actions">
-            {!isTrading ? <div className="app-nav__secondary">
+            {!usesTerminalShell ? <div className="app-nav__secondary">
               <Link href="/leaderboard">Leaderboard</Link>
               <Link href="/transparency">Transparency</Link>
             </div> : null}

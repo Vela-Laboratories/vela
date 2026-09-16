@@ -1,29 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useAuth } from '@/lib/auth'
 import {
-  getAccountFills,
-  getBalances,
-  getDeposits,
-  getLeaderboard,
-  getOrders,
-  getPortfolio,
-  getReferral,
-  getWithdrawals,
-  type AccountFill,
-  type BalanceResponse,
-  type DepositStatus,
-  type LeaderboardData,
-  type Order,
-  type PortfolioResponse,
-  type ReferralData,
-  type WithdrawalStatus,
+  getAccountFills, getBalances, getDeposits, getLeaderboard, getOrders, getPortfolio, getReferral, getWithdrawals,
+  type AccountFill, type BalanceResponse, type DepositStatus, type LeaderboardData, type Order,
+  type PortfolioResponse, type ReferralData, type WithdrawalStatus,
 } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
 import TokenIcon from '@/components/TokenIcon'
 import { fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
+import { getMarketInfo, getPriceDecimals, ORDERED_PAIRS } from '@/lib/markets'
 
 interface ProfileData {
   balances: BalanceResponse[]
@@ -34,12 +22,11 @@ interface ProfileData {
   portfolio: PortfolioResponse | null
   referral: ReferralData | null
   leaderboard: LeaderboardData | null
-  markets: ReferenceMarket[]
 }
 
 interface ActivityItem {
   id: string
-  type: 'Trade' | 'Deposit' | 'Withdrawal'
+  type: 'Trade' | 'Deposit' | 'Withdrawal' | 'Order'
   title: string
   detail: string
   status: string
@@ -47,17 +34,9 @@ interface ActivityItem {
   tone: 'buy' | 'sell' | 'neutral'
 }
 
-const EMPTY_DATA: ProfileData = {
-  balances: [],
-  orders: [],
-  fills: [],
-  deposits: [],
-  withdrawals: [],
-  portfolio: null,
-  referral: null,
-  leaderboard: null,
-  markets: [],
-}
+type ActivityTab = 'all' | 'fills' | 'orders'
+
+const EMPTY_DATA: ProfileData = { balances: [], orders: [], fills: [], deposits: [], withdrawals: [], portfolio: null, referral: null, leaderboard: null }
 
 function toNumber(value: string | number | undefined): number {
   const number = Number(value)
@@ -65,21 +44,16 @@ function toNumber(value: string | number | undefined): number {
 }
 
 function formatMoney(value: number, maximumFractionDigits = 2): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits,
-  })
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits })
+}
+
+function formatCompact(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value)
 }
 
 function formatQuantity(value: string): string {
-  const quantity = toNumber(value)
-  return quantity.toLocaleString('en-US', { maximumFractionDigits: 6 })
-}
-
-function formatMicroUsdc(value: string | undefined): string {
-  return formatMoney(toNumber(value) / 1_000_000)
+  return toNumber(value).toLocaleString('en-US', { maximumFractionDigits: 6 })
 }
 
 function normalizeTimestamp(value: number): number {
@@ -96,332 +70,149 @@ function timeAgo(timestamp: number): string {
 
 function marketPrice(asset: string, markets: ReferenceMarket[]): number {
   if (asset.toUpperCase() === 'USDC') return 1
-  const market = markets.find((item) => item.market.split('-')[0] === asset.toUpperCase())
-  return market?.price ?? 0
+  return markets.find((item) => item.market.split('-')[0] === asset.toUpperCase())?.price ?? 0
+}
+
+function ProfileIcon({ name, size = 15 }: { name: 'search' | 'star' | 'collapse' | 'copy' | 'wallet' | 'chart'; size?: number }) {
+  const paths = {
+    search: <><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></>,
+    star: <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.4l6.1-.9Z" />,
+    collapse: <path d="m14.5 5-7 7 7 7" />,
+    copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
+    wallet: <><path d="M4 7h14a2 2 0 0 1 2 2v9H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12" /><path d="M15 11h5v4h-5a2 2 0 0 1 0-4Z" /></>,
+    chart: <><path d="M4 19V9m6 10V5m6 14v-7m4 7H2" /></>,
+  }
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
+}
+
+function ProfileMarketRail({ markets, onCollapse }: { markets: ReferenceMarket[]; onCollapse: () => void }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<'watchlist' | 'all' | 'movers' | 'volume'>('all')
+  const [favorites, setFavorites] = useState(['BTC-USDC', 'ETH-USDC'])
+  const byId = useMemo(() => Object.fromEntries(markets.map((market) => [market.market, market])), [markets])
+  const pairs = useMemo(() => {
+    const normalized = query.trim().toUpperCase()
+    const visible = ORDERED_PAIRS.filter((pair) => (!normalized || pair.includes(normalized)) && (filter !== 'watchlist' || favorites.includes(pair)))
+    if (filter === 'movers') return [...visible].sort((a, b) => Math.abs(byId[b]?.change24h ?? 0) - Math.abs(byId[a]?.change24h ?? 0))
+    if (filter === 'volume') return [...visible].sort((a, b) => (byId[b]?.quoteVolume24h ?? 0) - (byId[a]?.quoteVolume24h ?? 0))
+    return visible
+  }, [byId, favorites, filter, query])
+
+  function toggleFavorite(event: MouseEvent, pair: string) {
+    event.preventDefault()
+    event.stopPropagation()
+    setFavorites((current) => current.includes(pair) ? current.filter((item) => item !== pair) : [...current, pair])
+  }
+
+  return <aside className="terminal-market-rail profile-market-rail">
+    <nav className="terminal-rail-tabs terminal-rail-tabs--primary" aria-label="Exchange navigation"><Link href="/status"><i>●</i>Status</Link><Link href="/markets/BTC-USDC">Markets</Link><Link href="/leaderboard">Leaders</Link><span className="is-active">Profile</span><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><ProfileIcon name="collapse" /></button></nav>
+    <label className="terminal-rail-search"><ProfileIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets" /></label>
+    <div className="terminal-rail-filters">{(['watchlist', 'all', 'movers', 'volume'] as const).map((item) => <button key={item} type="button" className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'All markets' : item}</button>)}</div>
+    <div className="terminal-rail-insight"><span>◆</span><p><strong>Live reference data</strong><small>Binance pricing · Vela testnet execution</small></p><i>↗</i></div>
+    <div className="terminal-market-list-head"><span>Markets</span><span>Price / 24h</span></div>
+    <div className="terminal-market-list" role="list">{pairs.map((pair) => {
+      const market = byId[pair]
+      const info = getMarketInfo(pair)
+      const change = market?.change24h
+      const favorite = favorites.includes(pair)
+      return <div key={pair} className="terminal-market-row"><button type="button" aria-label={`${favorite ? 'Remove' : 'Add'} ${info.ticker} ${favorite ? 'from' : 'to'} watchlist`} className={favorite ? 'is-favorite' : ''} onClick={(event) => toggleFavorite(event, pair)}><ProfileIcon name="star" size={13} /></button><Link href={`/markets/${pair}`} aria-label={`${info.ticker} ${info.quoteTicker}, ${market ? market.price.toFixed(getPriceDecimals(pair)) : 'price unavailable'}`}><TokenIcon ticker={info.ticker} size="md" /><span className="terminal-market-name"><strong>{info.ticker}<i>SPOT</i></strong><small>{market ? `${formatCompact(market.quoteVolume24h)} 24h vol` : `${info.quoteTicker} reference`}</small></span><span className="terminal-market-values"><strong>{market ? market.price.toFixed(getPriceDecimals(pair)) : '—'}</strong><small className={change !== undefined && change >= 0 ? 'positive' : 'negative'}>{change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}</small></span></Link></div>
+    })}{pairs.length === 0 ? <p className="terminal-rail-empty">No matching markets</p> : null}</div>
+    <div className="terminal-rail-footer"><button type="button" onClick={onCollapse}><ProfileIcon name="collapse" size={13} />Collapse</button><Link href="/dashboard"><span>▤</span>Orders</Link></div>
+  </aside>
+}
+
+function ProfileTicker({ markets, sourceLive }: { markets: ReferenceMarket[]; sourceLive: boolean | null }) {
+  return <footer className="terminal-footer"><div>{markets.slice(0, 4).map((market) => <span key={market.market}><TokenIcon ticker={getMarketInfo(market.market).ticker} size="sm" /><strong>{market.price.toFixed(getPriceDecimals(market.market))}</strong><i className={market.change24h >= 0 ? 'positive' : 'negative'}>{market.change24h >= 0 ? '+' : ''}{market.change24h.toFixed(2)}%</i></span>)}</div><nav><span className={sourceLive === false ? 'is-offline' : ''}><i />{sourceLive === false ? 'Reference degraded' : 'Binance reference live'}</span><b>Sepolia testnet</b><Link href="/transparency">Transparency</Link><a href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela" target="_blank" rel="noreferrer">Help</a></nav></footer>
 }
 
 function ConnectProfile({ onConnect, isConnected }: { onConnect: () => Promise<string>; isConnected: boolean }) {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
   async function handleConnect() {
     setConnecting(true)
     setError(null)
-    try {
-      await onConnect()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Wallet connection failed.')
-    } finally {
-      setConnecting(false)
-    }
+    try { await onConnect() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Wallet connection failed.') } finally { setConnecting(false) }
   }
+  return <div className="profile-terminal-gate"><div className="profile-terminal-gate__mark"><ProfileIcon name="wallet" size={24} /></div><span>Private account workspace</span><h1>{isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}</h1><p>Your ledger balances, positions, orders, and funding history remain private until you authenticate.</p>{error ? <div className="profile-error">{error}</div> : null}<button type="button" onClick={handleConnect} disabled={connecting}>{connecting ? <Spinner size="xs" /> : null}{isConnected ? 'Authenticate wallet' : 'Connect wallet'}</button><Link href="/markets/BTC-USDC">Continue browsing markets</Link></div>
+}
 
-  return (
-    <div className="profile-gate">
-      <div className="profile-gate__card">
-        <div className="profile-avatar profile-avatar--large">V</div>
-        <span className="profile-eyebrow">Your Vela profile</span>
-        <h1>{isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}</h1>
-        <p>Your balances, positions, orders, funding history, and trading activity stay private until you authenticate.</p>
-        {error ? <div className="profile-error">{error}</div> : null}
-        <button type="button" onClick={handleConnect} disabled={connecting} className="profile-primary-button">
-          {connecting ? <Spinner size="xs" /> : null}
-          {isConnected ? 'Authenticate wallet' : 'Connect wallet'}
-        </button>
-        <Link href="/markets/BTC-USDC">Continue browsing markets</Link>
-      </div>
-    </div>
-  )
+function TraderRail({ leaderboard, currentAddress }: { leaderboard: LeaderboardData | null; currentAddress?: string }) {
+  const traders = leaderboard?.top_traders.slice(0, 9) ?? []
+  return <aside className="profile-trader-rail"><header><div><span>Testnet network</span><h2>Active traders</h2></div><Link href="/leaderboard">View all</Link></header><p>Ranked by reported Vela testnet volume. No social following or performance endorsement is implied.</p><div className="profile-trader-list">{traders.length === 0 ? <div className="profile-trader-empty">Leaderboard activity will appear here as trades settle.</div> : traders.map((trader, index) => {
+    const isCurrent = currentAddress?.toLowerCase() === trader.address.toLowerCase()
+    return <div className={`profile-trader${isCurrent ? ' is-current' : ''}`} key={trader.address}><div className="profile-trader__avatar">{trader.address.slice(2, 4).toUpperCase()}</div><div><strong>{isCurrent ? 'You' : `${trader.address.slice(0, 6)}…${trader.address.slice(-4)}`}</strong><span>{trader.fill_count} fills · {formatCompact(toNumber(trader.volume_usdc))} USDC</span></div><b>#{index + 1}</b></div>
+  })}</div><section><span>Account safety</span><strong>Wallet-authenticated data</strong><p>Private account requests require a signed, short-lived Vela session. This page never asks for a seed phrase.</p><Link href="/transparency">Review system boundaries</Link></section></aside>
 }
 
 export default function ProfilePage() {
   const { address, isConnected, isAuthenticated, connect } = useAuth()
   const [data, setData] = useState<ProfileData>(EMPTY_DATA)
+  const [markets, setMarkets] = useState<ReferenceMarket[]>([])
+  const [sourceLive, setSourceLive] = useState<boolean | null>(null)
+  const [publicLeaderboard, setPublicLeaderboard] = useState<LeaderboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [activityTab, setActivityTab] = useState<ActivityTab>('all')
+
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      const [marketResult, leaderboardResult] = await Promise.all([fetchReferenceMarkets(), getLeaderboard()])
+      if (cancelled) return
+      setMarkets(marketResult.markets)
+      setSourceLive(true)
+      if (leaderboardResult.ok && leaderboardResult.data) setPublicLeaderboard(leaderboardResult.data)
+    }
+    void refresh().catch(() => { if (!cancelled) setSourceLive(false) })
+    const timer = window.setInterval(() => void refresh().catch(() => { if (!cancelled) setSourceLive(false) }), 10_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
 
   const loadProfile = useCallback(async () => {
     if (!address || !isAuthenticated) return
     setLoading(true)
     setError(null)
-    const [balances, orders, fills, deposits, withdrawals, portfolio, referral, leaderboard, marketSnapshot] = await Promise.all([
-      getBalances(address),
-      getOrders(address),
-      getAccountFills(address),
-      getDeposits(address),
-      getWithdrawals(address),
-      getPortfolio(address),
-      getReferral(address),
-      getLeaderboard(),
-      fetchReferenceMarkets().catch(() => null),
-    ])
-
+    const [balances, orders, fills, deposits, withdrawals, portfolio, referral, leaderboard] = await Promise.all([getBalances(address), getOrders(address), getAccountFills(address), getDeposits(address), getWithdrawals(address), getPortfolio(address), getReferral(address), getLeaderboard()])
     const successfulResponses = [balances, orders, fills, deposits, withdrawals].filter((response) => response.ok).length
-    setData({
-      balances: balances.ok ? balances.data ?? [] : [],
-      orders: orders.ok ? orders.data ?? [] : [],
-      fills: fills.ok ? fills.data ?? [] : [],
-      deposits: deposits.ok ? deposits.data ?? [] : [],
-      withdrawals: withdrawals.ok ? withdrawals.data ?? [] : [],
-      portfolio: portfolio.ok ? portfolio.data ?? null : null,
-      referral: referral.ok ? referral.data ?? null : null,
-      leaderboard: leaderboard.ok ? leaderboard.data ?? null : null,
-      markets: marketSnapshot?.markets ?? [],
-    })
+    setData({ balances: balances.ok ? balances.data ?? [] : [], orders: orders.ok ? orders.data ?? [] : [], fills: fills.ok ? fills.data ?? [] : [], deposits: deposits.ok ? deposits.data ?? [] : [], withdrawals: withdrawals.ok ? withdrawals.data ?? [] : [], portfolio: portfolio.ok ? portfolio.data ?? null : null, referral: referral.ok ? referral.data ?? null : null, leaderboard: leaderboard.ok ? leaderboard.data ?? null : null })
     if (successfulResponses === 0) setError('Account data is temporarily unavailable. Your funds and orders have not been changed.')
     setLoading(false)
   }, [address, isAuthenticated])
 
-  useEffect(() => {
-    const initial = window.setTimeout(() => void loadProfile(), 0)
-    return () => window.clearTimeout(initial)
-  }, [loadProfile])
+  useEffect(() => { const initial = window.setTimeout(() => void loadProfile(), 0); return () => window.clearTimeout(initial) }, [loadProfile])
 
-  const openOrders = useMemo(
-    () => data.orders.filter((order) => order.status === 'open' || order.status === 'partial'),
-    [data.orders],
-  )
-
-  const cashBalance = useMemo(
-    () => toNumber(data.balances.find((balance) => balance.asset.toUpperCase() === 'USDC')?.available),
-    [data.balances],
-  )
-
-  const accountValue = useMemo(
-    () => data.balances.reduce((total, balance) => total + toNumber(balance.total) * marketPrice(balance.asset, data.markets), 0),
-    [data.balances, data.markets],
-  )
-
-  const positions = useMemo(
-    () => data.balances
-      .filter((balance) => balance.asset.toUpperCase() !== 'USDC' && toNumber(balance.total) > 0)
-      .map((balance) => ({
-        ...balance,
-        price: marketPrice(balance.asset, data.markets),
-        value: toNumber(balance.total) * marketPrice(balance.asset, data.markets),
-      }))
-      .sort((left, right) => right.value - left.value),
-    [data.balances, data.markets],
-  )
-
-  const traderRank = useMemo(() => {
-    if (!address || !data.leaderboard) return null
-    const index = data.leaderboard.top_traders.findIndex((trader) => trader.address.toLowerCase() === address.toLowerCase())
-    return index === -1 ? null : index + 1
-  }, [address, data.leaderboard])
+  const openOrders = useMemo(() => data.orders.filter((order) => order.status === 'open' || order.status === 'partial'), [data.orders])
+  const cashBalance = useMemo(() => toNumber(data.balances.find((balance) => balance.asset.toUpperCase() === 'USDC')?.available), [data.balances])
+  const accountValue = useMemo(() => data.balances.reduce((total, balance) => total + toNumber(balance.total) * marketPrice(balance.asset, markets), 0), [data.balances, markets])
+  const positions = useMemo(() => data.balances.filter((balance) => balance.asset.toUpperCase() !== 'USDC' && toNumber(balance.total) > 0).map((balance) => ({ ...balance, price: marketPrice(balance.asset, markets), value: toNumber(balance.total) * marketPrice(balance.asset, markets) })).sort((left, right) => right.value - left.value), [data.balances, markets])
+  const allocations = useMemo(() => data.balances.map((balance) => ({ asset: balance.asset.toUpperCase(), value: toNumber(balance.total) * marketPrice(balance.asset, markets) })).filter((item) => item.value > 0).sort((left, right) => right.value - left.value), [data.balances, markets])
+  const traderRank = useMemo(() => { if (!address || !data.leaderboard) return null; const index = data.leaderboard.top_traders.findIndex((trader) => trader.address.toLowerCase() === address.toLowerCase()); return index === -1 ? null : index + 1 }, [address, data.leaderboard])
+  const totalPnl = useMemo(() => data.portfolio ? (toNumber(data.portfolio.realized_pnl_usdc) + toNumber(data.portfolio.unrealized_pnl_usdc)) / 1_000_000 : null, [data.portfolio])
 
   const activity = useMemo<ActivityItem[]>(() => {
-    const fills: ActivityItem[] = data.fills.map((fill) => ({
-      id: `fill-${fill.id}`,
-      type: 'Trade',
-      title: `${fill.side === 'buy' ? 'Bought' : 'Sold'} ${fill.market.split('-')[0]}`,
-      detail: `${formatQuantity(fill.quantity)} at ${formatMoney(toNumber(fill.price), 6)}`,
-      status: fill.role,
-      timestamp: normalizeTimestamp(fill.timestamp),
-      tone: fill.side,
-    }))
-    const deposits: ActivityItem[] = data.deposits.map((deposit) => ({
-      id: `deposit-${deposit.id}`,
-      type: 'Deposit',
-      title: `Deposited ${deposit.asset}`,
-      detail: `${formatQuantity(deposit.amount)} ${deposit.asset}`,
-      status: deposit.state,
-      timestamp: new Date(deposit.updated_at).getTime(),
-      tone: 'neutral',
-    }))
-    const withdrawals: ActivityItem[] = data.withdrawals.map((withdrawal) => ({
-      id: `withdrawal-${withdrawal.id}`,
-      type: 'Withdrawal',
-      title: `Withdrew ${withdrawal.asset}`,
-      detail: `${formatQuantity(withdrawal.amount)} ${withdrawal.asset}`,
-      status: withdrawal.state,
-      timestamp: new Date(withdrawal.created_at).getTime(),
-      tone: 'neutral',
-    }))
-    return [...fills, ...deposits, ...withdrawals]
-      .filter((item) => Number.isFinite(item.timestamp))
-      .sort((left, right) => right.timestamp - left.timestamp)
-      .slice(0, 8)
-  }, [data.deposits, data.fills, data.withdrawals])
+    const fills: ActivityItem[] = data.fills.map((fill) => ({ id: `fill-${fill.id}`, type: 'Trade', title: `${fill.side === 'buy' ? 'Bought' : 'Sold'} ${fill.market.split('-')[0]}`, detail: `${formatQuantity(fill.quantity)} at ${formatMoney(toNumber(fill.price), 6)}`, status: fill.role, timestamp: normalizeTimestamp(fill.timestamp), tone: fill.side }))
+    const deposits: ActivityItem[] = data.deposits.map((deposit) => ({ id: `deposit-${deposit.id}`, type: 'Deposit', title: `Deposited ${deposit.asset}`, detail: `${formatQuantity(deposit.amount)} ${deposit.asset}`, status: deposit.state, timestamp: new Date(deposit.updated_at).getTime(), tone: 'neutral' }))
+    const withdrawals: ActivityItem[] = data.withdrawals.map((withdrawal) => ({ id: `withdrawal-${withdrawal.id}`, type: 'Withdrawal', title: `Withdrew ${withdrawal.asset}`, detail: `${formatQuantity(withdrawal.amount)} ${withdrawal.asset}`, status: withdrawal.state, timestamp: new Date(withdrawal.created_at).getTime(), tone: 'neutral' }))
+    const orders: ActivityItem[] = data.orders.map((order) => ({ id: `order-${order.id}`, type: 'Order', title: `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.market.split('-')[0]} order`, detail: `${formatQuantity(order.quantity)} at ${formatMoney(toNumber(order.price), 6)}`, status: order.status, timestamp: normalizeTimestamp(order.timestamp), tone: order.side }))
+    const selected = activityTab === 'fills' ? fills : activityTab === 'orders' ? orders : [...fills, ...deposits, ...withdrawals]
+    return selected.filter((item) => Number.isFinite(item.timestamp)).sort((left, right) => right.timestamp - left.timestamp).slice(0, 12)
+  }, [activityTab, data.deposits, data.fills, data.orders, data.withdrawals])
 
-  const totalPnl = useMemo(() => {
-    if (!data.portfolio) return null
-    return (toNumber(data.portfolio.realized_pnl_usdc) + toNumber(data.portfolio.unrealized_pnl_usdc)) / 1_000_000
-  }, [data.portfolio])
+  async function copyAddress() { if (!address) return; await navigator.clipboard.writeText(address); setCopied(true); window.setTimeout(() => setCopied(false), 1_500) }
 
-  async function copyAddress() {
-    if (!address) return
-    await navigator.clipboard.writeText(address)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1_500)
-  }
+  const authenticated = Boolean(address && isConnected && isAuthenticated)
+  const leaderboard = data.leaderboard ?? publicLeaderboard
 
-  if (!address || !isConnected || !isAuthenticated) {
-    return <ConnectProfile onConnect={connect} isConnected={isConnected} />
-  }
-
-  return (
-    <div className="profile-page">
-      <header className="profile-hero">
-        <div className="profile-identity">
-          <div className="profile-avatar profile-avatar--large">{address.slice(2, 4).toUpperCase()}</div>
-          <div>
-            <span className="profile-eyebrow">Vela trader</span>
-            <div className="profile-name-row">
-              <h1>{address.slice(0, 6)}…{address.slice(-4)}</h1>
-              <button type="button" onClick={copyAddress}>{copied ? 'Copied' : 'Copy'}</button>
-            </div>
-            <div className="profile-badges">
-              <span>Sepolia beta</span>
-              <span>{traderRank ? `Trader rank #${traderRank}` : 'Unranked'}</span>
-              <span>{data.fills.length} fills</span>
-            </div>
-          </div>
-        </div>
-        <div className="profile-hero__actions">
-          <Link href="/deposit" className="profile-primary-button">Deposit</Link>
-          <Link href="/withdraw" className="profile-secondary-button">Withdraw</Link>
-        </div>
-      </header>
-
-      <nav className="profile-tabs" aria-label="Account sections">
-        <span className="is-active">Overview</span>
-        <Link href="/portfolio">PnL &amp; tax lots</Link>
-        <Link href="/dashboard">Orders</Link>
-        <Link href="/history">Full activity</Link>
-      </nav>
-
-      {error ? <div className="profile-error">{error}</div> : null}
-
-      <section className="profile-stat-grid" aria-label="Account summary">
-        <article>
-          <span>Portfolio value</span>
-          <strong>{formatMoney(accountValue)}</strong>
-          <small>Binance Spot USDC reference marks</small>
-        </article>
-        <article>
-          <span>Available cash</span>
-          <strong>{formatMoney(cashBalance)}</strong>
-          <small>USDC available to trade</small>
-        </article>
-        <article>
-          <span>Total PnL</span>
-          <strong className={totalPnl !== null && totalPnl < 0 ? 'is-negative' : totalPnl !== null && totalPnl > 0 ? 'is-positive' : ''}>
-            {totalPnl === null ? '—' : formatMoney(totalPnl)}
-          </strong>
-          <small>Realized + unrealized</small>
-        </article>
-        <article>
-          <span>Open orders</span>
-          <strong>{openOrders.length}</strong>
-          <small>{data.referral ? `${data.referral.referred_count} referred traders` : 'Live account state'}</small>
-        </article>
-      </section>
-
-      <div className="profile-content-grid">
-        <div className="profile-main-column">
-          <section className="profile-panel">
-            <div className="profile-panel__header">
-              <div>
-                <span className="profile-eyebrow">Holdings</span>
-                <h2>Your positions</h2>
-              </div>
-              <Link href="/markets/BTC-USDC">Trade markets</Link>
-            </div>
-            {loading && data.balances.length === 0 ? (
-              <div className="profile-loading"><Spinner /> Loading positions</div>
-            ) : positions.length === 0 ? (
-              <div className="profile-empty">
-                <strong>No open positions</strong>
-                <span>Fund your account or make your first testnet trade.</span>
-                <Link href="/deposit">Deposit funds</Link>
-              </div>
-            ) : (
-              <div className="profile-table-wrap">
-                <table className="profile-table">
-                  <thead><tr><th>Asset</th><th>Quantity</th><th>Available</th><th>Mark</th><th>Value</th></tr></thead>
-                  <tbody>
-                    {positions.map((position) => (
-                      <tr key={position.asset}>
-                        <td><TokenIcon ticker={position.asset} size="sm" /><strong>{position.asset}</strong></td>
-                        <td>{formatQuantity(position.total)}</td>
-                        <td>{formatQuantity(position.available)}</td>
-                        <td>{position.price > 0 ? formatMoney(position.price, 6) : '—'}</td>
-                        <td>{position.price > 0 ? formatMoney(position.value) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="profile-panel">
-            <div className="profile-panel__header">
-              <div>
-                <span className="profile-eyebrow">Timeline</span>
-                <h2>Recent activity</h2>
-              </div>
-              <Link href="/history">View all</Link>
-            </div>
-            {activity.length === 0 ? (
-              <div className="profile-empty"><strong>No activity yet</strong><span>Your trades and funding events will appear here.</span></div>
-            ) : (
-              <div className="profile-activity-list">
-                {activity.map((item) => (
-                  <div key={item.id} className="profile-activity-row">
-                    <span className={`profile-activity-icon is-${item.tone}`}>{item.type.slice(0, 1)}</span>
-                    <div><strong>{item.title}</strong><span>{item.detail}</span></div>
-                    <div><span className="profile-status">{item.status}</span><time>{timeAgo(item.timestamp)}</time></div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <aside className="profile-side-column">
-          <section className="profile-panel profile-panel--compact">
-            <span className="profile-eyebrow">Account</span>
-            <h2>Balances</h2>
-            <div className="profile-balance-list">
-              {data.balances.length === 0 ? <span className="profile-muted">No balances yet.</span> : data.balances
-                .filter((balance) => toNumber(balance.total) > 0)
-                .sort((left, right) => toNumber(right.total) * marketPrice(right.asset, data.markets) - toNumber(left.total) * marketPrice(left.asset, data.markets))
-                .slice(0, 6)
-                .map((balance) => (
-                  <div key={balance.asset}>
-                    <span>{balance.asset}</span>
-                    <strong>{formatQuantity(balance.total)}</strong>
-                  </div>
-                ))}
-            </div>
-            <div className="profile-funding-actions">
-              <Link href="/deposit">Deposit</Link>
-              <Link href="/withdraw">Withdraw</Link>
-            </div>
-          </section>
-
-          <section className="profile-panel profile-panel--compact">
-            <span className="profile-eyebrow">Performance</span>
-            <h2>PnL breakdown</h2>
-            <div className="profile-metric-list">
-              <div><span>Realized</span><strong>{formatMicroUsdc(data.portfolio?.realized_pnl_usdc)}</strong></div>
-              <div><span>Unrealized</span><strong>{formatMicroUsdc(data.portfolio?.unrealized_pnl_usdc)}</strong></div>
-              <div><span>Cost basis</span><strong>{data.portfolio?.cost_basis_method ?? 'FIFO'}</strong></div>
-            </div>
-            <Link href="/portfolio" className="profile-panel__link">Open detailed portfolio</Link>
-          </section>
-
-          <section className="profile-panel profile-panel--compact profile-disclosure">
-            <span className="profile-eyebrow">Beta disclosure</span>
-            <h2>Testnet only</h2>
-            <p>Vela is an engineering preview. Balances shown here are testnet or demo balances and must not be treated as real funds.</p>
-            <Link href="/transparency">Read system status</Link>
-          </section>
-        </aside>
-      </div>
-    </div>
-  )
+  return <div className="profile-terminal"><div className={`profile-terminal__grid${railCollapsed ? ' is-rail-collapsed' : ''}`}>
+    {railCollapsed ? <button type="button" className="terminal-rail-restore" onClick={() => setRailCollapsed(false)} aria-label="Open market discovery"><ProfileIcon name="collapse" /></button> : <ProfileMarketRail markets={markets} onCollapse={() => setRailCollapsed(true)} />}
+    <main className="profile-workspace">{!authenticated || !address ? <ConnectProfile onConnect={connect} isConnected={isConnected} /> : <>
+      <section className="profile-cover" aria-label="Profile header"><div className="profile-cover__grid" /><span>VELA / ACCOUNT</span><small>Sepolia testnet</small></section>
+      <header className="profile-terminal-identity"><div className="profile-terminal-avatar">{address.slice(2, 4).toUpperCase()}<i>✓</i></div><div className="profile-terminal-name"><span>Vela trader</span><h1>{address.slice(0, 6)}…{address.slice(-4)}</h1><div><b>Wallet authenticated</b><span>{data.fills.length} fills</span><span>{traderRank ? `Rank #${traderRank}` : 'Unranked'}</span></div></div><div className="profile-terminal-social"><div><strong>{openOrders.length}</strong><span>Open orders</span></div><div><strong>{data.referral?.referred_count ?? 0}</strong><span>Referrals</span></div></div><div className="profile-terminal-actions"><button type="button" onClick={copyAddress}><ProfileIcon name="copy" />{copied ? 'Copied' : 'Copy address'}</button><Link href="/withdraw">Withdraw</Link><Link href="/deposit" className="is-primary">Deposit</Link></div></header>
+      {error ? <div className="profile-error profile-terminal-error">{error}</div> : null}
+      <div className="profile-dashboard"><div className="profile-dashboard__summary"><section className="profile-equity-panel"><header><div><span>Portfolio value</span><strong>{formatMoney(accountValue)}</strong><small className={totalPnl !== null && totalPnl < 0 ? 'negative' : 'positive'}>{totalPnl === null ? 'PnL unavailable' : `${totalPnl >= 0 ? '+' : ''}${formatMoney(totalPnl)} total PnL`}</small></div><nav><span className="is-active">Snapshot</span><Link href="/portfolio">Tax lots</Link></nav></header><div className="profile-allocation" aria-label="Current portfolio allocation"><div className="profile-allocation__chart"><div className="profile-allocation__baseline" /><div className="profile-allocation__value"><ProfileIcon name="chart" /><span>Current ledger-backed allocation</span></div><div className="profile-allocation__bar">{allocations.map((item, index) => <i key={item.asset} className={`allocation-${index % 6}`} style={{ width: `${accountValue > 0 ? item.value / accountValue * 100 : 0}%` }} title={`${item.asset}: ${formatMoney(item.value)}`} />)}</div></div><div className="profile-allocation__legend">{allocations.length === 0 ? <span>No funded balances yet.</span> : allocations.slice(0, 6).map((item, index) => <div key={item.asset}><i className={`allocation-${index % 6}`} /><span>{item.asset}</span><strong>{formatMoney(item.value)}</strong><small>{accountValue > 0 ? `${(item.value / accountValue * 100).toFixed(1)}%` : '0%'}</small></div>)}</div></div><footer><div><span className="profile-cash-mark">$</span><p><small>Available cash</small><strong>{formatMoney(cashBalance)}</strong></p></div><div><Link href="/withdraw">Withdraw</Link><Link href="/deposit" className="is-primary">Deposit</Link></div></footer></section>
+      <section className="profile-positions-panel"><header><div><span>Your positions</span><small>{positions.length} assets</small></div><Link href="/markets/BTC-USDC">Trade markets</Link></header>{loading && data.balances.length === 0 ? <div className="profile-panel-empty"><Spinner />Loading positions</div> : positions.length === 0 ? <div className="profile-panel-empty"><strong>No open positions</strong><span>Fund your account or make your first testnet trade.</span></div> : <div className="profile-positions-table"><div className="profile-positions-head"><span>Asset</span><span>Position</span><span>Mark</span><span>Value</span></div>{positions.map((position) => <Link href={`/markets/${position.asset}-USDC`} key={position.asset}><span><TokenIcon ticker={position.asset} size="sm" /><strong>{position.asset}</strong></span><span>{formatQuantity(position.total)}</span><span>{position.price > 0 ? formatMoney(position.price, 6) : '—'}</span><strong>{position.price > 0 ? formatMoney(position.value) : '—'}</strong></Link>)}</div>}</section></div>
+      <section className="profile-activity-panel"><header><div role="tablist" aria-label="Account activity">{([['all', 'All activity'], ['fills', 'Fills'], ['orders', 'Orders']] as [ActivityTab, string][]).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={activityTab === id} onClick={() => setActivityTab(id)}>{label}</button>)}</div><Link href="/history">Full history</Link></header><div className="profile-activity-head"><span>Event</span><span>Details</span><span>Status</span><span>Time</span></div>{activity.length === 0 ? <div className="profile-panel-empty profile-panel-empty--tall"><strong>No account activity yet</strong><span>Trades, orders, deposits, and withdrawals will appear here.</span></div> : <div className="profile-terminal-activity">{activity.map((item) => <div key={item.id}><span className={`profile-event-mark is-${item.tone}`}>{item.type.slice(0, 1)}</span><span><strong>{item.title}</strong><small>{item.type}</small></span><span>{item.detail}</span><span>{item.status}</span><time>{timeAgo(item.timestamp)}</time></div>)}</div>}</section></div>
+    </>}</main><TraderRail leaderboard={leaderboard} currentAddress={address ?? undefined} /></div><ProfileTicker markets={markets} sourceLive={sourceLive} /></div>
 }

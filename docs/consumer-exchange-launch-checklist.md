@@ -578,6 +578,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [x] Make market discovery cards and terminal market selection keyboard-accessible semantic links.
 - [x] Add a cohesive, brand-specific visual treatment to the terminal header and token rail without importing third-party branding or presenting invented market, holder, or social metrics.
 - [x] Separate terminal chrome into logo, centered search, account controls, inset discovery rail, chart-level asset identity, and execution context regions while retaining mobile navigation access to every displaced route.
+- [x] Extend the terminal visual system to the private customer profile with authenticated ledger balances, current marked allocation, positions, PnL, orders, fills, funding activity, and factual testnet leaderboard context without invented social metrics or historical performance curves.
 - [x] Surface backend order-rejection explanations in the trading ticket without converting unsupported order semantics into misleading controls.
 - [x] Add authoritative maker/taker tier fee previews before order submission.
 - [ ] Add balance, available, locked, and pending distinctions.
