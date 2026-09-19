@@ -14,6 +14,14 @@ env:
   ADMIN_TOKEN: ci-admin-token
 
 jobs:
+  managed-postgres-readiness:
+    name: Managed PostgreSQL readiness preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test provider-neutral fail-closed attestation validation
+        run: ./scripts/tests/test_managed_postgres_readiness.sh
+
   postgres-pitr:
     name: PostgreSQL 16 - PITR rehearsal
     runs-on: ubuntu-latest

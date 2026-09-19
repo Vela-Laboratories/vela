@@ -15,6 +15,7 @@ use std::{
     cmp::min,
     collections::HashMap,
     env,
+    future::Future,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -64,7 +65,7 @@ impl Config {
                 "primary and secondary RPC provider names must differ".to_owned(),
             ));
         }
-        Ok(Self {
+        let config = Self {
             database_url: required("DATABASE_URL")?,
             deployment_id: required("VELA_INDEXER_DEPLOYMENT_ID")?
                 .parse()
@@ -83,7 +84,45 @@ impl Config {
             batch_size: positive_u64("VELA_INDEXER_BATCH_SIZE", 500)?,
             audit_batch_size: positive_u64("VELA_INDEXER_AUDIT_BATCH_SIZE", 500)?,
             lease_duration: seconds("VELA_INDEXER_LEASE_SECONDS", 30)?,
-        })
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), IndexerError> {
+        if self.deployment_id.is_nil()
+            || self.primary_name.trim().is_empty()
+            || self.secondary_name.trim().is_empty()
+            || self.primary_name.eq_ignore_ascii_case(&self.secondary_name)
+            || provider_origin(&self.primary_url) == provider_origin(&self.secondary_url)
+            || self.request_timeout.is_zero()
+            || self.poll_interval.is_zero()
+            || self.retry_max.is_zero()
+            || self.max_head_age.is_zero()
+            || self.max_provider_block_lag == 0
+            || self.batch_size == 0
+            || self.audit_batch_size == 0
+            || self.lease_duration.is_zero()
+        {
+            return Err(IndexerError::Config(
+                "deployment, distinct providers, bounded timing, and batch settings are required"
+                    .to_owned(),
+            ));
+        }
+        if self.retry_max < self.poll_interval {
+            return Err(IndexerError::Config(
+                "retry maximum must not be shorter than the normal poll interval".to_owned(),
+            ));
+        }
+        let minimum_lease = self.request_timeout.checked_mul(6).ok_or_else(|| {
+            IndexerError::Config("RPC timeout is too large for lease safety".to_owned())
+        })?;
+        if self.lease_duration < minimum_lease {
+            return Err(IndexerError::Config(
+                "lease must cover six bounded sequential RPC phases".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -1048,6 +1087,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         primary: P,
         secondary: S,
     ) -> Result<Self, IndexerError> {
+        config.validate()?;
         let deployment = store.load_deployment(config.deployment_id).await?;
         let ledger = store.ledger();
         ledger.ensure_schema_current().await?;
@@ -1062,13 +1102,26 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         })
     }
 
-    pub async fn run(mut self) -> Result<(), IndexerError> {
+    pub async fn run(self) -> Result<(), IndexerError> {
+        self.run_until_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .map_err(|_| IndexerError::Config("could not install shutdown signal".to_owned()))
+        })
+        .await
+    }
+
+    pub async fn run_until_shutdown<F>(mut self, shutdown: F) -> Result<(), IndexerError>
+    where
+        F: Future<Output = Result<(), IndexerError>> + Send,
+    {
+        tokio::pin!(shutdown);
         let mut backoff = self.config.poll_interval;
         loop {
-            tokio::select! {
-                signal = tokio::signal::ctrl_c() => {
-                    signal.map_err(|_| IndexerError::Config("could not install shutdown signal".to_owned()))?;
+            let delay = tokio::select! {
+                result = &mut shutdown => {
                     self.store.release_lease(self.deployment.id, self.owner).await?;
+                    result?;
                     info!(deployment_id = %self.deployment.id, "deposit indexer shut down cleanly");
                     return Ok(());
                 }
@@ -1079,7 +1132,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                             if processed > 0 {
                                 info!(processed, deployment_id = %self.deployment.id, "credited finalized deposits");
                             }
-                            sleep(self.config.poll_interval).await;
+                            self.config.poll_interval
                         }
                         Err(error) => {
                             let halt = match &error {
@@ -1098,11 +1151,21 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                                 }
                             }
                             warn!(error = %error, retry_ms = backoff.as_millis(), "deposit credits halted");
-                            sleep(backoff).await;
+                            let delay = backoff;
                             backoff = min(backoff.saturating_mul(2), self.config.retry_max);
+                            delay
                         }
                     }
                 }
+            };
+            tokio::select! {
+                result = &mut shutdown => {
+                    self.store.release_lease(self.deployment.id, self.owner).await?;
+                    result?;
+                    info!(deployment_id = %self.deployment.id, "deposit indexer shut down cleanly");
+                    return Ok(());
+                }
+                _ = sleep(delay) => {}
             }
         }
     }
@@ -1944,6 +2007,25 @@ fn stored_ledger_halt(deposit: &AuditableDeposit, error: LedgerError) -> Indexer
 mod tests {
     use super::*;
 
+    fn config() -> Config {
+        Config {
+            database_url: "postgres://unused".to_owned(),
+            deployment_id: Uuid::new_v4(),
+            primary_name: "provider-a".to_owned(),
+            primary_url: Url::parse("https://provider-a.example/rpc").unwrap(),
+            secondary_name: "provider-b".to_owned(),
+            secondary_url: Url::parse("https://provider-b.example/rpc").unwrap(),
+            request_timeout: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(2),
+            retry_max: Duration::from_secs(30),
+            max_head_age: Duration::from_secs(120),
+            max_provider_block_lag: 3,
+            batch_size: 500,
+            audit_batch_size: 500,
+            lease_duration: Duration::from_secs(30),
+        }
+    }
+
     fn deployment() -> Deployment {
         Deployment {
             id: Uuid::new_v4(),
@@ -1970,8 +2052,9 @@ mod tests {
                 format!("0x{}", "55".repeat(32)),
             ],
             data: format!(
-                "0x{}{:064x}",
-                format!("{}{}", "00".repeat(12), "66".repeat(20)),
+                "0x{}{}{:064x}",
+                "00".repeat(12),
+                "66".repeat(20),
                 1_500_000_u64
             ),
             block_number: "0x64".to_owned(),
@@ -2063,5 +2146,20 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn unsafe_runtime_timing_and_provider_configuration_is_rejected() {
+        let mut value = config();
+        value.secondary_url = value.primary_url.clone();
+        assert!(matches!(value.validate(), Err(IndexerError::Config(_))));
+
+        let mut value = config();
+        value.lease_duration = Duration::from_secs(5);
+        assert!(matches!(value.validate(), Err(IndexerError::Config(_))));
+
+        let mut value = config();
+        value.retry_max = Duration::from_secs(1);
+        assert!(matches!(value.validate(), Err(IndexerError::Config(_))));
     }
 }

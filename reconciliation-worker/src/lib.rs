@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use sha2::{Digest as ShaDigest, Sha256};
 use sha3::Keccak256;
 use std::env;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use thiserror::Error;
@@ -83,6 +84,11 @@ impl Config {
         if self.lease_duration < minimum {
             return Err(WorkerError::Config(
                 "lease must cover twelve bounded sequential RPC requests".to_owned(),
+            ));
+        }
+        if self.retry_max < self.poll_interval {
+            return Err(WorkerError::Config(
+                "retry maximum must not be shorter than the normal poll interval".to_owned(),
             ));
         }
         Ok(())
@@ -558,12 +564,25 @@ impl<P: Rpc, S: Rpc> ReconciliationWorker<P, S> {
     }
 
     pub async fn run(self) -> Result<(), WorkerError> {
-        let mut retry = Duration::from_millis(250);
+        self.run_until_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .map_err(|_| WorkerError::Config("could not install shutdown handler".to_owned()))
+        })
+        .await
+    }
+
+    pub async fn run_until_shutdown<F>(self, shutdown: F) -> Result<(), WorkerError>
+    where
+        F: Future<Output = Result<(), WorkerError>> + Send,
+    {
+        tokio::pin!(shutdown);
+        let mut retry = self.config.poll_interval;
         loop {
             let delay = tokio::select! {
-                signal = tokio::signal::ctrl_c() => {
-                    signal.map_err(|_| WorkerError::Config("could not install shutdown handler".to_owned()))?;
+                result = &mut shutdown => {
                     self.ledger.release_reconciliation_lease(self.deployment.id, self.owner).await?;
+                    result?;
                     info!(deployment_id = %self.deployment.id, "reconciliation worker stopped");
                     return Ok(());
                 }
@@ -571,7 +590,7 @@ impl<P: Rpc, S: Rpc> ReconciliationWorker<P, S> {
                     match result {
                         Ok(recorded) => {
                             info!(snapshot_id = %recorded.snapshot_id, replayed = recorded.replayed, "reconciliation cycle committed");
-                            retry = Duration::from_millis(250);
+                            retry = self.config.poll_interval;
                             self.config.poll_interval
                         }
                         Err(WorkerError::LeaseUnavailable) => {
@@ -588,9 +607,9 @@ impl<P: Rpc, S: Rpc> ReconciliationWorker<P, S> {
                 }
             };
             tokio::select! {
-                signal = tokio::signal::ctrl_c() => {
-                    signal.map_err(|_| WorkerError::Config("could not install shutdown handler".to_owned()))?;
+                result = &mut shutdown => {
                     self.ledger.release_reconciliation_lease(self.deployment.id, self.owner).await?;
+                    result?;
                     info!(deployment_id = %self.deployment.id, "reconciliation worker stopped");
                     return Ok(());
                 }
@@ -822,5 +841,26 @@ mod tests {
             })
         ));
         assert!(validate_code_hashes(&expected, &expected, &expected, 10).is_ok());
+    }
+
+    #[test]
+    fn retry_ceiling_cannot_be_shorter_than_poll_interval() {
+        let mut config = Config {
+            enabled: true,
+            database_url: "postgres://unused".to_owned(),
+            deployment_id: Uuid::new_v4(),
+            primary_name: "provider-a".to_owned(),
+            primary_url: Url::parse("https://provider-a.example/rpc").unwrap(),
+            secondary_name: "provider-b".to_owned(),
+            secondary_url: Url::parse("https://provider-b.example/rpc").unwrap(),
+            request_timeout: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(30),
+            retry_max: Duration::from_secs(60),
+            lease_duration: Duration::from_secs(120),
+            max_finalized_age: Duration::from_secs(300),
+        };
+        assert!(config.validate().is_ok());
+        config.retry_max = Duration::from_secs(29);
+        assert!(matches!(config.validate(), Err(WorkerError::Config(_))));
     }
 }

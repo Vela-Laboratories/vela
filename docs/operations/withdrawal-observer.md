@@ -2,18 +2,18 @@
 
 ## Scope
 
-EX-026 adds a source- and test-only withdrawal execution boundary. It does not deploy the V2 settlement contract, configure an RPC provider, run a withdrawal worker, broadcast a transaction, or move real funds. The provider-neutral observer is disabled by default.
+EX-026 adds a source- and test-only withdrawal execution boundary for the V3 `VelaSettlement` omnibus vault. It does not deploy the V3 settlement contract, configure an RPC provider, run a withdrawal worker, broadcast a transaction, or move real funds. The provider-neutral observer is disabled by default.
 
-The V2 contract accepts a permissionlessly relayed EIP-712 authorization. The signed payload binds the request ID, customer, destination, asset, atomic amount, customer nonce, deadline, policy hash, and approver hash to the settlement contract and chain. Any account may pay gas to relay it, but the relayer cannot change the signed withdrawal facts.
+The V3 contract accepts a permissionlessly relayed EIP-712 authorization. The signed payload binds the request ID, destination, asset, atomic amount, nonce, deadline, policy hash, and approver hash to the settlement contract and chain. Any account may pay gas to relay it, but the relayer cannot change the signed withdrawal facts.
 
 ## Deployment registration
 
-Do not authorize or observe V2 withdrawals until the deployed runtime bytecode and event ABI have been externally reviewed. With the migrator credential, register the deployment in `ledger_chain_deployments`, then add exactly one matching row to `ledger_withdrawal_contract_capabilities`.
+Do not authorize or observe V3 withdrawals until the deployed runtime bytecode and event ABI have been externally reviewed. With the migrator credential, register the deployment in `ledger_chain_deployments`, then add exactly one matching row to `ledger_withdrawal_contract_capabilities`.
 
 The capability row pins:
 
-- authorization version `eip712_v2`;
-- event signature `WithdrawalExecuted(bytes16,address,address,address,uint256,uint256,uint256,bytes32,bytes32)`;
+- authorization version `eip712_v3`;
+- event signature `WithdrawalExecuted(bytes16,address,address,uint256,uint256,uint256,bytes32,bytes32)`;
 - the corresponding lowercase event topic;
 - an operator identity and non-sensitive review evidence.
 
@@ -21,7 +21,7 @@ The database rejects executable authorizations for deployments without this capa
 
 ## Confirmation policy
 
-Publish a reviewed `ledger_withdrawal_confirmation_policies` row for each enabled V2 deployment. Policies are immutable and require two distinct providers, finalized evidence, and a positive minimum-confirmation count. A new threshold is a new version with a later effective time.
+Publish a reviewed `ledger_withdrawal_confirmation_policies` row for each enabled V3 deployment. Policies are immutable and require two distinct providers, finalized evidence, and a positive minimum-confirmation count. A new threshold is a new version with a later effective time.
 
 Do not treat a latest-head confirmation count as finality. The orchestration worker must obtain matching normalized evidence from two independently configured RPC origins and preserve provider references outside generic customer-visible metadata.
 
@@ -39,7 +39,7 @@ The API's `WithdrawalChainObservationService` validates provider identity and ex
 
 ## Finalized execution
 
-`Ledger::confirm_withdrawal_execution` accepts only an observation that matches the registered V2 deployment, immutable withdrawal identity, active confirmation policy, and two distinct providers. Finalized `WithdrawalExecuted` evidence must match the request ID, customer, destination, asset address, amount, and nonce.
+`Ledger::confirm_withdrawal_execution` accepts only an observation that matches the registered V3 deployment, immutable withdrawal identity, active confirmation policy, and two distinct providers. Finalized `WithdrawalExecuted` evidence must match the request ID, destination, asset address, amount, and nonce.
 
 In one serializable transaction, the ledger:
 
@@ -58,7 +58,7 @@ A pending, dropped, or reverted transaction is ambiguous while its authorization
 
 EX-028 persists an exact finalized status-0 receipt as `finalized_revert`, tied one-to-one to the recorded attempt and protected by the immutable evidence triggers. Both providers must agree on the exact transaction facts, canonical receipt block, finalized checkpoint, and confirmation policy. A revert makes that attempt terminal, but does not itself change balances or release the reservation.
 
-`Ledger::release_expired_withdrawal` may restore funds only after the V2 authorization deadline and only from finalized, two-provider evidence proving all of the following:
+`Ledger::release_expired_withdrawal` may restore funds only after the V3 authorization deadline and only from finalized, two-provider evidence proving all of the following:
 
 - the request ID is unused;
 - the customer nonce is unused;
@@ -70,8 +70,8 @@ The ledger stores that evidence, journals the exact amount from `customer_withdr
 
 ## Required work before deployment
 
-- Externally audit the V2 custody contract and freeze the reviewed commit.
-- Deploy and register a V2 testnet contract with pinned runtime bytecode.
+- Externally audit the V3 custody contract and freeze the reviewed commit.
+- Deploy and register a V3 testnet contract with pinned runtime bytecode.
 - Configure two independent RPC providers and an authenticated, leased observer worker.
 - Implement and operate a controlled broadcaster or a reliable source of replacement hashes for the verified ingestion boundary.
 - Add continuous replacement, dropped-transaction, and historical-finality re-auditing.
@@ -80,7 +80,7 @@ The ledger stores that evidence, journals the exact amount from `customer_withdr
 
 ## EX-027 runtime worker
 
-The `withdrawal-worker` crate is an opt-in, fail-closed V2 observer and ledger
+The `withdrawal-worker` crate is an opt-in, fail-closed V3 observer and ledger
 reconciliation process. It starts only when
 `VELA_WITHDRAWAL_WORKER_ENABLED=true`. This flag does not enable transaction
 broadcasting: the production broadcaster remains `DisabledBroadcaster` and
@@ -98,7 +98,7 @@ do not render URLs or response bodies.
 
 At startup both providers must agree on chain ID and the exact finalized block.
 Both must return runtime bytecode whose keccak256 matches the immutable enabled
-V2 deployment registry row. The registered execution topic must match the V2
+V3 deployment registry row. The registered execution topic must match the V3
 ABI. A PostgreSQL deployment lease prevents concurrent owners, while a
 monotonic scan-cycle checkpoint makes crash replay safe. The lease must cover
 the worst-case bounded RPC sequence and is renewed before and after each

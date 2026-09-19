@@ -24,11 +24,11 @@ Customer-facing status is served by `GET /account/{address}/deposits`. The route
 
 ## Contract and registry requirement
 
-The current source emits:
+The V3 source emits:
 
 ```text
-Deposited(bytes32 indexed depositId, address indexed user, address indexed asset, uint256 amount)
-topic0: 0xcfccc5211684bc31ce945214025a7453ba30a1ffcc38fcb691ce742437f3f256
+Deposited(bytes32 indexed depositId, address indexed depositor, bytes32 indexed accountId, address asset, uint256 amount)
+topic0: derive from the reviewed V3 ABI and deployment manifest; do not copy the legacy topic.
 ```
 
 The older Sepolia deployment documented in the project predates this event and is not compatible with the indexer. Deploy and audit the updated contract on Base Sepolia before registering it. Never reuse the old address or invent a deployment block or bytecode hash.
@@ -54,7 +54,7 @@ VELA_INDEXER_DEPLOYMENT_ID=00000000-0000-0000-0000-000000000000 \
 VELA_INDEXER_NETWORK=base-sepolia \
 VELA_CHAIN_ID=84532 \
 VELA_CUSTODY_VAULT_ADDRESS=0x... \
-VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION=v2 \
+VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION=v3 \
 VELA_CUSTODY_VAULT_CODE_HASH=0x... \
 VELA_CUSTODY_VAULT_START_BLOCK=123456 \
 cargo run --locked --release -p indexer --bin deposit-indexer-register

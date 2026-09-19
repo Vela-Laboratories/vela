@@ -13,7 +13,7 @@ const DESTINATION: &str = "0x3333333333333333333333333333333333333333";
 const ASSET: &str = "0x4444444444444444444444444444444444444444";
 
 #[test]
-fn registered_event_topic_matches_the_v2_contract_abi() {
+fn registered_event_topic_matches_the_v3_contract_abi() {
     assert_eq!(
         WITHDRAWAL_EVENT_TOPIC,
         format!(
@@ -220,7 +220,6 @@ fn candidate(expiry_offset: i64) -> Candidate {
         attempt_id: Uuid::new_v4(),
         transaction_hash: hash(0x55),
         expires_at: Utc::now() + ChronoDuration::seconds(expiry_offset),
-        customer: CUSTOMER.into(),
         destination: DESTINATION.into(),
         asset: ASSET.into(),
         amount: "1000".into(),
@@ -353,6 +352,9 @@ fn disabled_and_same_origin_configuration_is_rejected() {
     assert!(matches!(c.validate(), Err(WorkerError::Config(_))));
     let mut c = config(d.id);
     c.lease_duration = Duration::from_secs(7);
+    assert!(matches!(c.validate(), Err(WorkerError::Config(_))));
+    let mut c = config(d.id);
+    c.retry_max = Duration::from_nanos(1);
     assert!(matches!(c.validate(), Err(WorkerError::Config(_))));
 }
 
@@ -543,7 +545,6 @@ async fn finalized_execution_is_exact_and_restart_idempotent() {
         transaction_index: 2,
         log_index: 3,
         request_id: c.withdrawal_id,
-        customer: c.customer.clone(),
         destination: c.destination.clone(),
         asset: c.asset.clone(),
         amount: c.amount.clone(),
@@ -591,7 +592,6 @@ async fn insufficient_finality_and_startup_hash_disagreement_fail() {
         transaction_index: 0,
         log_index: 0,
         request_id: c.withdrawal_id,
-        customer: c.customer.clone(),
         destination: c.destination.clone(),
         asset: c.asset.clone(),
         amount: c.amount.clone(),
@@ -634,7 +634,6 @@ async fn execution_below_confirmation_policy_fails_closed() {
         transaction_index: 0,
         log_index: 0,
         request_id: c.withdrawal_id,
-        customer: c.customer.clone(),
         destination: c.destination.clone(),
         asset: c.asset.clone(),
         amount: c.amount.clone(),
@@ -674,6 +673,56 @@ async fn shutdown_releases_owned_lease() {
 }
 
 #[tokio::test]
+async fn shutdown_interrupts_poll_delay_and_releases_owned_lease() {
+    let c = candidate(60);
+    let code = vec![17];
+    let (a, b) = pair(
+        &c,
+        TransactionStatus::Pending(tx(&c)),
+        false,
+        block(0),
+        code,
+    );
+    let d = deployment(&a.code);
+    let mut cfg = config(d.id);
+    cfg.poll_interval = Duration::from_secs(60);
+    cfg.retry_max = Duration::from_secs(60);
+    let state = Arc::new(Mutex::new(State {
+        candidates: vec![c],
+        ..Default::default()
+    }));
+    let store = FakeStore {
+        deployment: d.clone(),
+        state: state.clone(),
+    };
+    let worker = WithdrawalWorker::new(cfg, store, a, b).await.unwrap();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(worker.run_until_shutdown(async {
+        stop_rx.await.map_err(|_| {
+            WorkerError::Config("test shutdown sender unexpectedly dropped".to_owned())
+        })
+    }));
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if state.lock().lease.is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    stop_tx.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(1), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(state.lock().lease.is_none());
+}
+
+#[tokio::test]
 async fn durable_cursor_prevents_batch_starvation_across_restart_cycles() {
     let first = candidate(60);
     let code = vec![10];
@@ -710,13 +759,18 @@ async fn durable_cursor_prevents_batch_starvation_across_restart_cycles() {
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]
-async fn postgres_lease_is_single_owner_and_restart_safe(pool: sqlx::PgPool) {
+async fn postgres_v3_registry_and_lease_are_restart_safe(pool: sqlx::PgPool) {
     let deployment_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO ledger_chain_deployments (id,chain_id,network,vault_address,deployment_version,runtime_code_hash,deposit_event_signature,deposit_event_topic,finality_policy,start_block) VALUES ($1,84532,'base-sepolia',$2,'v2',$3,'Deposited(bytes32,address,address,uint256)',$4,'rpc_finalized_two_provider',1)")
+    sqlx::query("INSERT INTO ledger_chain_deployments (id,chain_id,network,vault_address,deployment_version,runtime_code_hash,deposit_event_signature,deposit_event_topic,finality_policy,start_block) VALUES ($1,84532,'base-sepolia',$2,'v3',$3,'Deposited(bytes32,address,bytes32,address,uint256)',$4,'rpc_finalized_two_provider',1)")
         .bind(deployment_id).bind(VAULT).bind(hash(1)).bind(hash(2)).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO ledger_withdrawal_contract_capabilities (deployment_id,authorization_version,execution_event_signature,execution_event_topic,configured_by,evidence) VALUES ($1,'eip712_v2','WithdrawalExecuted(bytes16,address,address,address,uint256,uint256,uint256,bytes32,bytes32)',$2,'test','{}')")
+    sqlx::query("INSERT INTO ledger_withdrawal_contract_capabilities (deployment_id,authorization_version,execution_event_signature,execution_event_topic,configured_by,evidence) VALUES ($1,'eip712_v3','WithdrawalExecuted(bytes16,address,address,uint256,uint256,uint256,bytes32,bytes32)',$2,'test','{}')")
         .bind(deployment_id).bind(WITHDRAWAL_EVENT_TOPIC).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO ledger_withdrawal_confirmation_policies (deployment_id,policy_version,min_confirmations,require_finalized,required_provider_count,effective_at,configured_by,evidence) VALUES ($1,'v3-test',5,TRUE,2,transaction_timestamp() - interval '1 second','test','{}')")
+        .bind(deployment_id).execute(&pool).await.unwrap();
     let store = PgWorkerStore::from_pool(pool.clone());
+    let registered = store.deployment(deployment_id).await.unwrap();
+    assert_eq!(registered.event_topic, WITHDRAWAL_EVENT_TOPIC);
+    assert_eq!(registered.policy_version, "v3-test");
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     store

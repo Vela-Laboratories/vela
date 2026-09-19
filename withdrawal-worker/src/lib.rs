@@ -8,15 +8,15 @@ use reqwest::Url;
 use serde_json::{json, Value};
 use sha3::{Digest, Keccak256};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
-use std::{env, time::Duration};
+use std::{env, future::Future, time::Duration};
 use thiserror::Error;
 use tokio::time::sleep;
 use uuid::Uuid;
 
 pub const WITHDRAWAL_EVENT_SIGNATURE: &str =
-    "WithdrawalExecuted(bytes16,address,address,address,uint256,uint256,uint256,bytes32,bytes32)";
+    "WithdrawalExecuted(bytes16,address,address,uint256,uint256,uint256,bytes32,bytes32)";
 pub const WITHDRAWAL_EVENT_TOPIC: &str =
-    "0xa03b5b5d862ae6da36bc7473b3847b8fc548484eca8458b32e1796830da4d722";
+    "0xa951166031255fae1b92eb5b6b591a70e7c95c53f3de7f7c957cfc4a0e1d3300";
 
 #[derive(Clone)]
 pub struct Config {
@@ -100,6 +100,11 @@ impl Config {
         if self.lease_duration < minimum_lease {
             return Err(WorkerError::Config(
                 "lease duration must cover eight bounded sequential RPC requests".to_owned(),
+            ));
+        }
+        if self.retry_max < self.poll_interval {
+            return Err(WorkerError::Config(
+                "retry maximum must not be shorter than the normal poll interval".to_owned(),
             ));
         }
         Ok(())
@@ -196,7 +201,6 @@ pub struct Candidate {
     pub attempt_id: Uuid,
     pub transaction_hash: String,
     pub expires_at: DateTime<Utc>,
-    pub customer: String,
     pub destination: String,
     pub asset: String,
     pub amount: String,
@@ -232,7 +236,6 @@ pub struct ExecutionLog {
     pub transaction_index: u32,
     pub log_index: u32,
     pub request_id: Uuid,
-    pub customer: String,
     pub destination: String,
     pub asset: String,
     pub amount: String,
@@ -553,23 +556,51 @@ where
     }
 
     pub async fn run(self) -> Result<(), WorkerError> {
-        let mut retry = Duration::from_millis(250);
+        self.run_until_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .map_err(|_| WorkerError::Config("could not install shutdown handler".to_owned()))
+        })
+        .await
+    }
+
+    pub async fn run_until_shutdown<F>(self, shutdown: F) -> Result<(), WorkerError>
+    where
+        F: Future<Output = Result<(), WorkerError>> + Send,
+    {
+        tokio::pin!(shutdown);
+        let mut retry = self.config.poll_interval;
         loop {
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {
+            let delay = tokio::select! {
+                result = &mut shutdown => {
                     self.shutdown().await?;
+                    result?;
                     return Ok(());
                 }
                 result = self.tick() => {
                     match result {
-                        Ok(_) => retry = Duration::from_millis(250),
-                        Err(WorkerError::LeaseUnavailable) => {},
-                        Err(error) => tracing::warn!(error = %error, "withdrawal worker cycle failed closed"),
+                        Ok(_) => {
+                            retry = self.config.poll_interval;
+                            self.config.poll_interval
+                        }
+                        Err(WorkerError::LeaseUnavailable) => self.config.poll_interval,
+                        Err(error) => {
+                            tracing::warn!(error = %error, "withdrawal worker cycle failed closed");
+                            let delay = retry;
+                            retry = retry.saturating_mul(2).min(self.config.retry_max);
+                            delay
+                        }
                     }
                 }
+            };
+            tokio::select! {
+                result = &mut shutdown => {
+                    self.shutdown().await?;
+                    result?;
+                    return Ok(());
+                }
+                _ = sleep(delay) => {}
             }
-            sleep(self.config.poll_interval.max(retry)).await;
-            retry = (retry * 2).min(self.config.retry_max);
         }
     }
 }
@@ -641,7 +672,7 @@ fn ensure_agreement(
         .eq_ignore_ascii_case(WITHDRAWAL_EVENT_TOPIC)
     {
         return Err(WorkerError::Safety(
-            "registered withdrawal event topic does not match the V2 ABI".to_owned(),
+            "registered withdrawal event topic does not match the omnibus V3 ABI".to_owned(),
         ));
     }
     match &a.status {
@@ -665,7 +696,6 @@ fn ensure_agreement(
         let confirmations = a.finalized.number.saturating_sub(log.block.number) + 1;
         if confirmations < deployment.min_confirmations
             || log.request_id != candidate.withdrawal_id
-            || !eq_hex(&log.customer, &candidate.customer)
             || !eq_hex(&log.destination, &candidate.destination)
             || !eq_hex(&log.asset, &candidate.asset)
             || log.amount != candidate.amount
@@ -742,7 +772,6 @@ struct CandidateRow {
     attempt_id: Uuid,
     transaction_hash: String,
     expires_at: DateTime<Utc>,
-    customer: String,
     destination: String,
     asset: String,
     amount: String,
@@ -773,13 +802,13 @@ impl WorkerStore for PgWorkerStore {
                 ORDER BY effective_at DESC LIMIT 1
             ) policy ON TRUE
             WHERE deployment.id = $1 AND deployment.enabled
-              AND capability.authorization_version = 'eip712_v2'
+              AND capability.authorization_version = 'eip712_v3'
             "#,
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?
-        .ok_or_else(|| WorkerError::Config("enabled registered V2 deployment and policy required".to_owned()))?;
+        .ok_or_else(|| WorkerError::Config("enabled registered omnibus V3 deployment and policy required".to_owned()))?;
         Ok(Deployment {
             id: row.id,
             chain_id: u64::try_from(row.chain_id)
@@ -918,8 +947,7 @@ impl WorkerStore for PgWorkerStore {
     ) -> Result<Vec<Candidate>, WorkerError> {
         let select = r#"
             SELECT withdrawal.id AS withdrawal_id, attempt.id AS attempt_id, attempt.transaction_hash,
-                   authorization.expires_at, withdrawal.customer_reference AS customer,
-                   withdrawal.destination_address AS destination,
+                   authorization.expires_at, withdrawal.destination_address AS destination,
                    authorization.asset_address AS asset, authorization.amount::TEXT AS amount,
                    authorization.nonce::TEXT AS nonce, attempt.sender_address AS sender,
                    attempt.sender_nonce::TEXT AS sender_nonce,
@@ -980,7 +1008,6 @@ impl WorkerStore for PgWorkerStore {
                     attempt_id: r.attempt_id,
                     transaction_hash: r.transaction_hash,
                     expires_at: r.expires_at,
-                    customer: r.customer,
                     destination: r.destination,
                     asset: r.asset,
                     amount: r.amount,
@@ -1189,7 +1216,6 @@ fn status_evidence(status: &TransactionStatus) -> Value {
             "transaction_index":log.transaction_index,
             "log_index":log.log_index,
             "request_id":log.request_id,
-            "customer":log.customer,
             "destination":log.destination,
             "asset":log.asset,
             "amount":log.amount,
@@ -1328,9 +1354,7 @@ impl HttpRpc {
             )
             .await?;
 
-        let mut nonce_data = selector("usedWithdrawNonces(address,uint256)").to_vec();
-        nonce_data.extend_from_slice(&address_word(&candidate.customer, self)?);
-        nonce_data.extend_from_slice(&decimal_word(&candidate.nonce, self)?);
+        let nonce_data = used_withdraw_nonce_calldata(&candidate.nonce, self)?;
         let nonce_used = self
             .bool_call(
                 &deployment.vault_address,
@@ -1572,16 +1596,6 @@ fn selector(signature: &str) -> [u8; 4] {
         .expect("four byte selector")
 }
 
-fn address_word(address: &str, rpc: &HttpRpc) -> Result<[u8; 32], WorkerError> {
-    let bytes = decode_hex(address, rpc)?;
-    if bytes.len() != 20 {
-        return Err(rpc.failure("address proof input was malformed"));
-    }
-    let mut word = [0; 32];
-    word[12..].copy_from_slice(&bytes);
-    Ok(word)
-}
-
 fn decimal_word(value: &str, rpc: &HttpRpc) -> Result<[u8; 32], WorkerError> {
     if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(rpc.failure("nonce proof input was malformed"));
@@ -1599,6 +1613,12 @@ fn decimal_word(value: &str, rpc: &HttpRpc) -> Result<[u8; 32], WorkerError> {
         }
     }
     Ok(out)
+}
+
+fn used_withdraw_nonce_calldata(nonce: &str, rpc: &HttpRpc) -> Result<Vec<u8>, WorkerError> {
+    let mut data = selector("usedWithdrawNonces(uint256)").to_vec();
+    data.extend_from_slice(&decimal_word(nonce, rpc)?);
+    Ok(data)
 }
 
 fn parse_execution_log(
@@ -1637,13 +1657,10 @@ fn parse_execution_log(
         Ok(format!("0x{}", hex::encode(&bytes[12..])))
     };
     let data = decode_hex(field(value, "data", rpc)?, rpc)?;
-    if data.len() != 32 * 6 {
+    if data.len() != 32 * 5 {
         return Err(rpc.failure("execution data was malformed"));
     }
     let word = |index: usize| &data[index * 32..(index + 1) * 32];
-    if word(0)[..12].iter().any(|byte| *byte != 0) {
-        return Err(rpc.failure("asset word was malformed"));
-    }
     Ok(ExecutionLog {
         block,
         transaction_index: u32::try_from(parse_hex_u64(
@@ -1654,14 +1671,13 @@ fn parse_execution_log(
         log_index: u32::try_from(parse_hex_u64(field(value, "logIndex", rpc)?, rpc)?)
             .map_err(|_| rpc.failure("log index overflow"))?,
         request_id,
-        customer: topic_address(&topics[2])?,
-        destination: topic_address(&topics[3])?,
-        asset: format!("0x{}", hex::encode(&word(0)[12..])),
-        amount: uint_word_decimal(word(1)),
-        nonce: uint_word_decimal(word(2)),
-        deadline: uint_word_decimal(word(3)),
-        policy_hash: format!("0x{}", hex::encode(word(4))),
-        approver_hash: format!("0x{}", hex::encode(word(5))),
+        destination: topic_address(&topics[2])?,
+        asset: topic_address(&topics[3])?,
+        amount: uint_word_decimal(word(0)),
+        nonce: uint_word_decimal(word(1)),
+        deadline: uint_word_decimal(word(2)),
+        policy_hash: format!("0x{}", hex::encode(word(3))),
+        approver_hash: format!("0x{}", hex::encode(word(4))),
     })
 }
 
@@ -1711,10 +1727,7 @@ mod tests {
             topic[12..].fill(byte);
             format!("0x{}", hex::encode(topic))
         };
-        let mut asset = [0_u8; 32];
-        asset[12..].fill(0x44);
         let mut data = Vec::new();
-        data.extend_from_slice(&asset);
         data.extend_from_slice(&word(1_000));
         data.extend_from_slice(&word(7));
         data.extend_from_slice(&word(2_000_000_000));
@@ -1730,8 +1743,8 @@ mod tests {
                 "topics": [
                     WITHDRAWAL_EVENT_TOPIC,
                     format!("0x{}", hex::encode(request_topic)),
-                    address_topic(0x22),
-                    address_topic(0x33)
+                    address_topic(0x33),
+                    address_topic(0x44)
                 ],
                 "data": format!("0x{}", hex::encode(data)),
                 "transactionIndex": "0x2",
@@ -1742,7 +1755,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded.request_id, request_id);
-        assert_eq!(decoded.customer, format!("0x{}", "22".repeat(20)));
         assert_eq!(decoded.destination, format!("0x{}", "33".repeat(20)));
         assert_eq!(decoded.asset, format!("0x{}", "44".repeat(20)));
         assert_eq!(decoded.amount, "1000");
@@ -1764,7 +1776,7 @@ mod tests {
         .unwrap();
         let malformed = json!({
             "topics": [WITHDRAWAL_EVENT_TOPIC, format!("0x{}", "ff".repeat(32)), format!("0x{}", "00".repeat(32)), format!("0x{}", "00".repeat(32))],
-            "data": format!("0x{}", "00".repeat(32 * 6)),
+            "data": format!("0x{}", "00".repeat(32 * 5)),
             "transactionIndex": "0x0",
             "logIndex": "0x0"
         });
@@ -1778,5 +1790,25 @@ mod tests {
             &rpc,
         )
         .is_err());
+    }
+
+    #[test]
+    fn v3_event_topic_and_global_nonce_getter_match_the_contract_abi() {
+        assert_eq!(
+            format!(
+                "0x{}",
+                hex::encode(Keccak256::digest(WITHDRAWAL_EVENT_SIGNATURE.as_bytes()))
+            ),
+            WITHDRAWAL_EVENT_TOPIC
+        );
+        let rpc = HttpRpc::new(
+            "decoder-test".to_owned(),
+            Url::parse("http://127.0.0.1:8545").unwrap(),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        let calldata = used_withdraw_nonce_calldata("7", &rpc).unwrap();
+        assert_eq!(&calldata[..4], &selector("usedWithdrawNonces(uint256)"));
+        assert_eq!(&calldata[4..], &word(7));
     }
 }

@@ -28,6 +28,29 @@ pub struct OperationalHealthSnapshot {
 struct Target {
     name: &'static str,
     url: Option<String>,
+    invalid: bool,
+}
+
+impl Target {
+    fn from_value(name: &'static str, value: Option<String>) -> Self {
+        match value {
+            None => Self {
+                name,
+                url: None,
+                invalid: false,
+            },
+            Some(value) if valid_http_endpoint(&value) => Self {
+                name,
+                url: Some(value),
+                invalid: false,
+            },
+            Some(_) => Self {
+                name,
+                url: None,
+                invalid: true,
+            },
+        }
+    }
 }
 
 pub struct OperationalHealth {
@@ -49,12 +72,10 @@ impl OperationalHealth {
             client: reqwest::Client::new(),
             targets: DEPENDENCIES
                 .iter()
-                .map(|(name, variable)| Target {
-                    name,
-                    url: nonempty_env(variable),
-                })
+                .map(|(name, variable)| Target::from_value(name, nonempty_env(variable)))
                 .collect(),
-            alert_webhook: nonempty_env("VELA_ALERT_WEBHOOK_URL"),
+            alert_webhook: nonempty_env("VELA_ALERT_WEBHOOK_URL")
+                .filter(|value| valid_http_endpoint(value)),
             timeout: Duration::from_millis(timeout_ms),
             last_alert_fingerprint: Mutex::new(None),
         })
@@ -63,6 +84,11 @@ impl OperationalHealth {
     pub async fn probe(&self, required: bool) -> OperationalHealthSnapshot {
         let probes = self.targets.iter().map(|target| async move {
             let health = match &target.url {
+                None if target.invalid => DependencyHealth {
+                    configured: true,
+                    healthy: false,
+                    failure_code: Some("invalid_url".to_owned()),
+                },
                 None => DependencyHealth {
                     configured: false,
                     healthy: !required,
@@ -158,8 +184,8 @@ impl OperationalHealth {
             Ok(Ok(response)) => {
                 tracing::error!(status = %response.status(), "operational alert webhook rejected notification");
             }
-            Ok(Err(error)) => {
-                tracing::error!(error = %error, "operational alert webhook delivery failed");
+            Ok(Err(_)) => {
+                tracing::error!("operational alert webhook delivery failed");
             }
             Err(_) => tracing::error!("operational alert webhook timed out"),
         }
@@ -172,6 +198,15 @@ fn nonempty_env(name: &str) -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
+fn valid_http_endpoint(value: &str) -> bool {
+    reqwest::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,7 +216,11 @@ mod tests {
             client: reqwest::Client::new(),
             targets: DEPENDENCIES
                 .iter()
-                .map(|(name, _)| Target { name, url: None })
+                .map(|(name, _)| Target {
+                    name,
+                    url: None,
+                    invalid: false,
+                })
                 .collect(),
             alert_webhook: None,
             timeout: Duration::from_millis(100),
@@ -208,5 +247,23 @@ mod tests {
             .dependencies
             .values()
             .all(|health| !health.configured && health.healthy));
+    }
+
+    #[tokio::test]
+    async fn malformed_or_credential_bearing_dependency_url_fails_closed() {
+        let mut health = unconfigured();
+        health.targets[0] = Target::from_value("indexer", Some("not a URL".to_owned()));
+        health.targets[1] = Target::from_value(
+            "signer",
+            Some("https://operator:secret@example.invalid/ready".to_owned()),
+        );
+        let snapshot = health.probe(false).await;
+        for name in ["indexer", "signer"] {
+            let dependency = &snapshot.dependencies[name];
+            assert!(dependency.configured);
+            assert!(!dependency.healthy);
+            assert_eq!(dependency.failure_code.as_deref(), Some("invalid_url"));
+        }
+        assert!(!snapshot.healthy);
     }
 }
