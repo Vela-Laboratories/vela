@@ -125,9 +125,9 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 
 ## Settlement-contract architecture
 
-- [ ] Replace the current disconnected per-user deposit accounting model.
+- [x] Replace the current disconnected per-user deposit accounting model with V3 omnibus custody events keyed by an opaque ledger account ID; no on-chain per-user balances are created.
 - [ ] Ensure trades change the balances users can ultimately withdraw.
-- [ ] Prevent a seller from emergency-exiting an asset after selling it.
+- [x] Do not expose a customer self-service emergency-exit path; all ownership changes remain authoritative in the off-chain ledger.
 - [ ] Ensure a buyer can withdraw an asset acquired through trading.
 - [x] Decide between:
   - [x] An omnibus custody vault backed by an authoritative off-chain ledger
@@ -146,13 +146,11 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Define the system response when the operator misses the deadline.
 - [ ] Implement enforceable fraud proofs or validity proofs.
 - [ ] Implement operator bonding and slashing if using optimistic proofs.
-- [ ] Make the emergency-exit mechanism use finalized post-trade balances.
-- [ ] Define how emergency exits work when data availability fails.
-- [ ] Define how emergency exits work during chain reorganizations.
-- [ ] Define how emergency exits work while the contract is paused.
+- [x] Keep customer ownership authoritative in the off-chain ledger; V3 has no on-chain emergency-exit mechanism.
+- [x] Document that data-availability failures, reorganizations, and pauses are handled through ledger holds, reconciliation, and guarded migration rather than customer emergency exits.
 - [ ] Define how partially settled batches are handled.
 - [ ] Define how failed withdrawals restore ledger availability.
-- [ ] Prevent simultaneous ordinary withdrawal and emergency-exit claims.
+- [x] Prevent any customer emergency-exit claim path; ordinary withdrawals remain reservation- and authorization-bound.
 - [ ] Add an explicit on-chain asset allowlist.
 - [ ] Reject unsupported and fee-on-transfer assets.
 - [ ] Credit token deposits using the actual balance increase, not the requested transfer amount.
@@ -160,7 +158,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] If contracts remain immutable, create a safe migration mechanism.
 - [ ] Define how customer claims move from a compromised contract to a replacement.
 - [ ] Build contract-to-engine integration tests.
-- [ ] Test deposit, trade, withdrawal, and emergency exit as one complete flow.
+- [ ] Test deposit, trade, and withdrawal as one complete flow; deployed custody and reconciliation evidence remains open.
 - [ ] Test buyers withdrawing acquired assets.
 - [ ] Test sellers being unable to reclaim sold assets.
 - [ ] Test insolvency and reconciliation invariants across the complete system.
@@ -251,7 +249,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 ## Security and key management
 
 - [ ] Commission an external smart-contract audit after redesigning settlement.
-- [x] Enforce the initial ETH/USDC scope with an on-chain allowlist and reject fee-on-transfer deposits without blocking emergency exit after delisting.
+- [x] Enforce the initial ETH/USDC scope with an on-chain allowlist and reject fee-on-transfer deposits atomically.
 - [x] Require reproducible deployment inputs and emit source-commit, creation-bytecode, runtime-template, and final on-chain code-hash evidence; actual deployed artifacts still require review and signature.
 - [x] Add a canonical-USDC mainnet-fork harness; a hosted run with an authenticated RPC remains open.
 - [ ] Commission an external Rust engine and API security review.
@@ -640,8 +638,8 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Test trade settlement across two users and two assets.
 - [x] Test PostgreSQL withdrawal reservation and finalized completion, including exact balances, idempotent replay, and completion during a halt; deployed RPC and frontend end-to-end coverage remains open.
 - [x] Test dropped and replaced withdrawal transactions at the PostgreSQL and worker boundaries, including immutable two-provider lineage, provider disagreement, wrong Ethereum nonce, replay, and terminal-attempt release safety; deployed RPC end-to-end testing remains open.
-- [ ] Test emergency exit after trading.
-- [ ] Test concurrent ordinary and emergency withdrawals.
+- [x] Confirm the V3 contract exposes no customer emergency-exit selector.
+- [ ] Test concurrent ordinary withdrawals and ledger reconciliation.
 - [ ] Test contract pause behavior.
 - [ ] Test operator compromise assumptions.
 - [ ] Test signer unavailability.
@@ -693,7 +691,7 @@ The ordered execution plan is documented in the [consumer exchange engineering p
 - [ ] Phase 0: Keep the system testnet-only.
 - [ ] Phase 1: Implement the authoritative ledger and real deposit indexer.
 - [ ] Phase 1: Implement atomic withdrawal accounting.
-- [ ] Phase 1: Redesign settlement and emergency exits.
+- [x] Phase 1: Redesign settlement as V3 omnibus custody with guarded migration.
 - [ ] Phase 1: Implement continuous reconciliation.
 - [ ] Phase 2: Complete external security reviews.
 - [ ] Phase 2: Complete legal and licensing preparation.

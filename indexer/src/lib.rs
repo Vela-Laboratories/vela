@@ -24,9 +24,9 @@ use tokio::time::sleep;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-pub const DEPOSIT_EVENT_SIGNATURE: &str = "Deposited(bytes32,address,address,uint256)";
+pub const DEPOSIT_EVENT_SIGNATURE: &str = "Deposited(bytes32,address,bytes32,address,uint256)";
 pub const DEPOSIT_EVENT_TOPIC: &str =
-    "0xcfccc5211684bc31ce945214025a7453ba30a1ffcc38fcb691ce742437f3f256";
+    "0x1670a29e5e0e2dd0f73d6c06d59212610f64f0d1e118644003f43d01ded42825";
 pub const FINALITY_POLICY: &str = "rpc_finalized_two_provider";
 const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
@@ -900,7 +900,10 @@ fn parse_quantity(value: &str) -> Result<u64, IndexerError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedDeposit {
     pub vault_deposit_id: String,
-    pub beneficiary: String,
+    pub depositor: String,
+    /// Opaque bytes32 routing identifier. This is the only customer-facing
+    /// value committed by the omnibus vault; it is not an on-chain balance.
+    pub credited_account_id: String,
     pub asset_address: Option<String>,
     pub amount: BigDecimal,
     pub block_number: u64,
@@ -921,8 +924,8 @@ pub fn decode_deposit(
         && log.topics[0].eq_ignore_ascii_case(&deployment.deposit_event_topic)
         && is_hex_bytes(&log.topics[1], 32)
         && is_padded_address(&log.topics[2])
-        && is_padded_address(&log.topics[3])
-        && is_hex_bytes(&log.data, 32)
+        && is_hex_bytes(&log.topics[3], 32)
+        && is_hex_bytes(&log.data, 64)
         && is_hex_bytes(&log.block_hash, 32)
         && is_hex_bytes(&log.transaction_hash, 32);
     if !valid_shape {
@@ -935,13 +938,15 @@ pub fn decode_deposit(
             }),
         ));
     }
-    let amount = BigDecimal::from_str(&u256_hex_to_decimal(&log.data).map_err(|message| {
-        safety(
-            HaltReason::MalformedLog,
-            message,
-            json!({"transaction_hash": log.transaction_hash, "log_index": log.log_index}),
-        )
-    })?)
+    let amount = BigDecimal::from_str(&u256_hex_to_decimal(&data_word(&log.data, 1)).map_err(
+        |message| {
+            safety(
+                HaltReason::MalformedLog,
+                message,
+                json!({"transaction_hash": log.transaction_hash, "log_index": log.log_index}),
+            )
+        },
+    )?)
     .map_err(|_| {
         safety(
             HaltReason::MalformedLog,
@@ -956,10 +961,11 @@ pub fn decode_deposit(
             json!({"transaction_hash": log.transaction_hash, "log_index": log.log_index}),
         ));
     }
-    let asset = topic_address(&log.topics[3]);
+    let asset = topic_address(&data_word(&log.data, 0));
     Ok(DecodedDeposit {
         vault_deposit_id: log.topics[1].clone(),
-        beneficiary: topic_address(&log.topics[2]),
+        depositor: topic_address(&log.topics[2]),
+        credited_account_id: log.topics[3].to_ascii_lowercase(),
         asset_address: (asset != ZERO_ADDRESS).then_some(asset),
         amount,
         block_number: parse_quantity(&log.block_number)?,
@@ -968,6 +974,11 @@ pub fn decode_deposit(
         transaction_index: parse_quantity(&log.transaction_index)?,
         log_index: parse_quantity(&log.log_index)?,
     })
+}
+
+fn data_word(value: &str, index: usize) -> String {
+    let start = 2 + index * 64;
+    format!("0x{}", &value[start..start + 64])
 }
 
 fn is_padded_address(value: &str) -> bool {
@@ -1637,7 +1648,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         let customer_lookup = AccountLookup {
             asset_code: asset.code.clone(),
             owner_type: "customer".to_owned(),
-            owner_reference: deposit.beneficiary.clone(),
+            owner_reference: deposit.credited_account_id.clone(),
             account_type: "customer_available".to_owned(),
         };
         let customer = self
@@ -1645,7 +1656,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ensure_accounts(&[AccountProvisionRequest {
                 asset_code: asset.code.clone(),
                 owner_type: "customer".to_owned(),
-                owner_reference: deposit.beneficiary.clone(),
+                owner_reference: deposit.credited_account_id.clone(),
                 account_type: "customer_available".to_owned(),
                 allow_negative: false,
             }])
@@ -1683,7 +1694,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ledger
             .observe_deposit(&ObserveDeposit {
                 deposit_id,
-                customer_reference: deposit.beneficiary.clone(),
+                customer_reference: deposit.credited_account_id.clone(),
                 destination_account_id: customer.id,
                 asset_id: asset.id,
                 amount: deposit.amount.clone(),
@@ -1696,7 +1707,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                     log_index: checked_i32(deposit.log_index, "log index")?,
                     vault_address: self.deployment.vault_address.clone(),
                     vault_deposit_id: deposit.vault_deposit_id.clone(),
-                    sender_address: deposit.beneficiary.clone(),
+                    sender_address: deposit.depositor.clone(),
                     asset_address: deposit.asset_address.clone(),
                     actual_amount: deposit.amount.clone(),
                 },
@@ -1732,8 +1743,8 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                 log_index: checked_i32(deposit.log_index, "log index")?,
                 vault_address: self.deployment.vault_address.clone(),
                 vault_deposit_id: deposit.vault_deposit_id.clone(),
-                sender_address: deposit.beneficiary.clone(),
-                beneficiary_reference: deposit.beneficiary.clone(),
+                sender_address: deposit.depositor.clone(),
+                credited_account_reference: deposit.credited_account_id.clone(),
                 asset_address: deposit.asset_address.clone(),
                 actual_amount: deposit.amount.clone(),
             };
@@ -1878,7 +1889,7 @@ fn stored_event_matches(
         && stored.vault_deposit_id == canonical.vault_deposit_id
         && stored
             .sender_address
-            .eq_ignore_ascii_case(&canonical.beneficiary)
+            .eq_ignore_ascii_case(&canonical.depositor)
         && optional_address_matches(&stored.asset_address, &canonical.asset_address)
         && stored.actual_amount == canonical.amount
 }
@@ -1939,7 +1950,7 @@ mod tests {
             chain_id: 8453,
             network: "base".to_owned(),
             vault_address: "0x1111111111111111111111111111111111111111".to_owned(),
-            deployment_version: "v2".to_owned(),
+            deployment_version: "v3".to_owned(),
             runtime_code_hash: format!("0x{}", "22".repeat(32)),
             deposit_event_signature: DEPOSIT_EVENT_SIGNATURE.to_owned(),
             deposit_event_topic: DEPOSIT_EVENT_TOPIC.to_owned(),
@@ -1956,9 +1967,13 @@ mod tests {
                 DEPOSIT_EVENT_TOPIC.to_owned(),
                 format!("0x{}", "33".repeat(32)),
                 format!("0x{}{}", "00".repeat(12), "44".repeat(20)),
-                format!("0x{}{}", "00".repeat(12), "55".repeat(20)),
+                format!("0x{}", "55".repeat(32)),
             ],
-            data: format!("0x{:064x}", 1_500_000_u64),
+            data: format!(
+                "0x{}{:064x}",
+                format!("{}{}", "00".repeat(12), "66".repeat(20)),
+                1_500_000_u64
+            ),
             block_number: "0x64".to_owned(),
             block_hash: format!("0x{}", "66".repeat(32)),
             transaction_hash: format!("0x{}", "77".repeat(32)),
@@ -1972,10 +1987,14 @@ mod tests {
     fn decodes_only_the_pinned_deposit_abi() {
         let decoded = decode_deposit(log(), &deployment()).unwrap();
         assert_eq!(decoded.amount, BigDecimal::from(1_500_000_u64));
-        assert_eq!(decoded.beneficiary, format!("0x{}", "44".repeat(20)));
+        assert_eq!(decoded.depositor, format!("0x{}", "44".repeat(20)));
+        assert_eq!(
+            decoded.credited_account_id,
+            format!("0x{}", "55".repeat(32))
+        );
         assert_eq!(
             decoded.asset_address,
-            Some(format!("0x{}", "55".repeat(20)))
+            Some(format!("0x{}", "66".repeat(20)))
         );
         assert_eq!(decoded.log_index, 3);
     }
@@ -1999,6 +2018,10 @@ mod tests {
         let mut dirty_padding = log();
         dirty_padding.topics[2].replace_range(2..4, "01");
         assert!(decode_deposit(dirty_padding, &deployment()).is_err());
+
+        let mut malformed_account_id = log();
+        malformed_account_id.topics[3] = format!("0x{}", "55".repeat(31));
+        assert!(decode_deposit(malformed_account_id, &deployment()).is_err());
     }
 
     #[test]

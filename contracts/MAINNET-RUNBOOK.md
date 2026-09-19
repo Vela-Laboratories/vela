@@ -1,206 +1,105 @@
-# Vela mainnet deploy — runbook
+# Vela V3 custody deployment runbook
 
-**Target:** Ethereum mainnet, then Base + Arbitrum (L2 sequencer feed
-required).
-**Prerequisites:** external audit complete + findings addressed, all
-five contracts frozen at a single commit SHA, operator + guardian +
-owner keys generated on hardware wallets.
+**Target:** Base, after external audit and launch approval.
+**Scope:** the single `VelaSettlement` omnibus custody vault.
+**Status:** planning only; testnet-only until every outstanding gate is closed.
 
-This document is the checklist someone can execute on deploy day.
-Nothing here is meant to be discovered under time pressure.
+This runbook deliberately excludes the legacy Counter, Perp, VLP, and
+Sequencer deployments. They are not part of the initial custody boundary.
 
----
+## Pre-flight
 
-## Pre-flight (T-7 days)
+- [ ] External smart-contract audit completed, findings fixed, and final report
+      published.
+- [ ] Audited source and backend frozen at a reviewed commit SHA.
+- [ ] Foundry build, tests, formatting, and coverage evidence attached to the
+      deployment ticket.
+- [ ] Owner, guardian, and operator identities generated and reviewed under
+      the approved custody policy; no signing keys in environment files.
+- [ ] Canonical Base USDC address and chain ID verified independently.
+- [ ] Ledger deposit event consumer, withdrawal reservation/signing path, and
+      reconciliation worker reviewed together; managed hosting remains a gate.
+- [ ] Legal, risk, customer disclosures, incident ownership, and live-funds
+      approval completed.
 
-- [ ] External audit report published + linked from `README.md` and
-      `docs/security/`.
-- [ ] All Critical / High findings fixed at a single commit SHA
-      (annotate the fix commits with `AUDIT-<n>`).
-- [ ] Foundry test suite: `forge test` passes at 31/31.
-- [ ] Foundry coverage: `forge coverage --report summary` snapshot
-      committed to `contracts/coverage.txt`.
-- [ ] Operator key generated on a hardware wallet (Ledger). No copies.
-- [ ] Guardian key generated on a **separate** hardware wallet.
-      Must be a different device from the operator; distinct on-call
-      rota (so a stolen ops laptop cannot pause and un-pause).
-- [ ] Owner key held by 2-of-3 Safe multisig with three separate
-      hardware signers.
-- [ ] Bug bounty published on Immunefi. Minimum reward tier:
-      $25k Critical.
-
-## Pre-flight (T-24 hours)
-
-- [ ] `contracts/deployments.json` template pre-filled (chain, name,
-      commit SHA, deployer address) but not signed.
-- [ ] `./scripts/reproducible_build.sh` output reviewed and attached to
-      the deploy ticket; source commit, creation-bytecode hash, and runtime
-      template hash match CI.
-- [ ] `.env.deploy` staged with `PRIVATE_KEY`, `ETHERSCAN_API_KEY`,
-      `RPC_URL` (from Alchemy / QuickNode — no public RPC).
-- [ ] `flyctl status --app vela-engine` — engine is on the same
-      commit SHA as the contracts.
-- [ ] Frontend `NEXT_PUBLIC_CHAIN_ID` in `.env.production` is set
-      to the target chain, not Sepolia.
-- [ ] Comms plan: Twitter announcement queued, Discord announcement
-      queued, dashboard banner ready.
-
-## Deploy — VelaSettlement
+## Reproducible artifact
 
 ```bash
 cd contracts
-export ETHERSCAN_API_KEY=<...>
-export RPC_URL=<alchemy mainnet>
-export VELA_EXPECTED_CHAIN_ID=1
-export VELA_OPERATOR_ADDRESS=<custody-operator>
-export VELA_OWNER_ADDRESS=<safe-multisig>
-export VELA_GUARDIAN_ADDRESS=<independent-guardian>
-export VELA_USDC_ADDRESS=<canonical-chain-usdc>
+./scripts/reproducible_build.sh
+```
+
+- [ ] Record the source commit, pinned compiler/EVM/optimizer configuration,
+      creation-bytecode hash, and runtime-template hash.
+- [ ] Confirm the deployment ticket contains the expected chain, owner,
+      guardian, operator, and canonical USDC values.
+
+## Deploy - VelaSettlement only
+
+```bash
+cd contracts
+export RPC_URL=<approved-base-rpc>
+export VELA_EXPECTED_CHAIN_ID=8453
+export VELA_OPERATOR_ADDRESS=<reviewed-operator>
+export VELA_OWNER_ADDRESS=<reviewed-owner>
+export VELA_GUARDIAN_ADDRESS=<reviewed-guardian>
+export VELA_USDC_ADDRESS=<canonical-base-usdc>
 export VELA_SOURCE_COMMIT=0x<64-hex-byte-padded-git-commit>
 
-forge script script/Deploy.s.sol \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --verify \
-  --slow \
-  -vvv
+forge script script/Deploy.s.sol:Deploy \
+  --rpc-url "$RPC_URL" --broadcast --verify --slow -vvv
 ```
 
-- [ ] Record the deployed address in `deployments.json`.
-- [ ] Verify on-chain `sourceCommit`, `supportedAssets(ETH)`, and
-      `supportedAssets(USDC)` against the reviewed deployment manifest.
-- [ ] Record and independently verify the final on-chain code hash printed by
-      the deployment script; immutable constructor data makes it deployment-specific.
-- [ ] Etherscan verification succeeded (source verified, ABI visible).
-- [ ] The safe calls `acceptOwnership()` (Ownable2Step) if the deployment
-      script left it as pending owner.
-- [ ] Operator, owner, and guardian addresses are distinct and match the
-      reviewed configuration.
+- [ ] Record the deployed address, transaction hash, chain ID, and final
+      on-chain code hash in the deployment manifest.
+- [ ] Verify `sourceCommit`, ETH support, USDC support, owner, guardian, and
+      operator against the reviewed manifest.
+- [ ] Verify source code and ABI on the block explorer.
+- [ ] Confirm no Perp, VLP, Sequencer, or Counter contract was deployed by the
+      initial custody procedure.
 
-## Deploy — InsuranceFund + PerpEngine
+## Wiring and staged validation
 
-```bash
-forge script script/DeployPerp.s.sol \
-  --rpc-url $RPC_URL --broadcast --verify --slow -vvv
-```
+- [ ] Configure the ledger/indexer with the deployed vault and consume the
+      opaque-account `Deposited` event only after finality and receipt checks.
+- [ ] Configure the withdrawal signer to produce V3 EIP-712 authorizations;
+      relaying is permissionless, but ledger reservation and policy evidence
+      remain mandatory.
+- [ ] Exercise small-value ETH and USDC deposit and withdrawal flows on the
+      approved environment, then reconcile custody against ledger liabilities.
+- [ ] Configure independent deposit and withdrawal pause controls and rehearse
+      owner resume plus guardian escalation.
+- [ ] Verify managed hosting, RPC redundancy, monitoring, reconciliation, and
+      rollback procedures before accepting any funds.
 
-- [ ] `InsuranceFund` deployed; owner = safe.
-- [ ] `PerpEngine` deployed; operator = hardware key, owner = safe.
-- [ ] `PerpEngine.setInsuranceFund(fund)` called from the safe.
-- [ ] `InsuranceFund.setPerpEngine(engine)` called from the safe.
-- [ ] Etherscan verification succeeded on both.
+## Migration and incident response
 
-## Deploy — VLPVault
+The vault has no customer self-service emergency exit. If migration is needed:
 
-```bash
-forge script script/DeployVault.s.sol \
-  --rpc-url $RPC_URL --broadcast --verify --slow -vvv
-```
+1. Guardian or owner pauses both deposits and withdrawals.
+2. Owner proposes a compatible successor and records the liability snapshot
+   hash.
+3. Guardian independently approves the proposal.
+4. Wait the full seven-day migration timelock.
+5. The operator signs the exact EIP-712 migration authorization, including the
+   proposal, asset, amount, deadline, successor, and liability snapshot hash.
+6. Owner executes the migration and independently verifies the received amount
+   and emitted `AssetMigrated` evidence.
+7. Reconcile the successor vault and ledger before resuming service.
 
-- [ ] Vault deployed; owner = safe, asset = mainnet USDC.
-- [ ] `setStrategist(strategist)` called.
-- [ ] `setStrategistPullCap(500_000e6)` called (adjust per policy).
-- [ ] Vault is deliberately un-funded on day one; seed happens via a
-      controlled LP round.
+For a suspected operator compromise, pause withdrawals, preserve evidence,
+reconcile liabilities, rotate the operator through its delayed owner flow, and
+obtain incident and audit approval before resuming. Do not broadcast an
+unsigned or stale authorization.
 
-## Deploy — SequencerRegistry
+## Post-deployment gates
 
-Skip on day one unless the rotating-sequencer program has already
-been socialised. Standalone deploy:
+- [ ] Hosted RPC and deployed end-to-end evidence recorded.
+- [ ] Reconciliation and recovery worker running with alerts and on-call
+      ownership.
+- [ ] External audit, legal approval, managed hosting, and live-funds approval
+      all recorded.
+- [ ] Customer disclosures and production addresses published only after the
+      preceding gates are complete.
 
-```bash
-forge script script/DeploySequencerRegistry.s.sol --broadcast --verify -vvv
-```
-
-- [ ] Owner = safe, bond asset = mainnet USDC, minBond = 100_000e6.
-- [ ] No sequencer registers on day one — this is infra for the
-      rotation program.
-
-## Wiring (T+0)
-
-- [ ] `VelaSettlement.setSequencerFeed(0x…)` **on L2 deploys only**
-      (Chainlink L2 sequencer uptime feed address).
-- [ ] Fly.io machine env updated:
-  - `VELA_CHAIN_ID=1` (or 8453 for Base, 42161 for Arbitrum).
-  - `VELA_SETTLEMENT_ADDRESS=<deployed>`.
-  - `VELA_CONTRACT_ADDRESS=<deployed>` (legacy alias).
-  - `OPERATOR_PRIVATE_KEY=<hardware key>` (secret).
-  - `ADMIN_TOKEN=<rotated>`.
-  - `ENVIRONMENT=production` — this enables the fail-closed guards
-    on ZKVM and TEE. Only flip this after `ZKVM_PROVIDER=sp1` +
-    `VELA_SP1_PROVER_URL` are also set; otherwise the api binary
-    refuses to boot (by design).
-  - `TEE_PLATFORM=amd-sev-snp` (only on attested hardware — fails
-    closed otherwise).
-- [ ] Fly deploy: `flyctl deploy --remote-only`.
-- [ ] Health check green: `curl https://vela-engine.fly.dev/health`.
-- [ ] Metrics green: `curl https://vela-engine.fly.dev/metrics | grep
-      vela_verifiability_provider` shows `provider="sp1"` and
-      `platform="amd-sev-snp"`.
-- [ ] Frontend deployed to Vercel prod.
-
-## Announcement
-
-- [ ] Twitter thread published (contract addresses, block explorer
-      links, audit report link).
-- [ ] Discord `#announcements` post.
-- [ ] Dashboard banner switched from "Sepolia beta" to "Mainnet".
-- [ ] `README.md` and `docs/` updated with mainnet addresses.
-- [ ] Etherscan tag: request an "Official Vela Exchange" tag via
-      https://etherscan.io/contactus.
-
----
-
-## Post-launch (T+24h)
-
-- [ ] Monitor `/metrics` for anomalies: `vela_oracle_stale_reads_total`
-      creeping, `vela_perp_liquidations_total` unexpectedly firing,
-      `vela_verifiability_provider{provider="placeholder"}` ever
-      showing 1 (indicates a silent env flip).
-- [ ] No withdrawals attempted with the emergency-exit path (that
-      would indicate operator is silent).
-- [ ] Ops on-call rota confirmed for the first 30 days.
-
----
-
-## Rollback / incident response
-
-### Suspected compromise
-
-1. Guardian pauses immediately: `pause()` on `VelaSettlement`,
-   `VLPVault`, and `PerpEngine`.
-2. Announce on Twitter + Discord + dashboard banner within 15 min.
-3. Users can escape via `initiateEmergencyExit` — the pause does not
-   block this path (by design).
-4. Owner (safe) coordinates fix + verification with the auditors.
-5. Owner `unpause()` once the fix has been externally reviewed. Do
-   NOT unpause silently.
-
-### Operator key rotation
-
-1. `proposeOperator(newKey)` from the safe.
-2. Wait 48 hours (mandatory timelock).
-3. `acceptProposedOperator()` from the safe.
-4. Update fly.io secret `OPERATOR_PRIVATE_KEY`, redeploy.
-5. Confirm new operator signs a test anchor before the old key is
-   revoked from the hardware wallet.
-
-### Sequencer down (L2 only)
-
-- No manual action required. `sequencerUp` modifier fails
-  `withdraw` / `anchorStateRoot` / `executeEmergencyExit` while the
-  Chainlink feed reports `answer != 0` OR the feed came back up in
-  the last hour (`SEQUENCER_GRACE_PERIOD`).
-
----
-
-## Contact tree
-
-| Role | Contact |
-|---|---|
-| On-call ops | rotation: engineering@monolithsystematic.com |
-| Legal | legal@monolithsystematic.com |
-| Auditor point-of-contact | (filled at engagement kickoff) |
-| Insurance / bug bounty | Immunefi ticketing |
-
-*Last updated 2026-09-02.*
+*Last updated 2026-09-19 for the V3 custody-boundary redesign.*

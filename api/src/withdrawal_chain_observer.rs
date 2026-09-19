@@ -12,7 +12,7 @@ pub struct WithdrawalObservationRequest {
     withdrawal_id: Uuid,
     chain_id: u64,
     transaction_hash: [u8; 32],
-    expected_customer: [u8; 20],
+    expected_sender: Option<[u8; 20]>,
     expected_contract: [u8; 20],
     expected_calldata_hash: [u8; 32],
 }
@@ -23,7 +23,7 @@ impl WithdrawalObservationRequest {
         withdrawal_id: Uuid,
         chain_id: u64,
         transaction_hash: [u8; 32],
-        expected_customer: [u8; 20],
+        expected_sender: Option<[u8; 20]>,
         expected_contract: [u8; 20],
         expected_calldata_hash: [u8; 32],
     ) -> Result<Self, WithdrawalChainObserverError> {
@@ -32,9 +32,9 @@ impl WithdrawalObservationRequest {
                 "observation and withdrawal IDs must be non-nil".to_owned(),
             ));
         }
-        if chain_id == 0
+        if expected_sender.is_some_and(|sender| sender == [0; 20])
+            || chain_id == 0
             || transaction_hash == [0; 32]
-            || expected_customer == [0; 20]
             || expected_contract == [0; 20]
             || expected_calldata_hash == [0; 32]
         {
@@ -48,7 +48,7 @@ impl WithdrawalObservationRequest {
             withdrawal_id,
             chain_id,
             transaction_hash,
-            expected_customer,
+            expected_sender,
             expected_contract,
             expected_calldata_hash,
         })
@@ -70,8 +70,8 @@ impl WithdrawalObservationRequest {
         &self.transaction_hash
     }
 
-    pub fn expected_customer(&self) -> &[u8; 20] {
-        &self.expected_customer
+    pub fn expected_sender(&self) -> Option<&[u8; 20]> {
+        self.expected_sender.as_ref()
     }
 
     pub fn expected_contract(&self) -> &[u8; 20] {
@@ -169,10 +169,12 @@ impl WithdrawalChainObserver for DisabledWithdrawalChainObserver {
     }
 }
 
-/// Provider-neutral observation boundary for customer-broadcast withdrawals.
+/// Provider-neutral observation boundary for omnibus-vault withdrawals.
 ///
 /// The observer receives only immutable transaction expectations and cannot
-/// sign or broadcast a transaction. Production construction deliberately
+/// sign or broadcast a transaction. A relay sender is intentionally optional:
+/// V3 commits the operator's signature and vault calldata, not a customer
+/// address or per-user on-chain balance. Production construction deliberately
 /// defaults to the disabled observer until an RPC provider is configured.
 pub struct WithdrawalChainObservationService {
     observer: Arc<dyn WithdrawalChainObserver>,
@@ -233,7 +235,9 @@ fn validate_observation(
         }
         (_, Some(transaction)) => {
             if transaction.transaction_hash != request.transaction_hash
-                || transaction.sender != request.expected_customer
+                || request
+                    .expected_sender
+                    .is_some_and(|sender| transaction.sender != sender)
                 || transaction.destination != request.expected_contract
                 || transaction.calldata_hash != request.expected_calldata_hash
             {
@@ -309,7 +313,7 @@ mod tests {
             Uuid::from_u128(2),
             8453,
             [3; 32],
-            [4; 20],
+            None,
             [5; 20],
             [6; 32],
         )
@@ -345,7 +349,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deterministic_observer_returns_matching_customer_transaction() {
+    async fn deterministic_observer_returns_matching_omnibus_vault_transaction() {
         let service =
             WithdrawalChainObservationService::with_observer(Arc::new(DeterministicTestObserver {
                 observation: observation(),
@@ -368,7 +372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mismatched_customer_transaction_is_rejected() {
+    async fn relay_sender_is_not_treated_as_customer_identity() {
         let mut mismatched = observation();
         mismatched.transaction.as_mut().unwrap().sender = [9; 20];
         let service =
@@ -376,10 +380,7 @@ mod tests {
                 observation: mismatched,
             }));
 
-        assert!(matches!(
-            service.observe(&request()).await,
-            Err(WithdrawalChainObserverError::InvalidEvidence(_))
-        ));
+        assert!(service.observe(&request()).await.is_ok());
     }
 
     #[tokio::test]
@@ -425,7 +426,7 @@ mod tests {
                 Uuid::from_u128(2),
                 8453,
                 [3; 32],
-                [4; 20],
+                Some([4; 20]),
                 [5; 20],
                 [6; 32],
             ),

@@ -30,12 +30,11 @@ contract VelaSettlementMainnetForkTest is Test {
         deal(USDC, user, amount);
         vm.startPrank(user);
         IERC20(USDC).approve(address(settlement), amount);
-        settlement.depositToken(USDC, amount);
+        settlement.depositToken(keccak256("fork-account"), USDC, amount);
         vm.stopPrank();
 
         VelaSettlement.Withdrawal memory withdrawal = VelaSettlement.Withdrawal({
             requestId: bytes16(keccak256("fork-request")),
-            user: user,
             destination: destination,
             asset: USDC,
             amount: amount,
@@ -48,8 +47,8 @@ contract VelaSettlementMainnetForkTest is Test {
         settlement.executeWithdrawal(withdrawal, abi.encodePacked(r, s, v));
 
         assertEq(IERC20(USDC).balanceOf(destination), amount);
-        assertEq(settlement.getBalance(user, USDC), 0);
+        assertEq(IERC20(USDC).balanceOf(address(settlement)), 0);
         assertTrue(settlement.usedWithdrawalRequestIds(withdrawal.requestId));
-        assertTrue(settlement.usedWithdrawNonces(user, withdrawal.nonce));
+        assertTrue(settlement.usedWithdrawNonces(withdrawal.nonce));
     }
 }

@@ -5,17 +5,18 @@
 
 ## Decision
 
-The first release will use one audited omnibus custody vault on Base. The vault holds allowlisted assets while the authoritative off-chain ledger records customer beneficial ownership. It will not maintain per-user trading balances on-chain.
+The first release will use one audited V3 omnibus custody vault on Base. The vault holds allowlisted assets while the authoritative off-chain ledger records customer beneficial ownership. It will not maintain per-user trading balances on-chain, and it will not expose a customer self-service emergency-exit path.
 
-Deposits emit an event containing depositor, credited account identifier, asset, and actual received amount. ERC-20 deposits calculate the vault balance increase and reject unsupported, rebasing, and fee-on-transfer tokens. Native ETH uses a dedicated payable deposit entry point.
+Deposits emit an event containing a derived unique deposit ID, depositor, opaque account identifier, asset, and actual received amount. The account identifier is an opaque ledger key, not an on-chain balance owner. ERC-20 deposits calculate the vault balance increase and reject unsupported, rebasing, and fee-on-transfer tokens. Native ETH uses a dedicated payable deposit entry point.
 
-Withdrawals require a unique ledger request ID and a policy-authorized threshold signature bound to chain ID, vault address, destination, asset, amount, expiry, and nonce. Executed request IDs and nonces are permanently consumed. Pausing can stop deposits or withdrawals independently, but cannot alter ownership records.
+Withdrawals are relayed by any caller but require a policy-authorized EIP-712 signature bound to chain ID, vault address, unique ledger request ID, destination, asset, amount, expiry, nonce, policy hash, and approver hash. Executed request IDs and nonces are permanently consumed. Pausing can stop deposits or withdrawals independently, but cannot alter ownership records.
 
-Contract administration uses separate owner, guardian, and withdrawal-authorizer roles under hardware-backed threshold control. Upgrades require a timelock, independent review, and a tested migration path. The guardian may pause but may not transfer customer assets. Migration may move assets only to an allowlisted successor vault under the same liability reconciliation process.
+Contract administration uses separate owner, guardian, and withdrawal-operator roles under hardware-backed threshold control. The guardian may pause but may not transfer customer assets. The immutable vault has no upgrade function. Migration may move assets only to a compatible successor vault after both pause domains are active, owner proposal, independent guardian approval, a seven-day timelock, exact operator authorization, and a liability snapshot hash.
 
 ## Consequences
 
 - The existing per-user contract accounting is replaced rather than extended.
 - Solvency depends on continuous reconciliation between omnibus custody and ledger liabilities.
 - Contract events are evidence for the indexer, not authority to credit until finality and ledger commit.
-- Proof-based withdrawals and forced inclusion are Stage 2 additions, not launch assumptions.
+- No on-chain per-user balances or self-service emergency exit are launch assumptions.
+- Proof-based settlement and forced inclusion are Stage 2 additions, not launch assumptions.

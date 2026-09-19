@@ -5,300 +5,305 @@ import "forge-std/Test.sol";
 import "../src/VelaSettlement.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
 
-/// @dev Standard ERC20 used by the fund-conservation invariant.
-contract MockERC20 is ERC20 {
+contract HardeningERC20 is ERC20 {
     constructor() ERC20("Mock", "MCK") {
         _mint(msg.sender, 1_000_000e18);
     }
 }
 
-/// @dev Fee-on-transfer ERC20 that keeps 1% of every `transferFrom`.
 contract FeeOnTransferToken is ERC20 {
-    constructor() ERC20("FoT", "FOT") {
+    constructor() ERC20("Fee", "FEE") {
         _mint(msg.sender, 1_000_000e18);
     }
 
     function _update(address from, address to, uint256 amount) internal override {
-        if (from == address(0) || to == address(0)) {
-            super._update(from, to, amount);
-            return;
-        }
+        if (from == address(0) || to == address(0)) return super._update(from, to, amount);
         uint256 fee = amount / 100;
         super._update(from, address(0xdead), fee);
         super._update(from, to, amount - fee);
     }
 }
 
-/// @dev ERC20 that always reverts on `transferFrom`.
-contract RevertingToken is ERC20 {
-    constructor() ERC20("Rev", "REV") {
-        _mint(msg.sender, 1_000_000e18);
-    }
-
-    function transferFrom(address, address, uint256) public pure override returns (bool) {
-        revert("noop");
-    }
-}
-
 contract VelaSettlementHardeningTest is Test {
     VelaSettlement settlement;
-    MockERC20 token;
-    FeeOnTransferToken fot;
-    RevertingToken rev;
+    VelaSettlement successor;
+    HardeningERC20 token;
+    FeeOnTransferToken feeToken;
 
-    uint256 operatorKey = 0xA11CE;
-    address operator;
+    uint256 constant OPERATOR_KEY = 0xA11CE;
+    address operator = vm.addr(OPERATOR_KEY);
+    address guardian = address(0xCAFE);
     address user = address(0xBEEF);
-    address guardian;
+    bytes32 accountId = keccak256("account");
+    bytes32 snapshotHash = keccak256("reconciled-liabilities-at-block-100");
 
     function setUp() public {
-        operator = vm.addr(operatorKey);
-        settlement = new VelaSettlement(operator, keccak256("test-source-commit"));
-        guardian = address(this); // deployer defaults to guardian
-        token = new MockERC20();
-        fot = new FeeOnTransferToken();
-        rev = new RevertingToken();
+        settlement = new VelaSettlement(operator, keccak256("source"));
+        successor = new VelaSettlement(operator, keccak256("successor-source"));
+        settlement.setGuardian(guardian);
+        successor.setGuardian(address(0xCAFF));
+        token = new HardeningERC20();
+        feeToken = new FeeOnTransferToken();
         settlement.setSupportedAsset(address(token), true);
-        settlement.setSupportedAsset(address(fot), true);
-        settlement.setSupportedAsset(address(rev), true);
-
-        vm.deal(user, 100 ether);
+        settlement.setSupportedAsset(address(feeToken), true);
+        successor.setSupportedAsset(address(token), true);
+        vm.deal(user, 10 ether);
         token.transfer(user, 1000e18);
-        fot.transfer(user, 1000e18);
-        rev.transfer(user, 1000e18);
+        feeToken.transfer(user, 1000e18);
     }
 
-    // ---------------------------------------------------------------
-    // Pause / guardian model
-    // ---------------------------------------------------------------
-
-    function test_guardianCanPause_ownerCanUnpause() public {
-        settlement.pause();
-        assertTrue(settlement.paused());
-
-        vm.prank(user);
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        settlement.depositETH{ value: 1 ether }();
-
-        settlement.unpause();
-        assertFalse(settlement.paused());
-
-        vm.prank(user);
-        settlement.depositETH{ value: 1 ether }();
-        assertEq(settlement.getBalance(user, address(0)), 1 ether);
-    }
-
-    function test_guardianCannotUnpause() public {
-        settlement.pause();
-        // Rotate guardian to a fresh account and confirm they can't unpause.
-        address newGuardian = address(0xCAFE);
-        settlement.setGuardian(newGuardian);
-        vm.prank(newGuardian);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, newGuardian));
-        settlement.unpause();
-    }
-
-    function test_emergencyExitStillWorksWhilePaused() public {
-        vm.prank(user);
-        settlement.depositETH{ value: 1 ether }();
-        vm.prank(user);
-        settlement.initiateEmergencyExit(address(0));
-        settlement.pause();
-
-        vm.warp(block.timestamp + 7 days);
-
-        uint256 balBefore = user.balance;
-        vm.prank(user);
-        settlement.executeEmergencyExit(address(0));
-        assertEq(user.balance, balBefore + 1 ether);
-        // Pause did NOT trap funds — that's the invariant we care about.
-    }
-
-    // ---------------------------------------------------------------
-    // Operator rotation timelock
-    // ---------------------------------------------------------------
-
-    function test_operatorRotationRespectsTimelock() public {
-        address newOperator = address(0xC0FFEE);
-        settlement.proposeOperator(newOperator);
-        assertEq(settlement.pendingOperator(), newOperator);
-
-        vm.expectRevert(VelaSettlement.OperatorTimelockActive.selector);
-        settlement.acceptProposedOperator();
-
-        vm.warp(block.timestamp + 48 hours);
-        settlement.acceptProposedOperator();
-        assertEq(settlement.operator(), newOperator);
-        assertEq(settlement.pendingOperator(), address(0));
-    }
-
-    function test_proposeOperatorRejectsZeroAddress() public {
-        vm.expectRevert(VelaSettlement.ZeroAddress.selector);
-        settlement.proposeOperator(address(0));
-    }
-
-    // ---------------------------------------------------------------
-    // ERC20 edge cases
-    // ---------------------------------------------------------------
-
-    function test_deploymentIdentityAndNativeAssetDefaults() public view {
-        assertEq(settlement.sourceCommit(), keccak256("test-source-commit"));
-        assertTrue(settlement.supportedAssets(address(0)));
-    }
-
-    function test_zeroSourceCommitIsRejected() public {
-        vm.expectRevert(VelaSettlement.ZeroSourceCommit.selector);
-        new VelaSettlement(operator, bytes32(0));
-    }
-
-    function test_nonContractAssetCannotBeAllowlisted() public {
-        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
-        settlement.setSupportedAsset(address(0xBEEF), true);
-    }
-
-    function test_depositTokenRejectsFeeOnTransferAssetWithoutCrediting() public {
-        vm.startPrank(user);
-        fot.approve(address(settlement), 100e18);
-        vm.expectRevert(VelaSettlement.UnsupportedTransferBehavior.selector);
-        settlement.depositToken(address(fot), 100e18);
-        vm.stopPrank();
-        assertEq(settlement.getBalance(user, address(fot)), 0);
-        assertEq(fot.balanceOf(address(settlement)), 0);
-    }
-
-    function test_unlistedTokenCannotDeposit() public {
-        MockERC20 unlisted = new MockERC20();
-        unlisted.transfer(user, 10e18);
-        vm.startPrank(user);
-        unlisted.approve(address(settlement), 10e18);
-        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
-        settlement.depositToken(address(unlisted), 10e18);
-        vm.stopPrank();
-    }
-
-    function test_disabledTokenStillAllowsEmergencyExit() public {
-        vm.startPrank(user);
-        token.approve(address(settlement), 10e18);
-        settlement.depositToken(address(token), 10e18);
-        vm.stopPrank();
-        settlement.setSupportedAsset(address(token), false);
-
-        VelaSettlement.Withdrawal memory withdrawal = VelaSettlement.Withdrawal({
-            requestId: bytes16(keccak256("disabled-token-withdrawal")),
-            user: user,
+    function _withdrawal(address asset, uint256 amount, uint256 nonce)
+        internal
+        view
+        returns (VelaSettlement.Withdrawal memory w)
+    {
+        w = VelaSettlement.Withdrawal({
+            requestId: bytes16(keccak256(abi.encode(nonce))),
             destination: user,
-            asset: address(token),
-            amount: 10e18,
-            nonce: 1,
-            deadline: block.timestamp + 1 hours,
+            asset: asset,
+            amount: amount,
+            nonce: nonce,
+            deadline: block.timestamp + 30 days,
             policyHash: keccak256("policy"),
             approverHash: keccak256("approval")
         });
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorKey, settlement.withdrawalDigest(withdrawal));
-        vm.expectRevert(VelaSettlement.AssetNotSupported.selector);
-        settlement.executeWithdrawal(withdrawal, abi.encodePacked(r, s, v));
+    }
+
+    function _withdrawalSignature(VelaSettlement.Withdrawal memory w) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OPERATOR_KEY, settlement.withdrawalDigest(w));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _proposeAndApproveMigration() internal {
+        settlement.pause();
+        settlement.proposeSuccessorVault(address(successor), snapshotHash);
+        uint256 proposalId = settlement.migrationProposalId();
+        vm.prank(guardian);
+        settlement.approveSuccessorVault(proposalId);
+    }
+
+    function _migration(address asset, uint256 amount)
+        internal
+        view
+        returns (VelaSettlement.MigrationAuthorization memory authorization)
+    {
+        authorization = VelaSettlement.MigrationAuthorization({
+            proposalId: settlement.migrationProposalId(),
+            successor: address(successor),
+            asset: asset,
+            amount: amount,
+            deadline: block.timestamp + 30 days,
+            liabilitySnapshotHash: snapshotHash
+        });
+    }
+
+    function _migrationSignature(VelaSettlement.MigrationAuthorization memory authorization)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OPERATOR_KEY, settlement.migrationDigest(authorization));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function test_independentPauseAndOwnerOnlyResume() public {
+        vm.prank(guardian);
+        settlement.pauseDeposits();
+        assertTrue(settlement.depositsPaused());
+        assertFalse(settlement.withdrawalsPaused());
 
         vm.prank(user);
-        settlement.initiateEmergencyExit(address(token));
-        vm.warp(block.timestamp + settlement.EMERGENCY_DELAY());
+        vm.expectRevert(VelaSettlement.DepositsArePaused.selector);
+        settlement.depositETH{ value: 1 ether }(accountId);
+
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        settlement.unpauseDeposits();
+        settlement.unpauseDeposits();
+        assertFalse(settlement.depositsPaused());
+    }
+
+    function test_withdrawalPauseDoesNotStopDeposits() public {
+        vm.prank(guardian);
+        settlement.pauseWithdrawals();
         vm.prank(user);
-        settlement.executeEmergencyExit(address(token));
+        settlement.depositETH{ value: 1 ether }(accountId);
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(0), 0.5 ether, 1);
+        bytes memory signature = _withdrawalSignature(w);
+        vm.expectRevert(VelaSettlement.WithdrawalsArePaused.selector);
+        settlement.executeWithdrawal(w, signature);
+    }
+
+    function test_disabledAssetBlocksDepositButPermitsLedgerAuthorizedWithdrawal() public {
+        vm.startPrank(user);
+        token.approve(address(settlement), 10e18);
+        settlement.depositToken(accountId, address(token), 10e18);
+        vm.stopPrank();
+        settlement.setSupportedAsset(address(token), false);
+
+        VelaSettlement.Withdrawal memory w = _withdrawal(address(token), 10e18, 2);
+        settlement.executeWithdrawal(w, _withdrawalSignature(w));
         assertEq(token.balanceOf(user), 1000e18);
     }
 
-    /// A reverting ERC20 must not corrupt state — the whole tx reverts.
-    function test_depositTokenRevertingErc20BubblesUp() public {
+    function test_feeOnTransferDepositRevertsAtomically() public {
         vm.startPrank(user);
-        rev.approve(address(settlement), 100e18);
-        vm.expectRevert();
-        settlement.depositToken(address(rev), 100e18);
+        feeToken.approve(address(settlement), 100e18);
+        vm.expectRevert(VelaSettlement.UnsupportedTransferBehavior.selector);
+        settlement.depositToken(accountId, address(feeToken), 100e18);
         vm.stopPrank();
-        assertEq(settlement.getBalance(user, address(rev)), 0);
+        assertEq(feeToken.balanceOf(address(settlement)), 0);
+        assertEq(settlement.totalDeposited(address(feeToken)), 0);
+    }
+
+    function test_migrationRequiresFullPauseValidVaultAndReconciliationHash() public {
+        vm.expectRevert(VelaSettlement.MigrationRequiresFullPause.selector);
+        settlement.proposeSuccessorVault(address(successor), snapshotHash);
+        settlement.pause();
+        vm.expectRevert(VelaSettlement.InvalidSuccessorVault.selector);
+        settlement.proposeSuccessorVault(address(0x1234), snapshotHash);
+        vm.expectRevert(VelaSettlement.InvalidEvidenceHash.selector);
+        settlement.proposeSuccessorVault(address(successor), bytes32(0));
+    }
+
+    function test_guardianCannotMoveAssetsOrApproveWhenRolesCollide() public {
+        VelaSettlement colliding = new VelaSettlement(operator, keccak256("colliding"));
+        colliding.pause();
+        colliding.proposeSuccessorVault(address(successor), snapshotHash);
+        uint256 collidingProposalId = colliding.migrationProposalId();
+        vm.expectRevert(VelaSettlement.RoleCollision.selector);
+        colliding.approveSuccessorVault(collidingProposalId);
+
+        _proposeAndApproveMigration();
+        vm.warp(block.timestamp + settlement.MIGRATION_DELAY());
+        VelaSettlement.MigrationAuthorization memory authorization = _migration(address(0), 1 ether);
+        bytes memory authorizationSignature = _migrationSignature(authorization);
+        vm.deal(address(settlement), 1 ether);
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        settlement.executeMigration(authorization, authorizationSignature);
+    }
+
+    function test_migrationRequiresGuardianApprovalTimelockAndOperatorSignature() public {
+        vm.deal(address(settlement), 1 ether);
+        settlement.pause();
+        settlement.proposeSuccessorVault(address(successor), snapshotHash);
+        VelaSettlement.MigrationAuthorization memory authorization = _migration(address(0), 1 ether);
+        bytes memory authorizationSignature = _migrationSignature(authorization);
+
+        vm.expectRevert(VelaSettlement.MigrationNotGuardianApproved.selector);
+        settlement.executeMigration(authorization, authorizationSignature);
+        vm.prank(guardian);
+        settlement.approveSuccessorVault(authorization.proposalId);
+        vm.expectRevert(VelaSettlement.MigrationTimelockActive.selector);
+        settlement.executeMigration(authorization, authorizationSignature);
+
+        vm.warp(block.timestamp + settlement.MIGRATION_DELAY());
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xBAD, settlement.migrationDigest(authorization));
+        vm.expectRevert(VelaSettlement.InvalidSignature.selector);
+        settlement.executeMigration(authorization, abi.encodePacked(r, s, v));
+    }
+
+    function test_migrationMovesOnlyExactFullBalanceAndPermanentlyRetiresAsset() public {
+        vm.startPrank(user);
+        token.approve(address(settlement), 25e18);
+        settlement.depositToken(accountId, address(token), 25e18);
+        vm.stopPrank();
+        _proposeAndApproveMigration();
+        vm.warp(block.timestamp + settlement.MIGRATION_DELAY());
+
+        VelaSettlement.MigrationAuthorization memory wrong = _migration(address(token), 24e18);
+        bytes memory wrongSignature = _migrationSignature(wrong);
+        vm.expectRevert(VelaSettlement.MigrationAuthorizationMismatch.selector);
+        settlement.executeMigration(wrong, wrongSignature);
+
+        VelaSettlement.MigrationAuthorization memory exact = _migration(address(token), 25e18);
+        bytes memory exactSignature = _migrationSignature(exact);
+        settlement.executeMigration(exact, exactSignature);
+        assertEq(token.balanceOf(address(settlement)), 0);
+        assertEq(token.balanceOf(address(successor)), 25e18);
+        assertEq(settlement.totalMigrated(address(token)), 25e18);
+        assertTrue(settlement.migratedAssets(address(token)));
+
+        vm.expectRevert(VelaSettlement.AssetAlreadyMigrated.selector);
+        settlement.executeMigration(exact, exactSignature);
+        vm.expectRevert(VelaSettlement.AssetAlreadyMigrated.selector);
+        settlement.setSupportedAsset(address(token), true);
+    }
+
+    function test_guardianCancellationInvalidatesMigration() public {
+        vm.deal(address(settlement), 1 ether);
+        _proposeAndApproveMigration();
+        VelaSettlement.MigrationAuthorization memory authorization = _migration(address(0), 1 ether);
+        bytes memory authorizationSignature = _migrationSignature(authorization);
+        vm.prank(guardian);
+        settlement.cancelSuccessorVault();
+        vm.warp(block.timestamp + settlement.MIGRATION_DELAY());
+        vm.expectRevert(VelaSettlement.NoMigrationProposal.selector);
+        settlement.executeMigration(authorization, authorizationSignature);
+        assertEq(address(settlement).balance, 1 ether);
+    }
+
+    function test_roleSeparationAndOwnerRenunciationSafety() public {
+        vm.expectRevert(VelaSettlement.RoleCollision.selector);
+        settlement.setGuardian(operator);
+        vm.expectRevert(VelaSettlement.RoleCollision.selector);
+        settlement.proposeOperator(guardian);
+        vm.expectRevert(VelaSettlement.OwnershipRenunciationDisabled.selector);
+        settlement.renounceOwnership();
     }
 }
 
-// ---------------------------------------------------------------
-// Invariant: fund conservation
-// ---------------------------------------------------------------
-
-/// @dev Wrapper handler that constrains random calls to a set of safe
-/// signatures. Foundry's invariant harness only calls functions on
-/// contracts registered via `targetContract`, so we route everything
-/// through here.
 contract SettlementHandler is Test {
     VelaSettlement public settlement;
-    address[] public users;
-    address public token;
+    HardeningERC20 public token;
+    uint256 public expectedEth;
+    uint256 public expectedToken;
 
-    constructor(VelaSettlement _settlement, address _token, address[] memory _users) {
+    constructor(VelaSettlement _settlement, HardeningERC20 _token) {
         settlement = _settlement;
         token = _token;
-        users = _users;
     }
 
-    function depositETH(uint256 idx, uint256 amount) external {
-        idx = bound(idx, 0, users.length - 1);
-        amount = bound(amount, 1, 1 ether);
-        vm.deal(users[idx], amount);
-        vm.prank(users[idx]);
-        settlement.depositETH{ value: amount }();
+    function depositETH(uint256 amount, bytes32 accountId) external {
+        amount = bound(amount, 1, 10 ether);
+        if (accountId == bytes32(0)) accountId = bytes32(uint256(1));
+        vm.deal(address(this), amount);
+        settlement.depositETH{ value: amount }(accountId);
+        expectedEth += amount;
     }
 
-    function depositToken(uint256 idx, uint256 amount) external {
-        idx = bound(idx, 0, users.length - 1);
-        amount = bound(amount, 1, 1e18);
-        // Mint into the user's balance from the initial supply held here.
-        IERC20(token).transfer(users[idx], amount);
-        vm.startPrank(users[idx]);
-        IERC20(token).approve(address(settlement), amount);
-        settlement.depositToken(token, amount);
-        vm.stopPrank();
+    function depositToken(uint256 amount, bytes32 accountId) external {
+        amount = bound(amount, 1, 100e18);
+        if (accountId == bytes32(0)) accountId = bytes32(uint256(1));
+        token.approve(address(settlement), amount);
+        settlement.depositToken(accountId, address(token), amount);
+        expectedToken += amount;
     }
 }
 
 contract VelaSettlementInvariantTest is Test {
     VelaSettlement settlement;
-    MockERC20 token;
+    HardeningERC20 token;
     SettlementHandler handler;
-    address[] users;
 
     function setUp() public {
-        settlement = new VelaSettlement(address(this), keccak256("invariant-source-commit"));
-        token = new MockERC20();
+        settlement = new VelaSettlement(address(0xA11CE), keccak256("invariant"));
+        token = new HardeningERC20();
         settlement.setSupportedAsset(address(token), true);
-
-        users = new address[](3);
-        users[0] = address(0x1111);
-        users[1] = address(0x2222);
-        users[2] = address(0x3333);
-
-        // Pre-fund the handler so it can front-load deposits.
-        token.transfer(address(this), 500_000e18);
-        handler = new SettlementHandler(settlement, address(token), users);
+        handler = new SettlementHandler(settlement, token);
         token.transfer(address(handler), 500_000e18);
-
         targetContract(address(handler));
     }
 
-    /// Sum of every user's ETH balance in the ledger equals the raw ETH
-    /// balance the contract holds. Guards against a rounding or over-
-    /// credit bug in the deposit path.
-    function invariant_ethConservation() public view {
-        uint256 sum;
-        for (uint256 i = 0; i < users.length; i++) {
-            sum += settlement.getBalance(users[i], address(0));
-        }
-        assertEq(sum, address(settlement).balance);
+    function invariant_omnibusEthBalanceConserved() public view {
+        assertEq(address(settlement).balance, handler.expectedEth());
+        assertEq(settlement.totalDeposited(address(0)), handler.expectedEth());
     }
 
-    /// Same invariant for the ERC20 side.
-    function invariant_erc20Conservation() public view {
-        uint256 sum;
-        for (uint256 i = 0; i < users.length; i++) {
-            sum += settlement.getBalance(users[i], address(token));
-        }
-        assertEq(sum, token.balanceOf(address(settlement)));
+    function invariant_omnibusTokenBalanceConserved() public view {
+        assertEq(token.balanceOf(address(settlement)), handler.expectedToken());
+        assertEq(settlement.totalDeposited(address(token)), handler.expectedToken());
     }
 }

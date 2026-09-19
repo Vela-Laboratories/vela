@@ -765,11 +765,12 @@ impl Ledger {
         })?;
         let vault_addresses = sqlx::query_scalar::<_, String>(
             r#"
-            SELECT owner_reference FROM ledger_accounts
-            WHERE asset_id = $1 AND owner_type = 'custody' AND account_type = 'custody_vault'
+            SELECT deployment.vault_address
+            FROM ledger_chain_deployments deployment
+            WHERE deployment.chain_id = $1 AND deployment.enabled
             "#,
         )
-        .bind(asset.0)
+        .bind(chain_id)
         .fetch_all(&mut *tx)
         .await?;
         let vault_address = match vault_addresses.as_slice() {
@@ -777,8 +778,8 @@ impl Ledger {
             [] => {
                 return Err(LedgerError::MissingAccount {
                     asset_code: command.asset_code.clone(),
-                    owner_reference: "configured custody vault".to_owned(),
-                    account_type: "custody_vault".to_owned(),
+                    owner_reference: "enabled custody deployment".to_owned(),
+                    account_type: "chain_deployment_registry".to_owned(),
                 })
             }
             _ => {
@@ -1355,6 +1356,30 @@ impl Ledger {
         let nonce = withdrawal.nonce.clone().ok_or_else(|| {
             LedgerError::InvalidWithdrawal("withdrawal authorization requires a nonce".to_owned())
         })?;
+        let v3_contract_registered = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM ledger_chain_deployments deployment
+                JOIN ledger_withdrawal_contract_capabilities capability
+                  ON capability.deployment_id = deployment.id
+                WHERE deployment.enabled
+                  AND deployment.chain_id = $1
+                  AND lower(deployment.vault_address) = lower($2)
+                  AND capability.authorization_version = 'eip712_v3'
+            )
+            "#,
+        )
+        .bind(withdrawal.chain_id)
+        .bind(&withdrawal.vault_address)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !v3_contract_registered {
+            return Err(LedgerError::InvalidWithdrawal(
+                "withdrawal vault is not registered for the omnibus V3 authorization ABI"
+                    .to_owned(),
+            ));
+        }
         let canonical_payload = authorization_payload(&withdrawal, &nonce, command);
         let hashes = contract_authorization_hashes(&withdrawal, &nonce, command)?;
         let digest = hashes.digest;
@@ -1368,7 +1393,7 @@ impl Ledger {
                 domain_separator, struct_hash, policy_hash, approver_hash,
                 policy_version, approved_by, approved_at
             )
-            VALUES ($1, $2, 'vela.withdrawal.authorization.eip712.v2', $3, lower($4),
+            VALUES ($1, $2, 'vela.withdrawal.authorization.eip712.v3', $3, lower($4),
                     lower($5), lower($6), $7, lower($8), $9, $10, $11, $12, $13,
                     $14, $15, $16, $17, $18, $19, $20)
             "#,
@@ -3359,11 +3384,10 @@ fn authorization_payload(
     command: &ApproveWithdrawal,
 ) -> String {
     format!(
-        "vela.withdrawal.authorization.eip712.v2|request_id={}|chain_id={}|vault={}|customer={}|destination={}|asset={}|asset_address={}|amount_atomic={}|nonce={}|deadline={}|policy={}|approved_by={}",
+        "vela.withdrawal.authorization.eip712.v3|request_id={}|chain_id={}|vault={}|destination={}|asset={}|asset_address={}|amount_atomic={}|nonce={}|deadline={}|policy={}|approved_by={}",
         withdrawal.id,
         withdrawal.chain_id,
         withdrawal.vault_address.to_ascii_lowercase(),
-        withdrawal.customer_reference.to_ascii_lowercase(),
         withdrawal.destination_address.to_ascii_lowercase(),
         withdrawal.asset_code,
         asset_address(withdrawal).to_ascii_lowercase(),
@@ -3393,11 +3417,11 @@ fn contract_authorization_hashes(
     )
     .into();
     let withdrawal_type_hash: [u8; 32] = Keccak256::digest(
-        b"Withdrawal(bytes16 requestId,address user,address destination,address asset,uint256 amount,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes32 approverHash)",
+        b"Withdrawal(bytes16 requestId,address destination,address asset,uint256 amount,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes32 approverHash)",
     )
     .into();
     let name_hash: [u8; 32] = Keccak256::digest(b"VelaSettlement").into();
-    let version_hash: [u8; 32] = Keccak256::digest(b"2").into();
+    let version_hash: [u8; 32] = Keccak256::digest(b"3").into();
     let policy_hash: [u8; 32] = Keccak256::digest(command.policy_version.as_bytes()).into();
     let approver_hash: [u8; 32] = Keccak256::digest(command.approved_by.as_bytes()).into();
 
@@ -3411,10 +3435,9 @@ fn contract_authorization_hashes(
 
     let mut request_id_word = [0_u8; 32];
     request_id_word[..16].copy_from_slice(withdrawal.id.as_bytes());
-    let mut encoded = Vec::with_capacity(32 * 10);
+    let mut encoded = Vec::with_capacity(32 * 9);
     encoded.extend_from_slice(&withdrawal_type_hash);
     encoded.extend_from_slice(&request_id_word);
-    encoded.extend_from_slice(&address_word(&withdrawal.customer_reference)?);
     encoded.extend_from_slice(&address_word(&withdrawal.destination_address)?);
     encoded.extend_from_slice(&address_word(asset_address(withdrawal))?);
     encoded.extend_from_slice(&uint_word(
@@ -3735,7 +3758,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             hex_digest(&hashes.digest),
-            "e4e370d5cee128859be93c6c83d94a246f2fb7996d6fc9499ea81e0277fc89a0"
+            "21207c5c9bc8aa5999379b92ff1ac80a4a48daff0a0f10763771677aa4b2b68b"
         );
     }
 }

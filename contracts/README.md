@@ -1,9 +1,11 @@
 # Vela contracts
 
-The initial consumer-exchange scope is `VelaSettlement`: allowlisted ETH/USDC
-custody, unique deposit identities, policy-bound EIP-712 withdrawals, emergency
-exit, distinct owner/operator/guardian controls, and optional L2 sequencer
-health gating. The repository remains testnet-only and unaudited for real funds.
+The initial consumer-exchange scope is the V3 `VelaSettlement` omnibus vault:
+allowlisted ETH/USDC custody, unique deposit identities keyed by an opaque ledger
+account ID, policy-bound EIP-712 withdrawals that may be relayed by any caller,
+and distinct owner/operator/guardian controls. It has no on-chain per-user
+balances and no customer self-service emergency-exit path. The repository
+remains testnet-only and unaudited for real funds.
 
 ## Foundry
 
@@ -71,8 +73,12 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+$ forge script script/Deploy.s.sol:Deploy --rpc-url <your_rpc_url> --broadcast --verify
 ```
+
+Deployment requires explicit chain, operator, owner, guardian, canonical asset,
+and source-commit inputs. Do not deploy the legacy Counter, Perp, VLP, or
+Sequencer contracts as part of the initial custody deployment.
 
 ### Cast
 

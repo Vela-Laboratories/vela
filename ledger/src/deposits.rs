@@ -97,7 +97,9 @@ pub struct RpcFinalityObservation {
     pub vault_address: String,
     pub vault_deposit_id: String,
     pub sender_address: String,
-    pub beneficiary_reference: String,
+    /// Opaque account ID emitted by the omnibus vault. It is ledger routing
+    /// metadata, not an on-chain customer balance identity.
+    pub credited_account_reference: String,
     pub asset_address: Option<String>,
     pub actual_amount: BigDecimal,
 }
@@ -663,7 +665,7 @@ impl Ledger {
             || !event.5.eq_ignore_ascii_case(&finality.first.vault_address)
             || event.6 != finality.first.vault_deposit_id
             || !event.7.eq_ignore_ascii_case(&finality.first.sender_address)
-            || stored.customer_reference != finality.first.beneficiary_reference
+            || stored.customer_reference != finality.first.credited_account_reference
             || !optional_address_eq(&event.8, &finality.first.asset_address)
             || event.9 != finality.first.actual_amount
         {
@@ -1560,7 +1562,7 @@ fn validate_observation(observation: &ObserveDeposit) -> Result<(), LedgerError>
         || observation.event.block_number < 0
         || observation.event.transaction_index < 0
         || observation.event.log_index < 0
-        || observation.event.vault_deposit_id.trim().is_empty()
+        || !is_hex_bytes(&observation.event.vault_deposit_id, 32)
         || !is_hex_bytes(&observation.event.block_hash, 32)
         || !is_hex_bytes(&observation.event.transaction_hash, 32)
         || !is_hex_bytes(&observation.event.vault_address, 20)
@@ -1596,8 +1598,8 @@ fn validate_finality_agreement(finality: &FinalizeDeposit) -> Result<(), LedgerE
             .asset_address
             .as_ref()
             .is_none_or(|address| is_hex_bytes(address, 20))
-        && !first.vault_deposit_id.trim().is_empty()
-        && !first.beneficiary_reference.trim().is_empty()
+        && is_hex_bytes(&first.vault_deposit_id, 32)
+        && !first.credited_account_reference.trim().is_empty()
         && first.actual_amount > BigDecimal::zero()
         && first.actual_amount.is_integer();
     let providers_agree = first.chain_id == second.chain_id
@@ -1619,7 +1621,7 @@ fn validate_finality_agreement(finality: &FinalizeDeposit) -> Result<(), LedgerE
         && first
             .sender_address
             .eq_ignore_ascii_case(&second.sender_address)
-        && first.beneficiary_reference == second.beneficiary_reference
+        && first.credited_account_reference == second.credited_account_reference
         && optional_address_eq(&first.asset_address, &second.asset_address)
         && first.actual_amount == second.actual_amount;
     if !provider_names_valid || !evidence_valid || !providers_agree {

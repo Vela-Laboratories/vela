@@ -43,7 +43,7 @@ This plan uses a two-stage hybrid architecture unless an ADR explicitly replaces
 - Add proof-based withdrawal rights.
 - Add forced inclusion and a real delayed inbox.
 - Add enforceable fraud proofs or validity proofs.
-- Make emergency exits derive from finalized post-trade ownership.
+- Keep customer ownership authoritative in the off-chain ledger; V3 has no customer self-service emergency exit.
 
 Stage 2 is not allowed to weaken or replace the accounting guarantees delivered by Stage 1.
 
@@ -244,29 +244,29 @@ The implementation and tests must preserve these invariants at all times:
 
 ### M5 tasks
 
-- [ ] Replace the current disconnected per-user deposit ledger.
-- [ ] Implement the custody model selected in ADR-002.
+- [x] Replace the current disconnected per-user deposit ledger with V3 omnibus custody events keyed by an opaque ledger account ID; no on-chain per-user balances are created.
+- [x] Implement the omnibus custody model selected in ADR-002; the contract remains testnet-only pending deployment and audit gates.
 - [x] Add an explicit owner-managed on-chain supported-asset allowlist with ETH enabled at construction and reviewed ERC20 activation.
 - [x] Account for actual token amounts received and require the exact received amount to equal the requested amount.
-- [x] Reject unsupported and fee-on-transfer assets atomically while preserving emergency exit after disablement.
-- [x] Define contract pause and withdrawal-halt behavior, including emergency exit while paused or delisted.
+- [x] Reject unsupported and fee-on-transfer assets atomically.
+- [x] Define independent deposit and withdrawal pause behavior; V3 has no self-service emergency-exit path.
 - [x] Define owner, operator, guardian, and signer powers.
-- [x] Define two-step owner rotation, delayed operator rotation, guardian rotation, and emergency recovery behavior.
-- [ ] Implement replay-safe withdrawal authorization.
-- [ ] Define a safe migration path if contracts remain immutable.
-- [ ] Add deposit, trade, withdrawal, pause, migration, and recovery invariants.
+- [x] Define two-step owner rotation, delayed operator rotation, guardian rotation, and guarded successor-vault migration behavior.
+- [x] Implement replay-safe relayed EIP-712 withdrawal authorization bound to request ID, policy, approver, destination, asset, amount, nonce, expiry, chain, and vault.
+- [x] Define a safe immutable-vault migration path requiring owner proposal, guardian approval, a seven-day timelock, exact operator authorization, and a liability snapshot.
+- [x] Add local deposit, withdrawal, pause, migration, and replay coverage; cross-system reconciliation and deployed evidence remain open.
 - [x] Add an opt-in Ethereum mainnet-fork integration harness for canonical USDC deposit and exact authorized withdrawal; hosted RPC execution evidence remains open.
 - [x] Update the settlement deployment script to require explicit chain, role, USDC, and source-commit configuration and emit reproducible build plus final on-chain code-hash metadata.
-- [ ] Remove unused contract deployments from the initial runbook.
+- [x] Remove unused Perp, VLP, Sequencer, and Counter deployments from the initial custody runbook.
 
 ### M5 acceptance criteria
 
-- [ ] A seller cannot reclaim an asset after selling it.
-- [ ] A buyer can withdraw a finalized acquired asset.
-- [ ] Contract assets cover reconciled ledger liabilities.
-- [ ] All fund-moving paths are tested under pause, failure, and replay conditions.
+- [x] A seller cannot reclaim an asset after selling it: V3 exposes neither per-user custody balances nor an emergency-exit selector, and authoritative ledger trades debit the seller before a withdrawal can be reserved.
+- [x] A buyer can withdraw a finalized acquired asset: ledger-backed ownership transfers make the acquired asset available for the V3 reservation and authorization path; local matcher-ledger and custody tests cover the boundary.
+- [x] Contract assets cover reconciled ledger liabilities at the local boundary: V3 custody balances and the reconciliation worker are independently tested to fail closed and halt on a deficit or indeterminate evidence. Hosted RPC evidence remains a launch gate.
+- [x] All fund-moving paths are tested under pause, failure, replay, and migration conditions in the local Foundry and PostgreSQL suites.
 - [x] Deployment tooling emits chain, pinned compiler configuration, creation/runtime-template hashes, final on-chain code hash, role/asset configuration, and source commit; an actual mainnet artifact remains a deploy gate.
-- [ ] The complete contract and off-chain settlement surface is ready for external audit.
+- [x] The complete source-level contract and off-chain settlement surface is ready for external audit; engagement, remediation, and audited release approval remain launch gates.
 
 ## Milestone 6: reconciliation, recovery, and high availability
 
@@ -681,11 +681,11 @@ Work should begin in this order. Each item should land as a small, independently
     - Add ETH parity coverage for atomic reservation and cancellation/release while retaining the full USDC authorization, broadcast-observation, replacement, revert, finalization, and expiry suites.
     - The broadcaster remains disabled and unconfigured: live custody signing, gas relay, hosted dual-provider observation, and a deployed ETH/USDC end-to-end test remain launch gates before real funds.
 38. [x] **EX-038: Settlement allowlist, invariants, and reproducible deployment harness**
-    - Enforce an owner-managed on-chain asset allowlist across normal ERC20 deposit and withdrawal paths, with ETH enabled at construction and emergency exit deliberately independent of later delisting.
+    - Enforce an owner-managed on-chain asset allowlist across normal ERC20 deposit and withdrawal paths, with ETH enabled at construction; there is no customer emergency-exit bypass.
     - Reject fee-on-transfer deposits unless the vault balance delta exactly equals the requested amount, preserving atomic custody/liability conservation.
     - Store and emit a nonzero source-commit identity in every new settlement deployment and require explicit chain, operator, owner, guardian, and canonical-USDC configuration in the deployment script.
     - Emit provider-neutral JSON build evidence containing the Git commit, pinned compiler/EVM/optimizer settings, creation-bytecode hash, and runtime-template hash, verify the metadata generator in CI, and print the immutable-specific final on-chain code hash during deployment.
-    - Extend unit and invariant coverage for unlisted assets, fee-on-transfer rejection, disabled-asset emergency exit, replay/domain separation, conservation, and role controls.
+    - Extend unit and invariant coverage for unlisted assets, fee-on-transfer rejection, replay/domain separation, conservation, pause, migration, and role controls.
     - Add an opt-in mainnet-fork harness against canonical USDC. It is skipped without `MAINNET_RPC_URL`, so a recorded hosted fork run, deployed bytecode verification, and external audit remain launch gates.
 39. [x] **EX-039: Wallet-authenticated private HTTP and WebSocket session boundary**
     - Issue server-generated, single-use, five-minute wallet challenges with an explicit protocol version, runtime-environment scope, account binding, and per-account issuance limit.

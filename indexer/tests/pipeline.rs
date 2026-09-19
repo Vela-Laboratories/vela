@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 const VAULT: &str = "0x1111111111111111111111111111111111111111";
 const CUSTOMER: &str = "0x2222222222222222222222222222222222222222";
+const ACCOUNT_ID: &str = "0x3333333333333333333333333333333333333333333333333333333333333333";
 const USDC: &str = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 
 #[derive(Clone)]
@@ -117,7 +118,7 @@ impl Fixture {
                 chain_id: 8453,
                 network: "base".to_owned(),
                 vault_address: VAULT.to_owned(),
-                deployment_version: "v2".to_owned(),
+                deployment_version: "v3".to_owned(),
                 runtime_code_hash,
                 start_block: 100,
             })
@@ -187,9 +188,9 @@ fn deposit_log() -> RpcLog {
             DEPOSIT_EVENT_TOPIC.to_owned(),
             hash(0x33),
             padded_address(CUSTOMER),
-            padded_address(USDC),
+            ACCOUNT_ID.to_owned(),
         ],
-        data: format!("0x{:064x}", 1_500_000_u64),
+        data: format!("0x{}{:064x}", &padded_address(USDC)[2..], 1_500_000_u64),
         block_number: "0x6e".to_owned(),
         block_hash: hash(0x44),
         transaction_hash: hash(0x55),
@@ -227,7 +228,7 @@ async fn agreed_finalized_event_is_credited_once_and_checkpointed(pool: PgPool) 
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'
         "#,
     )
-    .bind(CUSTOMER)
+    .bind(ACCOUNT_ID)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -434,7 +435,7 @@ async fn finalized_history_contradiction_halts_and_reverses_credit_to_pending(po
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'
         "#,
     )
-    .bind(CUSTOMER)
+    .bind(ACCOUNT_ID)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -446,7 +447,7 @@ async fn finalized_history_contradiction_halts_and_reverses_credit_to_pending(po
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_pending'
         "#,
     )
-    .bind(CUSTOMER)
+    .bind(ACCOUNT_ID)
     .fetch_one(&pool)
     .await
     .unwrap();

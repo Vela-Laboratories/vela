@@ -15,6 +15,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 const CUSTOMER: &str = "0x1111111111111111111111111111111111111111";
+const DESTINATION: &str = "0x4444444444444444444444444444444444444444";
 const VAULT: &str = "0x2222222222222222222222222222222222222222";
 
 struct Fixture {
@@ -23,6 +24,7 @@ struct Fixture {
     available_id: Uuid,
     reserved_id: Uuid,
     custody_withdrawn_id: Uuid,
+    deployment_id: Uuid,
 }
 
 impl Fixture {
@@ -87,6 +89,40 @@ impl Fixture {
         ] {
             ledger.create_account(&account).await.unwrap();
         }
+        let deployment_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_chain_deployments (
+                id, chain_id, network, vault_address, deployment_version,
+                runtime_code_hash, deposit_event_signature, deposit_event_topic,
+                finality_policy, start_block
+            ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v3',
+                      $3, 'Deposited(bytes32,address,bytes32,address,uint256)', $4,
+                      'rpc_finalized_two_provider', 0)
+            "#,
+        )
+        .bind(deployment_id)
+        .bind(VAULT)
+        .bind(format!("0x{}", "11".repeat(32)))
+        .bind(format!("0x{}", "22".repeat(32)))
+        .execute(ledger.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_contract_capabilities (
+                deployment_id, authorization_version, execution_event_signature,
+                execution_event_topic, configured_by, evidence
+            ) VALUES ($1, 'eip712_v3',
+                      'WithdrawalExecuted(bytes16,address,address,uint256,uint256,uint256,bytes32,bytes32)',
+                      $2, 'risk:configurer', '{"ticket":"EX-026-test"}')
+            "#,
+        )
+        .bind(deployment_id)
+        .bind(format!("0x{}", "33".repeat(32)))
+        .execute(ledger.pool())
+        .await
+        .unwrap();
         ledger
             .post(&PostTransaction {
                 id: Uuid::new_v4(),
@@ -114,6 +150,7 @@ impl Fixture {
             available_id,
             reserved_id,
             custody_withdrawn_id,
+            deployment_id,
         }
     }
 
@@ -138,40 +175,6 @@ impl Fixture {
         customer_count: i64,
         platform_amount: i64,
     ) -> Uuid {
-        let deployment_id = Uuid::new_v4();
-        sqlx::query(
-            r#"
-            INSERT INTO ledger_chain_deployments (
-                id, chain_id, network, vault_address, deployment_version,
-                runtime_code_hash, deposit_event_signature, deposit_event_topic,
-                finality_policy, start_block
-            ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v2',
-                      $3, 'Deposited(bytes32,address,address,uint256)', $4,
-                      'rpc_finalized_two_provider', 0)
-            "#,
-        )
-        .bind(deployment_id)
-        .bind(VAULT)
-        .bind(format!("0x{}", "11".repeat(32)))
-        .bind(format!("0x{}", "22".repeat(32)))
-        .execute(self.ledger.pool())
-        .await
-        .unwrap();
-        sqlx::query(
-            r#"
-            INSERT INTO ledger_withdrawal_contract_capabilities (
-                deployment_id, authorization_version, execution_event_signature,
-                execution_event_topic, configured_by, evidence
-            ) VALUES ($1, 'eip712_v2',
-                      'WithdrawalExecuted(bytes16,address,address,address,uint256,uint256,uint256,bytes32,bytes32)',
-                      $2, 'risk:configurer', '{"ticket":"EX-026-test"}')
-            "#,
-        )
-        .bind(deployment_id)
-        .bind(format!("0x{}", "33".repeat(32)))
-        .execute(self.ledger.pool())
-        .await
-        .unwrap();
         sqlx::query(
             r#"
             INSERT INTO ledger_withdrawal_confirmation_policies (
@@ -180,9 +183,10 @@ impl Fixture {
             ) VALUES ($1, 'confirmation.test-v1', 2, true, 2,
                       transaction_timestamp() - interval '1 second',
                       'risk:configurer', '{"ticket":"EX-026-test"}')
+            ON CONFLICT (deployment_id, policy_version) DO NOTHING
             "#,
         )
-        .bind(deployment_id)
+        .bind(self.deployment_id)
         .execute(self.ledger.pool())
         .await
         .unwrap();
@@ -207,7 +211,7 @@ impl Fixture {
         .execute(self.ledger.pool())
         .await
         .unwrap();
-        deployment_id
+        self.deployment_id
     }
 
     fn evaluation(
@@ -368,6 +372,24 @@ async fn eth_uses_the_same_atomic_reservation_and_release_state_machine(pool: Pg
     ] {
         ledger.create_account(&account).await.unwrap();
     }
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_chain_deployments (
+            id, chain_id, network, vault_address, deployment_version,
+            runtime_code_hash, deposit_event_signature, deposit_event_topic,
+            finality_policy, start_block
+        ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v3',
+                  $3, 'Deposited(bytes32,address,bytes32,address,uint256)', $4,
+                  'rpc_finalized_two_provider', 0)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(VAULT)
+    .bind(format!("0x{}", "11".repeat(32)))
+    .bind(format!("0x{}", "22".repeat(32)))
+    .execute(ledger.pool())
+    .await
+    .unwrap();
     let amount = BigDecimal::from(1_000_000_000_000_000_000_i128);
     ledger
         .post(&PostTransaction {
@@ -491,7 +513,8 @@ async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_saf
     fixture
         .configure_policy("withdrawal-policy.v1", 500_000, 750_000, 3, 900_000)
         .await;
-    let reservation = fixture.reservation(41, 250_000);
+    let mut reservation = fixture.reservation(41, 250_000);
+    reservation.destination_address = DESTINATION.to_owned();
     fixture
         .ledger
         .reserve_withdrawal(&reservation)
@@ -537,7 +560,6 @@ async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_saf
         reservation.withdrawal_id.to_string(),
         "chain_id=84532".to_owned(),
         format!("vault={VAULT}"),
-        format!("customer={CUSTOMER}"),
         "asset=USDC".to_owned(),
         "asset_address=0x3333333333333333333333333333333333333333".to_owned(),
         "amount_atomic=250000".to_owned(),
@@ -545,6 +567,12 @@ async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_saf
     ] {
         assert!(authorization.canonical_payload.contains(&expected));
     }
+    assert!(!authorization.canonical_payload.contains(CUSTOMER));
+    assert!(authorization.canonical_payload.contains(DESTINATION));
+    assert_eq!(
+        authorization.envelope_version,
+        "vela.withdrawal.authorization.eip712.v3"
+    );
 
     let begun = fixture
         .ledger
