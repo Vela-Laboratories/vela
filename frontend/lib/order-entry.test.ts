@@ -60,4 +60,12 @@ describe('order ticket payload', () => {
     expect(() => prepareOrder({ ...base, minSize: '6' })).toThrow('Minimum immediate fill')
     expect(() => prepareOrder({ ...base, minSize: '0' })).toThrow('Minimum immediate fill')
   })
+
+  it('binds the self-trade prevention mode', () => {
+    const order = prepareOrder({ ...base, stp: 'CancelTaker' })
+    expect(order.stp).toBe('CancelTaker')
+    expect(orderSigningMessage(order)).toBe(
+      '["vela:order:v2","BTC-USDC","Bid","GoodTillCanceled",100000000,5000000,42,null,"CancelTaker",null,null]',
+    )
+  })
 })

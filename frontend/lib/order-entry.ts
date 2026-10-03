@@ -10,6 +10,7 @@ export interface OrderEntry {
   size: string
   displaySize?: string
   minSize?: string
+  stp?: NonNullable<PostOrderBody['stp']>
   nonce: number
   address: string
 }
@@ -48,6 +49,7 @@ export function prepareOrder(entry: OrderEntry): Omit<PostOrderBody, 'signature'
     nonce: entry.nonce,
     address: entry.address,
     signature_version: 2,
+    stp: entry.stp ?? 'None',
     ...(displayQuantity === undefined ? {} : { display_quantity: displayQuantity }),
     ...(minQuantity === undefined ? {} : { min_quantity: minQuantity }),
   }
