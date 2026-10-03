@@ -1679,17 +1679,8 @@ async fn post_order(
             body.client_order_id.as_deref(),
         )
     };
-    // Notional check for the agent cap: use bid notional for bids
-    // (price × qty) and quantity for asks (base being sold). This mirrors
-    // what the engine's credit system computes as the trade's notional.
-    let order_notional_micro = match body.side {
-        types::OrderSide::Bid => body
-            .price
-            .checked_mul(body.quantity)
-            .map(|n| n / 1_000_000)
-            .unwrap_or(u64::MAX),
-        types::OrderSide::Ask => body.quantity,
-    };
+    // Delegated caps are denominated in USDC for both sides of a market.
+    let order_notional_micro = crate::agents::order_notional_micro(body.price, body.quantity);
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

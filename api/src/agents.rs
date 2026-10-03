@@ -30,6 +30,13 @@ use crate::auth::recover_signer;
 /// Per-order notional cap is stored as USDC in fixed-point 1e6.
 pub type NotionalMicro = u64;
 
+/// Both buys and sells consume the delegated USDC notional cap at the
+/// signed limit price. Widen before multiplying to avoid a u64 overflow.
+pub fn order_notional_micro(price: u64, quantity: u64) -> NotionalMicro {
+    let value = (price as u128) * (quantity as u128) / 1_000_000;
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
 /// Rich capability scope attached to a delegation. Every field defaults
 /// to "no restriction" so an old-style delegation (only notional cap +
 /// expiry) is expressible as the default `CapabilityScope`. Serialized
@@ -406,6 +413,12 @@ mod tests {
     use super::*;
     use k256::ecdsa::SigningKey;
     use sha3::{Digest, Keccak256};
+
+    #[test]
+    fn order_notional_uses_quote_value_for_both_sides() {
+        assert_eq!(order_notional_micro(100_000_000, 2_000_000), 200_000_000);
+        assert_eq!(order_notional_micro(u64::MAX, u64::MAX), u64::MAX);
+    }
 
     /// Deterministic keypair from a fixed seed; return (SigningKey, address).
     fn key_addr(seed: u8) -> (SigningKey, UserId) {
