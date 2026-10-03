@@ -7022,7 +7022,17 @@ async fn agents_revoke(
             .into_response();
     }
 
-    let removed = state.agents.revoke(&agent_id);
+    let master_id = match UserId::from_hex(&body.master) {
+        Ok(m) => m,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid master address")),
+            )
+                .into_response()
+        }
+    };
+    let removed = state.agents.revoke(&master_id, &agent_id);
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({

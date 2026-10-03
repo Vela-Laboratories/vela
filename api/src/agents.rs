@@ -197,8 +197,11 @@ impl AgentRegistry {
         self.inner.insert(d.agent.clone(), d);
     }
 
-    pub fn revoke(&self, agent: &UserId) -> bool {
+    pub fn revoke(&self, master: &UserId, agent: &UserId) -> bool {
         if let Some(mut e) = self.inner.get_mut(agent) {
+            if e.master != *master {
+                return false;
+            }
             e.revoked = true;
             true
         } else {
@@ -521,7 +524,7 @@ mod tests {
             nonce: 1,
             scope: CapabilityScope::default(),
         });
-        assert!(registry.revoke(&agent_addr));
+        assert!(registry.revoke(&master_addr, &agent_addr));
 
         let msg = b"vela:order:BTC-USDC:bid:100000000:1000000:42";
         let sig = sign_eth(&agent_sk, msg);
@@ -535,6 +538,28 @@ mod tests {
             None,
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn another_master_cannot_revoke_an_agent() {
+        let (_, master_addr) = key_addr(18);
+        let (_, other_master) = key_addr(19);
+        let (_, agent_addr) = key_addr(20);
+        let registry = AgentRegistry::default();
+        registry.register(AgentDelegation {
+            master: master_addr.clone(),
+            agent: agent_addr.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: u64::MAX,
+            revoked: false,
+            nonce: 1,
+            scope: CapabilityScope::default(),
+        });
+
+        assert!(!registry.revoke(&other_master, &agent_addr));
+        assert!(registry.get_active(&agent_addr, 1).is_some());
+        assert!(registry.revoke(&master_addr, &agent_addr));
+        assert!(registry.get_active(&agent_addr, 1).is_none());
     }
 
     #[test]
