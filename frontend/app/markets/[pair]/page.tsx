@@ -220,7 +220,7 @@ function ActivityDock({ pair, bids, asks, bookLoading, onToast }: { pair: string
 }
 
 function OrderTicket({ pair, bids, asks, fee, onToast }: { pair: string; bids: BookLevel[]; asks: BookLevel[]; fee: FeeState; onToast: (message: string, variant: Toast['variant']) => void }) {
-  const { address, isConnected, isAuthenticated, connect } = useAuth(); const [side, setSide] = useState<OrderSide>('buy'); const [orderType, setOrderType] = useState<OrderEntryType>('limit'); const [price, setPrice] = useState(''); const [size, setSize] = useState(''); const [displaySize, setDisplaySize] = useState(''); const [advanced, setAdvanced] = useState(false); const [submitting, setSubmitting] = useState(false); const [balances, setBalances] = useState({ base: '0', quote: '0' })
+  const { address, isConnected, isAuthenticated, connect } = useAuth(); const [side, setSide] = useState<OrderSide>('buy'); const [orderType, setOrderType] = useState<OrderEntryType>('limit'); const [price, setPrice] = useState(''); const [size, setSize] = useState(''); const [displaySize, setDisplaySize] = useState(''); const [minSize, setMinSize] = useState(''); const [advanced, setAdvanced] = useState(false); const [submitting, setSubmitting] = useState(false); const [balances, setBalances] = useState({ base: '0', quote: '0' })
   const info = getMarketInfo(pair); const bestBid = bids[0]?.price; const bestAsk = asks[0]?.price; const mid = bestBid && bestAsk ? ((Number(bestBid) + Number(bestAsk)) / 2).toString() : undefined
   useEffect(() => { if (!address || !isAuthenticated) return; const refresh = () => void getBalances(address).then((response) => { if (response.ok && response.data) setBalances({ base: response.data.find((item) => item.asset.toUpperCase() === info.ticker)?.available ?? '0', quote: response.data.find((item) => item.asset.toUpperCase() === info.quoteTicker)?.available ?? '0' }) }).catch(() => {}); refresh(); const timer = window.setInterval(refresh, 10000); return () => window.clearInterval(timer) }, [address, info.quoteTicker, info.ticker, isAuthenticated])
   const executablePrice = orderType === 'market' ? (side === 'buy' ? bestAsk : bestBid) : price; const total = Number(executablePrice) * Number(size); const feeBps = orderType === 'market' ? fee.takerBps : fee.makerBps; const feeAmount = Number.isFinite(total) ? total * feeBps / 10000 : 0; const available = side === 'buy' ? balances.quote : balances.base; const availableAsset = side === 'buy' ? info.quoteTicker : info.ticker
@@ -238,6 +238,7 @@ function OrderTicket({ pair, bids, asks, fee, onToast }: { pair: string; bids: B
         bestAsk,
         size,
         displaySize,
+        minSize,
         nonce: Date.now(),
         address,
       })
@@ -264,7 +265,8 @@ function OrderTicket({ pair, bids, asks, fee, onToast }: { pair: string; bids: B
     {advanced ? <div className="terminal-advanced-note">
       <strong>Time in force: {orderType === 'market' ? 'Immediate or cancel' : 'Good ’til cancelled'}</strong>
       {orderType === 'limit' ? <label className="terminal-input"><span>Iceberg display size <i>{info.ticker}</i></span><input type="number" inputMode="decimal" min="0" value={displaySize} onChange={(event) => setDisplaySize(event.target.value)} placeholder="Optional" /></label> : null}
-      <span>{displaySize ? 'Only this amount appears in public depth; the full order can still match.' : 'Leave display size blank for a standard visible limit order.'}</span>
+      <label className="terminal-input"><span>Minimum immediate fill <i>{info.ticker}</i></span><input type="number" inputMode="decimal" min="0" value={minSize} onChange={(event) => setMinSize(event.target.value)} placeholder="Optional" /></label>
+      <span>{displaySize ? 'Only the display size appears in public depth; the full order can still match. ' : ''}{minSize ? 'The order rejects if it cannot fill at least this amount immediately.' : 'Leave minimum fill blank to accept any fill size.'}</span>
     </div> : null}
     <dl className="terminal-order-preview"><div><dt>Estimated total</dt><dd>{Number.isFinite(total) && total > 0 ? `${total.toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div><div><dt>Fee · tier {fee.tier} ({feeBps} bps)</dt><dd>{Number.isFinite(feeAmount) && total > 0 ? `${feeAmount.toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div><div><dt>Estimated debit</dt><dd>{Number.isFinite(total) && total > 0 ? `${(total + Math.max(0, feeAmount)).toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div></dl>
     <button type="button" className={`terminal-submit terminal-submit--${side}`} disabled={isConnected && isAuthenticated && submitting} onClick={isConnected && isAuthenticated ? () => void submit() : connect}>{actionLabel}</button>

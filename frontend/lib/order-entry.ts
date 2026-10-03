@@ -9,6 +9,7 @@ export interface OrderEntry {
   bestAsk?: string
   size: string
   displaySize?: string
+  minSize?: string
   nonce: number
   address: string
 }
@@ -31,6 +32,13 @@ export function prepareOrder(entry: OrderEntry): Omit<PostOrderBody, 'signature'
       !Number.isSafeInteger(displayQuantity) || displayQuantity <= 0 || displayQuantity > quantity)) {
     throw new Error('Iceberg display size must be above zero and no greater than the order amount on a limit order.')
   }
+  const minQuantity = entry.minSize?.trim()
+    ? Math.round(Number(entry.minSize) * 1_000_000)
+    : undefined
+  if (minQuantity !== undefined && (!Number.isSafeInteger(minQuantity) ||
+      minQuantity <= 0 || minQuantity > quantity)) {
+    throw new Error('Minimum immediate fill must be above zero and no greater than the order amount.')
+  }
   return {
     market: entry.market,
     side: entry.side === 'buy' ? 'Bid' : 'Ask',
@@ -41,5 +49,6 @@ export function prepareOrder(entry: OrderEntry): Omit<PostOrderBody, 'signature'
     address: entry.address,
     signature_version: 2,
     ...(displayQuantity === undefined ? {} : { display_quantity: displayQuantity }),
+    ...(minQuantity === undefined ? {} : { min_quantity: minQuantity }),
   }
 }

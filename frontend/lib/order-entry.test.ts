@@ -50,4 +50,14 @@ describe('order ticket payload', () => {
     expect(() => prepareOrder({ ...base, displaySize: '6' })).toThrow('Iceberg display size')
     expect(() => prepareOrder({ ...base, kind: 'market', displaySize: '1' })).toThrow('limit order')
   })
+
+  it('binds the minimum immediate fill and rejects an impossible minimum', () => {
+    const order = prepareOrder({ ...base, minSize: '2' })
+    expect(order.min_quantity).toBe(2_000_000)
+    expect(orderSigningMessage(order)).toBe(
+      '["vela:order:v2","BTC-USDC","Bid","GoodTillCanceled",100000000,5000000,42,null,"None",2000000,null]',
+    )
+    expect(() => prepareOrder({ ...base, minSize: '6' })).toThrow('Minimum immediate fill')
+    expect(() => prepareOrder({ ...base, minSize: '0' })).toThrow('Minimum immediate fill')
+  })
 })
