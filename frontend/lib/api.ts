@@ -77,11 +77,14 @@ export type DepositStatus = ApiSchemas['DepositStatusResponse']
 export interface Order {
   id: number
   market: string
-  side: 'buy' | 'sell'
+  side: 'buy' | 'sell' | 'bid' | 'ask'
   order_type: 'limit' | 'market'
   price: string
   quantity: string
   filled_quantity: string
+  display_quantity?: string | null
+  min_quantity?: string | null
+  stp?: string
   status: string
   nonce: number
   client_order_id?: string

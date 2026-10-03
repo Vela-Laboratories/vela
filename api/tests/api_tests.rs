@@ -1037,9 +1037,9 @@ async fn test_get_order_by_client_id_found() {
             nonce: 42,
             client_order_id: Some("test-coid-api".to_string()),
             signature: vec![0u8; 65],
-            stp: Default::default(),
+            stp: types::SelfTradePreventionMode::CancelTaker,
             min_quantity: None,
-            display_quantity: None,
+            display_quantity: Some(QUANTITY_SCALE / 2),
         }),
         2,
     );
@@ -1064,6 +1064,13 @@ async fn test_get_order_by_client_id_found() {
     assert_eq!(body["ok"], true);
     assert_eq!(body["data"]["id"], order_id);
     assert_eq!(body["data"]["client_order_id"], "test-coid-api");
+    assert_eq!(body["data"]["display_quantity"], "0.5");
+    assert_eq!(body["data"]["stp"], "CancelTaker");
+    let open = get_as_user(&server, &format!("/account/{}/orders", user_addr())).await;
+    open.assert_status_ok();
+    let open_body: Value = open.json();
+    assert_eq!(open_body["data"][0]["display_quantity"], "0.5");
+    assert_eq!(open_body["data"][0]["stp"], "CancelTaker");
 }
 
 #[tokio::test]
