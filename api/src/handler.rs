@@ -1642,14 +1642,43 @@ async fn post_order(
     }
 
     let side_str = format!("{:?}", body.side).to_lowercase();
-    let msg = order_signing_message(
-        &body.market,
-        &side_str,
-        body.price,
-        body.quantity,
-        body.nonce,
-        body.client_order_id.as_deref(),
-    );
+    if !matches!(body.signature_version, None | Some(2))
+        || (body.signature_version.is_none()
+            && (body.stp != types::SelfTradePreventionMode::None
+                || body.min_quantity.is_some()
+                || body.display_quantity.is_some()))
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "advanced order controls require signature_version 2",
+            )),
+        )
+            .into_response();
+    }
+    let msg = if body.signature_version == Some(2) {
+        crate::auth::order_signing_message_v2(
+            &body.market,
+            body.side,
+            body.order_type,
+            body.price,
+            body.quantity,
+            body.nonce,
+            body.client_order_id.as_deref(),
+            body.stp,
+            body.min_quantity,
+            body.display_quantity,
+        )
+    } else {
+        order_signing_message(
+            &body.market,
+            &side_str,
+            body.price,
+            body.quantity,
+            body.nonce,
+            body.client_order_id.as_deref(),
+        )
+    };
     // Notional check for the agent cap: use bid notional for bids
     // (price × qty) and quantity for asks (base being sold). This mirrors
     // what the engine's credit system computes as the trade's notional.
@@ -1699,9 +1728,9 @@ async fn post_order(
         nonce: body.nonce,
         client_order_id: body.client_order_id.clone(),
         signature: vec![],
-        stp: Default::default(),
-        min_quantity: None,
-        display_quantity: None,
+        stp: body.stp,
+        min_quantity: body.min_quantity,
+        display_quantity: body.display_quantity,
     };
 
     let ts = std::time::SystemTime::now()

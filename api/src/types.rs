@@ -163,6 +163,16 @@ pub struct PostOrderBody {
     pub client_order_id: Option<String>,
     pub address: String,
     pub signature: String,
+    /// Version 2 binds order type and optional execution controls to the
+    /// signature. Required when any advanced control is supplied.
+    #[serde(default)]
+    pub signature_version: Option<u8>,
+    #[serde(default)]
+    pub stp: types::SelfTradePreventionMode,
+    #[serde(default)]
+    pub min_quantity: Option<Quantity>,
+    #[serde(default)]
+    pub display_quantity: Option<Quantity>,
     /// Optional 0x-prefixed 32-byte keccak256 hash of the agent's
     /// reasoning trace for this order. Vela records the hash in
     /// StoredOrder so post-hoc audit can prove the trace existed at
