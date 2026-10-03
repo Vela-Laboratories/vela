@@ -94,14 +94,18 @@ export interface Order {
 
 export interface PostOrderBody {
   market: string
-  side: 'buy' | 'sell'
-  order_type: 'limit' | 'market'
+  side: 'Bid' | 'Ask'
+  order_type: 'GoodTillCanceled' | 'PostOnly' | 'ImmediateOrCancel' | 'FillOrKill'
   /** Raw integer price (scaled by PRICE_DECIMALS) */
   price: number
   /** Raw integer quantity (scaled by QUANTITY_DECIMALS) */
   quantity: number
   nonce: number
   client_order_id?: string
+  signature_version: 2
+  stp?: 'None' | 'CancelTaker' | 'CancelMaker' | 'CancelBoth' | 'DecrementAndCancel'
+  min_quantity?: number
+  display_quantity?: number
   address: string
   signature: string
 }

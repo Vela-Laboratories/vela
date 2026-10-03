@@ -2473,8 +2473,12 @@ export interface components {
             /** @description Master wallet (order signer may be master or authorized agent) */
             address: string;
             client_order_id?: string;
+            /** @description Visible iceberg slice, base × 1e6 */
+            display_quantity?: number;
             /** @example BTC-USDC */
             market: string;
+            /** @description Atomic minimum fill, base × 1e6 */
+            min_quantity?: number;
             nonce: number;
             /** @enum {string} */
             order_type: "GoodTillCanceled" | "PostOnly" | "ImmediateOrCancel" | "FillOrKill";
@@ -2486,6 +2490,16 @@ export interface components {
             side: "Bid" | "Ask";
             /** @description 0x-prefixed 65-byte ECDSA */
             signature: string;
+            /**
+             * @description Required for advanced controls. V2 signs the compact JSON array ["vela:order:v2",market,side,order_type,price,quantity,nonce,client_order_id|null,stp,min_quantity|null,display_quantity|null].
+             * @enum {integer}
+             */
+            signature_version?: 2;
+            /**
+             * @default None
+             * @enum {string}
+             */
+            stp: "None" | "CancelTaker" | "CancelMaker" | "CancelBoth" | "DecrementAndCancel";
         };
         ProofStats: {
             failed: number;
