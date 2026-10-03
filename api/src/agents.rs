@@ -197,12 +197,35 @@ impl AgentRegistry {
         self.inner.insert(d.agent.clone(), d);
     }
 
-    pub fn revoke(&self, master: &UserId, agent: &UserId) -> bool {
+    /// Signed public registrations must advance the agent's nonce. Keep
+    /// revoked entries as tombstones so an old registration signature
+    /// cannot reactivate a key after its owner revokes it.
+    pub fn register_signed(&self, d: AgentDelegation) -> Result<(), &'static str> {
+        use dashmap::mapref::entry::Entry;
+        match self.inner.entry(d.agent.clone()) {
+            Entry::Occupied(mut entry) => {
+                if entry.get().master != d.master {
+                    return Err("agent already belongs to another master");
+                }
+                if d.nonce <= entry.get().nonce {
+                    return Err("delegation nonce must increase");
+                }
+                entry.insert(d);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(d);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn revoke(&self, master: &UserId, agent: &UserId, nonce: u64) -> bool {
         if let Some(mut e) = self.inner.get_mut(agent) {
-            if e.master != *master {
+            if e.master != *master || nonce <= e.nonce {
                 return false;
             }
             e.revoked = true;
+            e.nonce = nonce;
             true
         } else {
             false
@@ -524,7 +547,7 @@ mod tests {
             nonce: 1,
             scope: CapabilityScope::default(),
         });
-        assert!(registry.revoke(&master_addr, &agent_addr));
+        assert!(registry.revoke(&master_addr, &agent_addr, 2));
 
         let msg = b"vela:order:BTC-USDC:bid:100000000:1000000:42";
         let sig = sign_eth(&agent_sk, msg);
@@ -556,10 +579,59 @@ mod tests {
             scope: CapabilityScope::default(),
         });
 
-        assert!(!registry.revoke(&other_master, &agent_addr));
+        assert!(!registry.revoke(&other_master, &agent_addr, 2));
         assert!(registry.get_active(&agent_addr, 1).is_some());
-        assert!(registry.revoke(&master_addr, &agent_addr));
+        assert!(registry.revoke(&master_addr, &agent_addr, 2));
         assert!(registry.get_active(&agent_addr, 1).is_none());
+    }
+
+    #[test]
+    fn signed_delegations_cannot_replay_after_revocation() {
+        let (_, master) = key_addr(21);
+        let (_, agent) = key_addr(22);
+        let registry = AgentRegistry::default();
+        let delegation = AgentDelegation {
+            master: master.clone(),
+            agent: agent.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: 1_000_000,
+            revoked: false,
+            nonce: 10,
+            scope: CapabilityScope::default(),
+        };
+        assert!(registry.register_signed(delegation.clone()).is_ok());
+        assert!(registry.revoke(&master, &agent, 11));
+        assert!(registry.register_signed(delegation.clone()).is_err());
+        assert!(registry.get_active(&agent, 1).is_none());
+        assert!(!registry.revoke(&master, &agent, 11));
+
+        let mut replacement = delegation;
+        replacement.nonce = 12;
+        assert!(registry.register_signed(replacement).is_ok());
+        assert!(registry.get_active(&agent, 1).is_some());
+    }
+
+    #[test]
+    fn signed_registration_cannot_take_over_another_masters_agent() {
+        let (_, master) = key_addr(23);
+        let (_, other) = key_addr(24);
+        let (_, agent) = key_addr(25);
+        let registry = AgentRegistry::default();
+        let delegation = AgentDelegation {
+            master: master.clone(),
+            agent: agent.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: 1_000_000,
+            revoked: false,
+            nonce: 10,
+            scope: CapabilityScope::default(),
+        };
+        assert!(registry.register_signed(delegation.clone()).is_ok());
+        let mut takeover = delegation;
+        takeover.master = other;
+        takeover.nonce = 11;
+        assert!(registry.register_signed(takeover).is_err());
+        assert_eq!(registry.get_active(&agent, 1).unwrap().master, master);
     }
 
     #[test]

@@ -6962,15 +6962,20 @@ async fn agents_register(
             .into_response();
     }
 
-    state.agents.register(crate::agents::AgentDelegation {
-        master: master_id,
-        agent: agent_id,
-        expires_at_ms: body.expires_at_ms,
-        max_notional_per_order: body.max_notional_per_order,
-        revoked: false,
-        nonce: body.nonce,
-        scope,
-    });
+    let registration = state
+        .agents
+        .register_signed(crate::agents::AgentDelegation {
+            master: master_id,
+            agent: agent_id,
+            expires_at_ms: body.expires_at_ms,
+            max_notional_per_order: body.max_notional_per_order,
+            revoked: false,
+            nonce: body.nonce,
+            scope,
+        });
+    if let Err(reason) = registration {
+        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(reason))).into_response();
+    }
 
     (
         StatusCode::OK,
@@ -7032,7 +7037,7 @@ async fn agents_revoke(
                 .into_response()
         }
     };
-    let removed = state.agents.revoke(&master_id, &agent_id);
+    let removed = state.agents.revoke(&master_id, &agent_id, body.nonce);
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
