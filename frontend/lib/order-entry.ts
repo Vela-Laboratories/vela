@@ -8,6 +8,7 @@ export interface OrderEntry {
   bestBid?: string
   bestAsk?: string
   size: string
+  displaySize?: string
   nonce: number
   address: string
 }
@@ -23,6 +24,13 @@ export function prepareOrder(entry: OrderEntry): Omit<PostOrderBody, 'signature'
       !entry.size || !Number.isSafeInteger(quantity) || quantity <= 0) {
     throw new Error('Enter a valid price and amount. Immediate orders need a live Vela quote.')
   }
+  const displayQuantity = entry.displaySize?.trim()
+    ? Math.round(Number(entry.displaySize) * 1_000_000)
+    : undefined
+  if (displayQuantity !== undefined && (entry.kind !== 'limit' ||
+      !Number.isSafeInteger(displayQuantity) || displayQuantity <= 0 || displayQuantity > quantity)) {
+    throw new Error('Iceberg display size must be above zero and no greater than the order amount on a limit order.')
+  }
   return {
     market: entry.market,
     side: entry.side === 'buy' ? 'Bid' : 'Ask',
@@ -32,5 +40,6 @@ export function prepareOrder(entry: OrderEntry): Omit<PostOrderBody, 'signature'
     nonce: entry.nonce,
     address: entry.address,
     signature_version: 2,
+    ...(displayQuantity === undefined ? {} : { display_quantity: displayQuantity }),
   }
 }

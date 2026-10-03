@@ -40,4 +40,14 @@ describe('order ticket payload', () => {
     expect(() => prepareOrder({ ...base, size: '0' })).toThrow('valid price')
     expect(() => prepareOrder({ ...base, limitPrice: '100000000000' })).toThrow('valid price')
   })
+
+  it('binds iceberg display size to a limit order', () => {
+    const order = prepareOrder({ ...base, displaySize: '1.5' })
+    expect(order.display_quantity).toBe(1_500_000)
+    expect(orderSigningMessage(order)).toBe(
+      '["vela:order:v2","BTC-USDC","Bid","GoodTillCanceled",100000000,5000000,42,null,"None",null,1500000]',
+    )
+    expect(() => prepareOrder({ ...base, displaySize: '6' })).toThrow('Iceberg display size')
+    expect(() => prepareOrder({ ...base, kind: 'market', displaySize: '1' })).toThrow('limit order')
+  })
 })
