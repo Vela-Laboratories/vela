@@ -4887,9 +4887,8 @@ async fn fees_public_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 //   we're trying to attract.
 // - Takers get penalized proportional to how toxic their flow was. A wash
 //   trader whose fills all score near 1.0 earns near-zero taker points.
-// - Synthetic (MM-bot) fills have toxicity_score = 0.0 and count normally
-//   for volume, but wash-loop trades between the same wallet score high
-//   on the OFI accumulator so the toxicity gate catches them naturally.
+// - Synthetic MM-bot fills are excluded from points, ranked volume and
+//   fill counts. Testnet liquidity generation is not user activity.
 // ---------------------------------------------------------------------------
 
 const POINTS_MAKER_MULTIPLIER: f64 = 1.5;
@@ -4905,6 +4904,9 @@ fn fill_notional_usdc(price: u64, quantity: u64) -> f64 {
 
 /// Compute (maker_points, taker_points) for a single fill.
 fn fill_points(fill: &StoredFill) -> (f64, f64) {
+    if fill.synthetic {
+        return (0.0, 0.0);
+    }
     let notional = fill_notional_usdc(fill.price, fill.quantity);
     let maker = notional * POINTS_MAKER_MULTIPLIER;
     let clean = (1.0 - fill.toxicity_score).clamp(0.0, 1.0);
@@ -4941,7 +4943,7 @@ async fn points_by_address(state: &AppState) -> std::collections::HashMap<String
     let mut out: std::collections::HashMap<String, PointsBreakdown> =
         std::collections::HashMap::new();
     for fill in fills.iter() {
-        if fill.timestamp < cutoff {
+        if fill.timestamp < cutoff || fill.synthetic {
             continue;
         }
         let (maker_pts, taker_pts) = fill_points(fill);
@@ -8777,6 +8779,13 @@ mod points_tests {
         let fill_neg = mk_fill(100 * 1_000_000, 2 * 1_000_000, -0.2);
         let (_m, t2) = fill_points(&fill_neg);
         assert!((t2 - 200.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn synthetic_mm_fill_earns_no_points() {
+        let mut fill = mk_fill(100 * 1_000_000, 2 * 1_000_000, 0.0);
+        fill.synthetic = true;
+        assert_eq!(fill_points(&fill), (0.0, 0.0));
     }
 }
 
