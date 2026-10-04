@@ -10,7 +10,7 @@
 // portfolio dashboard).
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { getPortfolio, getPortfolioCsv, type PortfolioResponse } from '@/lib/api'
@@ -59,15 +59,18 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const loadSequence = useRef(0)
   const data = portfolio?.address.toLowerCase() === address?.toLowerCase()
     && portfolio?.cost_basis_method === method
     && isAuthenticated ? portfolio : null
 
   const load = useCallback(async () => {
+    const requestId = ++loadSequence.current
     if (!address || !isAuthenticated) return
     setLoading(true)
     setError(null)
     const res = await getPortfolio(address, method)
+    if (requestId !== loadSequence.current) return
     if (res.ok && res.data) {
       setPortfolio(res.data)
     } else {
