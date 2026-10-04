@@ -55,10 +55,13 @@ function downloadBlob(name: string, content: string, mime: string) {
 export default function PortfolioPage() {
   const { address, isConnected, isAuthenticated, connect } = useAuth()
   const [method, setMethod] = useState<CostBasisMethod>('FIFO')
-  const [data, setData] = useState<PortfolioResponse | null>(null)
+  const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const data = portfolio?.address.toLowerCase() === address?.toLowerCase()
+    && portfolio?.cost_basis_method === method
+    && isAuthenticated ? portfolio : null
 
   const load = useCallback(async () => {
     if (!address || !isAuthenticated) return
@@ -66,7 +69,7 @@ export default function PortfolioPage() {
     setError(null)
     const res = await getPortfolio(address, method)
     if (res.ok && res.data) {
-      setData(res.data)
+      setPortfolio(res.data)
     } else {
       setError(res.error ?? 'Failed to load portfolio')
     }
