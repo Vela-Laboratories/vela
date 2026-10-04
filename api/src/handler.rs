@@ -8931,6 +8931,49 @@ mod portfolio_tests {
     }
 
     #[test]
+    fn multi_fill_sequence_reconciles_lots_fees_and_marks_for_both_methods() {
+        let mut first = mk_fill("BTC-USDC", true, "bid", 100_000_000, 2_000_000, 1);
+        first.taker_fee_micro = Some(2_000_000);
+        let second = mk_fill("BTC-USDC", true, "bid", 120_000_000, 1_000_000, 2);
+        let mut first_sale = mk_fill("BTC-USDC", true, "ask", 130_000_000, 2_000_000, 3);
+        first_sale.taker_fee_micro = Some(1_000_000);
+        let third = mk_fill("BTC-USDC", true, "bid", 90_000_000, 500_000, 4);
+        let mut second_sale = mk_fill("BTC-USDC", true, "ask", 140_000_000, 500_000, 5);
+        second_sale.taker_fee_micro = Some(500_000);
+        // Deliberately shuffled: ordering comes from timestamp and fill ID.
+        let fills = [&second_sale, &third, &first_sale, &first, &second];
+
+        let fifo = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &fills,
+            Some(150_000_000),
+            CostBasisMethod::Fifo,
+        );
+        assert_eq!(fifo.fill_count, 5);
+        assert_eq!(fifo.position_base_micro, 1_000_000);
+        assert_eq!(fifo.realized_micro, 66_500_000);
+        assert_eq!(fifo.open_cost_basis_micro, 105_000_000);
+        assert_eq!(fifo.unrealized_micro, Some(45_000_000));
+        assert_eq!(fifo.unmatched_sell_quantity_micro, 0);
+        assert!(fifo.fee_complete);
+
+        let hifo = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &fills,
+            Some(150_000_000),
+            CostBasisMethod::Hifo,
+        );
+        assert_eq!(hifo.position_base_micro, 1_000_000);
+        assert_eq!(hifo.realized_micro, 57_000_000);
+        assert_eq!(hifo.open_cost_basis_micro, 95_500_000);
+        assert_eq!(hifo.unrealized_micro, Some(54_500_000));
+        assert_eq!(hifo.unmatched_sell_quantity_micro, 0);
+        assert!(hifo.fee_complete);
+    }
+
+    #[test]
     fn fifo_uses_fill_id_to_break_equal_timestamp_ties() {
         let mut cheap = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 1_000_000, 1);
         cheap.id = "fill-a".to_owned();
