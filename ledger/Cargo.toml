@@ -28,3 +28,7 @@ path = "src/bin/migrate.rs"
 [[bin]]
 name = "ledger-bootstrap"
 path = "src/bin/bootstrap.rs"
+
+[[bin]]
+name = "ledger-daily-report"
+path = "src/bin/daily_report.rs"

@@ -62,11 +62,29 @@ lack the required deployment and dual-provider provenance. Export and review
 such rows before migration; do not delete or silently reinterpret them merely
 to make the migration pass.
 
+## Daily reports
+
+`DATABASE_READER_URL=... cargo run -p ledger --bin ledger-daily-report`
+exports JSON for the previous UTC day. Pass `YYYY-MM-DD` to report another date.
+The command uses one repeatable read, read-only transaction and reconstructs
+closing balances from immutable journal legs, rather than the mutable balance
+projection. It includes daily operation counts, fees/rebates, journal balance
+checks, the latest custody evidence before cutoff, and that day's recorded
+reconciliation failures. Amounts remain exact atomic-unit strings.
+
+A current-day report is marked `complete_day: false`. Missing or old custody
+evidence remains visible and does not imply balanced custody. The report does
+not perform new chain observations or prove live solvency.
+
+The optional GitHub daily workflow uses the staging reader credential. Set
+repository variable `VELA_DAILY_REPORT_ENABLED=true` and the staging environment's
+`DATABASE_READER_URL` secret to enable it. Reports are retained for 30 days.
+
 ## Readiness and recovery limits
 
 The checkpoint and immutable result history provide the data needed for a
-future readiness surface, but EX-029 does not add API readiness wiring, external
-paging, daily signed reports, or automated halt resolution. A processor-aware
+future readiness surface, but EX-029 does not add external paging, signed
+reports, or automated halt resolution. A processor-aware
 orchestrator must eventually verify that deposit and withdrawal checkpoints
 have caught up to the custody snapshot before treating `balanced` as a complete
 system-wide readiness claim. Operators must retain incident evidence, perform

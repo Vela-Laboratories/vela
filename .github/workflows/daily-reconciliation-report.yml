@@ -1,0 +1,28 @@
+name: Daily Reconciliation Report
+
+on:
+  schedule:
+    - cron: '15 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    if: vars.VELA_DAILY_REPORT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Reconstruct previous UTC day from immutable history
+        env:
+          DATABASE_READER_URL: ${{ secrets.DATABASE_READER_URL }}
+        run: cargo run --locked --quiet -p ledger --bin ledger-daily-report > daily-reconciliation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-reconciliation-${{ github.run_id }}
+          path: daily-reconciliation.json
+          retention-days: 30

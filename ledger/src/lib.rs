@@ -18,6 +18,8 @@ mod reconciliation;
 pub use reconciliation::*;
 mod leadership;
 pub use leadership::*;
+mod daily_report;
+pub use daily_report::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalLegInput {
@@ -152,6 +154,8 @@ pub struct ReplayedAccountBalance {
 
 #[derive(Debug, Error)]
 pub enum LedgerError {
+    #[error("daily report date must be a valid current or past UTC date")]
+    InvalidReportDate,
     #[error("journal transaction must contain at least two legs")]
     TooFewLegs,
     #[error("journal legs must have nonzero integer amounts")]
