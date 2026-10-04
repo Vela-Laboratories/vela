@@ -7299,8 +7299,8 @@ fn compute_market_pnl(
         None => (market_id, "USDC"),
     };
 
-    // Sorted-by-timestamp list of (is_buy_from_user_perspective, price, qty)
-    let mut trades: Vec<(bool, u64, u64, u64)> = Vec::new();
+    // Fill IDs break timestamp ties so replay and input order choose the same lots.
+    let mut trades: Vec<(bool, u64, u64, u64, &str)> = Vec::new();
     for f in fills {
         let is_maker = f.maker_address.to_ascii_lowercase() == addr;
         let is_taker = f.taker_address.to_ascii_lowercase() == addr;
@@ -7312,15 +7312,15 @@ fn compute_market_pnl(
         // sold base (the maker was on the ask side).
         let taker_was_bidding = f.side.eq_ignore_ascii_case("bid");
         let user_bought = (is_taker && taker_was_bidding) || (is_maker && !taker_was_bidding);
-        trades.push((user_bought, f.price, f.quantity, f.timestamp));
+        trades.push((user_bought, f.price, f.quantity, f.timestamp, &f.id));
     }
-    trades.sort_by_key(|(_, _, _, ts)| *ts);
+    trades.sort_by(|a, b| (a.3, a.4).cmp(&(b.3, b.4)));
 
     let mut lots: std::collections::VecDeque<Lot> = std::collections::VecDeque::new();
     let mut realized_usdc: f64 = 0.0;
     let fill_count = trades.len() as u64;
 
-    for (buy, price, qty, ts) in trades {
+    for (buy, price, qty, ts, _) in trades {
         if buy {
             lots.push_back(Lot {
                 quantity: qty,
@@ -7555,7 +7555,7 @@ async fn get_portfolio_csv_handler(
                 || f.taker_address.to_ascii_lowercase() == addr
         })
         .collect();
-    user_fills.sort_by_key(|f| f.timestamp);
+    user_fills.sort_by(|a, b| (a.timestamp, &a.id).cmp(&(b.timestamp, &b.id)));
 
     for f in user_fills {
         let is_taker = f.taker_address.to_ascii_lowercase() == addr;
@@ -8776,6 +8776,33 @@ mod portfolio_tests {
         // HIFO matches sell vs. lot @ 200 → -50 realized. Remaining 1 @ 100.
         assert!((hifo.realized_usdc - (-50.0)).abs() < 1e-6);
         assert!((hifo.cost_basis_price - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fifo_uses_fill_id_to_break_equal_timestamp_ties() {
+        let mut cheap = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 1_000_000, 1);
+        cheap.id = "fill-a".to_owned();
+        let mut expensive = mk_fill("BTC-USDC", true, "bid", 200 * 1_000_000, 1_000_000, 1);
+        expensive.id = "fill-b".to_owned();
+        let sale = mk_fill("BTC-USDC", true, "ask", 150 * 1_000_000, 1_000_000, 2);
+
+        let forward = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &[&cheap, &expensive, &sale],
+            None,
+            CostBasisMethod::Fifo,
+        );
+        let reversed = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &[&expensive, &cheap, &sale],
+            None,
+            CostBasisMethod::Fifo,
+        );
+        assert_eq!(forward.realized_usdc, 50.0);
+        assert_eq!(forward.realized_usdc, reversed.realized_usdc);
+        assert_eq!(forward.open_lots[0].price, reversed.open_lots[0].price);
     }
 
     #[test]
