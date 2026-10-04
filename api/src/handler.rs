@@ -7231,8 +7231,6 @@ impl CostBasisMethod {
 struct Lot {
     /// Base quantity in fixed-point 1e6.
     quantity: u64,
-    /// Price per unit of base, fixed-point 1e6.
-    price: u64,
     /// Remaining acquisition cost including the signed buy-side fee.
     cost_micro: i128,
     /// Acquisition time of the remaining lot, in milliseconds.
@@ -7365,7 +7363,6 @@ fn compute_market_pnl(
         if buy {
             lots.push_back(Lot {
                 quantity: qty,
-                price,
                 cost_micro: notional_micro(price, qty) as i128 + fee_micro,
                 timestamp: ts,
             });
@@ -7379,7 +7376,13 @@ fn compute_market_pnl(
                     CostBasisMethod::Hifo => lots
                         .iter()
                         .enumerate()
-                        .max_by_key(|(_, l)| l.price)
+                        .max_by(|(_, left), (_, right)| {
+                            let left_basis = bigdecimal::BigDecimal::from(left.cost_micro)
+                                * bigdecimal::BigDecimal::from(right.quantity);
+                            let right_basis = bigdecimal::BigDecimal::from(right.cost_micro)
+                                * bigdecimal::BigDecimal::from(left.quantity);
+                            left_basis.cmp(&right_basis)
+                        })
                         .map(|(i, _)| i)
                         .unwrap_or(0),
                 };
@@ -8833,6 +8836,23 @@ mod portfolio_tests {
     }
 
     #[test]
+    fn hifo_ranks_lots_by_fee_adjusted_unit_cost() {
+        let mut first = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 1_000_000, 1);
+        first.taker_fee_micro = Some(10_000_000);
+        let second = mk_fill("BTC-USDC", true, "bid", 105 * 1_000_000, 1_000_000, 2);
+        let sale = mk_fill("BTC-USDC", true, "ask", 110 * 1_000_000, 1_000_000, 3);
+        let pnl = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &[&first, &second, &sale],
+            None,
+            CostBasisMethod::Hifo,
+        );
+        assert_eq!(pnl.realized_micro, 0);
+        assert_eq!(pnl.open_lots[0].cost_micro, 105_000_000);
+    }
+
+    #[test]
     fn partial_sale_retains_unconsumed_fee_basis() {
         let mut buy = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 2_000_000, 1);
         buy.taker_fee_micro = Some(2_000_000);
@@ -8915,7 +8935,10 @@ mod portfolio_tests {
         );
         assert_eq!(forward.realized_micro, 50_000_000);
         assert_eq!(forward.realized_micro, reversed.realized_micro);
-        assert_eq!(forward.open_lots[0].price, reversed.open_lots[0].price);
+        assert_eq!(
+            forward.open_lots[0].cost_micro,
+            reversed.open_lots[0].cost_micro
+        );
     }
 
     #[test]
