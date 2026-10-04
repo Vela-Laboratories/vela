@@ -7281,6 +7281,7 @@ struct MarketPnl {
     /// Unrealized PnL = current_value − open_cost_basis_usdc.
     unrealized_micro: Option<i128>,
     fill_count: u64,
+    unmatched_sell_quantity_micro: u128,
     open_lots: Vec<Lot>,
 }
 
@@ -7288,8 +7289,8 @@ struct MarketPnl {
 ///
 /// For each fill in the market where the address participated, apply
 /// buy/sell to a per-market lot queue. Realized PnL accumulates when a
-/// sell consumes buy lots (or vice versa if the user was short — v1
-/// treats short exposure symmetrically).
+/// sell consumes buy lots. Sells without available lots are flagged as
+/// incomplete because retained fill history cannot establish their basis.
 fn compute_market_pnl(
     address: &str,
     market_id: &str,
@@ -7322,6 +7323,7 @@ fn compute_market_pnl(
 
     let mut lots: std::collections::VecDeque<Lot> = std::collections::VecDeque::new();
     let mut realized_micro: i128 = 0;
+    let mut unmatched_sell_quantity_micro: u128 = 0;
     let fill_count = trades.len() as u64;
 
     for (buy, price, qty, ts, _) in trades {
@@ -7357,10 +7359,9 @@ fn compute_market_pnl(
                     lots.insert(idx, lot);
                 }
             }
-            // If `remaining > 0` after exhausting lots, the user went short
-            // (or opened a short). v1: silently ignore — treated as a fresh
-            // negative position. Realized PnL on that portion accrues on the
-            // eventual buy-to-cover.
+            // A remaining sell has no matching acquisition in the retained
+            // fill history. Do not describe the resulting estimate as complete.
+            unmatched_sell_quantity_micro += u128::from(remaining);
         }
     }
 
@@ -7397,6 +7398,7 @@ fn compute_market_pnl(
         mark_price_micro: mark_price_fp,
         unrealized_micro,
         fill_count,
+        unmatched_sell_quantity_micro,
         open_lots: lots.into_iter().collect(),
     }
 }
@@ -7486,6 +7488,8 @@ async fn get_portfolio_handler(
                 "realized_pnl_usdc": format_signed_micro(p.realized_micro),
                 "unrealized_pnl_usdc": p.unrealized_micro.map(format_signed_micro),
                 "fill_count": p.fill_count,
+                "pnl_complete": p.unmatched_sell_quantity_micro == 0,
+                "unmatched_sell_quantity_base": format_unsigned_micro(p.unmatched_sell_quantity_micro),
             })
         })
         .collect();
@@ -8806,6 +8810,14 @@ mod portfolio_tests {
         assert_eq!(forward.realized_micro, 50_000_000);
         assert_eq!(forward.realized_micro, reversed.realized_micro);
         assert_eq!(forward.open_lots[0].price, reversed.open_lots[0].price);
+    }
+
+    #[test]
+    fn unmatched_sell_is_reported_as_incomplete() {
+        let sale = mk_fill("BTC-USDC", true, "ask", 150 * 1_000_000, 2_000_000, 1);
+        let pnl = compute_market_pnl("0xuser", "BTC-USDC", &[&sale], None, CostBasisMethod::Fifo);
+        assert_eq!(pnl.unmatched_sell_quantity_micro, 2_000_000);
+        assert_eq!(pnl.open_lots.len(), 0);
     }
 
     #[test]
