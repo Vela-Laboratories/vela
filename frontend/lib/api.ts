@@ -77,11 +77,14 @@ export type DepositStatus = ApiSchemas['DepositStatusResponse']
 export interface Order {
   id: number
   market: string
-  side: 'buy' | 'sell'
+  side: 'buy' | 'sell' | 'bid' | 'ask'
   order_type: 'limit' | 'market'
   price: string
   quantity: string
   filled_quantity: string
+  display_quantity?: string | null
+  min_quantity?: string | null
+  stp?: string
   status: string
   nonce: number
   client_order_id?: string
@@ -94,14 +97,18 @@ export interface Order {
 
 export interface PostOrderBody {
   market: string
-  side: 'buy' | 'sell'
-  order_type: 'limit' | 'market'
+  side: 'Bid' | 'Ask'
+  order_type: 'GoodTillCanceled' | 'PostOnly' | 'ImmediateOrCancel' | 'FillOrKill'
   /** Raw integer price (scaled by PRICE_DECIMALS) */
   price: number
   /** Raw integer quantity (scaled by QUANTITY_DECIMALS) */
   quantity: number
   nonce: number
   client_order_id?: string
+  signature_version: 2
+  stp?: 'None' | 'CancelTaker' | 'CancelMaker' | 'CancelBoth' | 'DecrementAndCancel'
+  min_quantity?: number
+  display_quantity?: number
   address: string
   signature: string
 }

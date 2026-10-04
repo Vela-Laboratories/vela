@@ -1,7 +1,7 @@
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use rand::RngCore;
 use sha3::{Digest, Keccak256};
-use types::{UserId, VelaError};
+use types::{OrderSide, OrderType, SelfTradePreventionMode, UserId, VelaError};
 
 pub fn eth_message_hash(message: &[u8]) -> [u8; 32] {
     let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
@@ -64,6 +64,37 @@ pub fn order_signing_message(
         )
         .into_bytes(),
     }
+}
+
+/// Canonical signed payload for order controls. The JSON array keeps each
+/// field delimited and matches `JSON.stringify` in browser clients. V2 is
+/// opt-in so existing plain orders retain their original signature format.
+pub fn order_signing_message_v2(
+    market: &str,
+    side: OrderSide,
+    order_type: OrderType,
+    price: u64,
+    quantity: u64,
+    nonce: u64,
+    client_order_id: Option<&str>,
+    stp: SelfTradePreventionMode,
+    min_quantity: Option<u64>,
+    display_quantity: Option<u64>,
+) -> Vec<u8> {
+    serde_json::to_vec(&(
+        "vela:order:v2",
+        market,
+        side,
+        order_type,
+        price,
+        quantity,
+        nonce,
+        client_order_id,
+        stp,
+        min_quantity,
+        display_quantity,
+    ))
+    .expect("order signing payload is serializable")
 }
 
 pub fn cancel_signing_message(
@@ -148,4 +179,73 @@ pub async fn verify_batch_async(
         results.push(h.await.unwrap_or(Err(VelaError::InvalidSignature)));
     }
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v2_order_signature_binds_every_execution_control() {
+        let message = |order_type, stp, min_quantity, display_quantity| {
+            order_signing_message_v2(
+                "BTC-USDC",
+                OrderSide::Bid,
+                order_type,
+                100_000_000,
+                5_000_000,
+                42,
+                Some("client:1"),
+                stp,
+                min_quantity,
+                display_quantity,
+            )
+        };
+        let base = message(
+            OrderType::GoodTillCanceled,
+            SelfTradePreventionMode::None,
+            None,
+            None,
+        );
+        assert_eq!(
+            String::from_utf8(base.clone()).unwrap(),
+            "[\"vela:order:v2\",\"BTC-USDC\",\"Bid\",\"GoodTillCanceled\",100000000,5000000,42,\"client:1\",\"None\",null,null]"
+        );
+        assert_ne!(
+            base,
+            message(
+                OrderType::PostOnly,
+                SelfTradePreventionMode::None,
+                None,
+                None
+            )
+        );
+        assert_ne!(
+            base,
+            message(
+                OrderType::GoodTillCanceled,
+                SelfTradePreventionMode::CancelMaker,
+                None,
+                None
+            )
+        );
+        assert_ne!(
+            base,
+            message(
+                OrderType::GoodTillCanceled,
+                SelfTradePreventionMode::None,
+                Some(1_000_000),
+                None
+            )
+        );
+        assert_ne!(
+            base,
+            message(
+                OrderType::GoodTillCanceled,
+                SelfTradePreventionMode::None,
+                None,
+                Some(1_000_000)
+            )
+        );
+    }
 }

@@ -30,6 +30,13 @@ use crate::auth::recover_signer;
 /// Per-order notional cap is stored as USDC in fixed-point 1e6.
 pub type NotionalMicro = u64;
 
+/// Both buys and sells consume the delegated USDC notional cap at the
+/// signed limit price. Widen before multiplying to avoid a u64 overflow.
+pub fn order_notional_micro(price: u64, quantity: u64) -> NotionalMicro {
+    let value = (price as u128) * (quantity as u128) / 1_000_000;
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
 /// Rich capability scope attached to a delegation. Every field defaults
 /// to "no restriction" so an old-style delegation (only notional cap +
 /// expiry) is expressible as the default `CapabilityScope`. Serialized
@@ -197,9 +204,35 @@ impl AgentRegistry {
         self.inner.insert(d.agent.clone(), d);
     }
 
-    pub fn revoke(&self, agent: &UserId) -> bool {
+    /// Signed public registrations must advance the agent's nonce. Keep
+    /// revoked entries as tombstones so an old registration signature
+    /// cannot reactivate a key after its owner revokes it.
+    pub fn register_signed(&self, d: AgentDelegation) -> Result<(), &'static str> {
+        use dashmap::mapref::entry::Entry;
+        match self.inner.entry(d.agent.clone()) {
+            Entry::Occupied(mut entry) => {
+                if entry.get().master != d.master {
+                    return Err("agent already belongs to another master");
+                }
+                if d.nonce <= entry.get().nonce {
+                    return Err("delegation nonce must increase");
+                }
+                entry.insert(d);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(d);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn revoke(&self, master: &UserId, agent: &UserId, nonce: u64) -> bool {
         if let Some(mut e) = self.inner.get_mut(agent) {
+            if e.master != *master || nonce <= e.nonce {
+                return false;
+            }
             e.revoked = true;
+            e.nonce = nonce;
             true
         } else {
             false
@@ -381,6 +414,12 @@ mod tests {
     use k256::ecdsa::SigningKey;
     use sha3::{Digest, Keccak256};
 
+    #[test]
+    fn order_notional_uses_quote_value_for_both_sides() {
+        assert_eq!(order_notional_micro(100_000_000, 2_000_000), 200_000_000);
+        assert_eq!(order_notional_micro(u64::MAX, u64::MAX), u64::MAX);
+    }
+
     /// Deterministic keypair from a fixed seed; return (SigningKey, address).
     fn key_addr(seed: u8) -> (SigningKey, UserId) {
         let seed_bytes = [seed; 32];
@@ -521,7 +560,7 @@ mod tests {
             nonce: 1,
             scope: CapabilityScope::default(),
         });
-        assert!(registry.revoke(&agent_addr));
+        assert!(registry.revoke(&master_addr, &agent_addr, 2));
 
         let msg = b"vela:order:BTC-USDC:bid:100000000:1000000:42";
         let sig = sign_eth(&agent_sk, msg);
@@ -535,6 +574,77 @@ mod tests {
             None,
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn another_master_cannot_revoke_an_agent() {
+        let (_, master_addr) = key_addr(18);
+        let (_, other_master) = key_addr(19);
+        let (_, agent_addr) = key_addr(20);
+        let registry = AgentRegistry::default();
+        registry.register(AgentDelegation {
+            master: master_addr.clone(),
+            agent: agent_addr.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: u64::MAX,
+            revoked: false,
+            nonce: 1,
+            scope: CapabilityScope::default(),
+        });
+
+        assert!(!registry.revoke(&other_master, &agent_addr, 2));
+        assert!(registry.get_active(&agent_addr, 1).is_some());
+        assert!(registry.revoke(&master_addr, &agent_addr, 2));
+        assert!(registry.get_active(&agent_addr, 1).is_none());
+    }
+
+    #[test]
+    fn signed_delegations_cannot_replay_after_revocation() {
+        let (_, master) = key_addr(21);
+        let (_, agent) = key_addr(22);
+        let registry = AgentRegistry::default();
+        let delegation = AgentDelegation {
+            master: master.clone(),
+            agent: agent.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: 1_000_000,
+            revoked: false,
+            nonce: 10,
+            scope: CapabilityScope::default(),
+        };
+        assert!(registry.register_signed(delegation.clone()).is_ok());
+        assert!(registry.revoke(&master, &agent, 11));
+        assert!(registry.register_signed(delegation.clone()).is_err());
+        assert!(registry.get_active(&agent, 1).is_none());
+        assert!(!registry.revoke(&master, &agent, 11));
+
+        let mut replacement = delegation;
+        replacement.nonce = 12;
+        assert!(registry.register_signed(replacement).is_ok());
+        assert!(registry.get_active(&agent, 1).is_some());
+    }
+
+    #[test]
+    fn signed_registration_cannot_take_over_another_masters_agent() {
+        let (_, master) = key_addr(23);
+        let (_, other) = key_addr(24);
+        let (_, agent) = key_addr(25);
+        let registry = AgentRegistry::default();
+        let delegation = AgentDelegation {
+            master: master.clone(),
+            agent: agent.clone(),
+            expires_at_ms: u64::MAX,
+            max_notional_per_order: 1_000_000,
+            revoked: false,
+            nonce: 10,
+            scope: CapabilityScope::default(),
+        };
+        assert!(registry.register_signed(delegation.clone()).is_ok());
+        let mut takeover = delegation;
+        takeover.master = other;
+        takeover.nonce = 11;
+        assert!(registry.register_signed(takeover).is_err());
+        assert_eq!(registry.get_active(&agent, 1).unwrap().master, master);
     }
 
     #[test]

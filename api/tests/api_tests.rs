@@ -569,6 +569,24 @@ async fn test_withdrawal_reservation_and_cancellation_are_ledger_backed(pool: sq
     ] {
         ledger.create_account(&account).await.unwrap();
     }
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_chain_deployments (
+            id, chain_id, network, vault_address, deployment_version,
+            runtime_code_hash, deposit_event_signature, deposit_event_topic,
+            finality_policy, start_block
+        ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v3',
+                  $3, 'Deposited(bytes32,address,bytes32,address,uint256)', $4,
+                  'rpc_finalized_two_provider', 0)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind("0x2222222222222222222222222222222222222222")
+    .bind(format!("0x{}", "11".repeat(32)))
+    .bind(format!("0x{}", "22".repeat(32)))
+    .execute(ledger.pool())
+    .await
+    .unwrap();
     ledger
         .post(&ledger::PostTransaction {
             id: Uuid::new_v4(),
@@ -1037,9 +1055,9 @@ async fn test_get_order_by_client_id_found() {
             nonce: 42,
             client_order_id: Some("test-coid-api".to_string()),
             signature: vec![0u8; 65],
-            stp: Default::default(),
+            stp: types::SelfTradePreventionMode::CancelTaker,
             min_quantity: None,
-            display_quantity: None,
+            display_quantity: Some(QUANTITY_SCALE / 2),
         }),
         2,
     );
@@ -1064,6 +1082,13 @@ async fn test_get_order_by_client_id_found() {
     assert_eq!(body["ok"], true);
     assert_eq!(body["data"]["id"], order_id);
     assert_eq!(body["data"]["client_order_id"], "test-coid-api");
+    assert_eq!(body["data"]["display_quantity"], "0.5");
+    assert_eq!(body["data"]["stp"], "CancelTaker");
+    let open = get_as_user(&server, &format!("/account/{}/orders", user_addr())).await;
+    open.assert_status_ok();
+    let open_body: Value = open.json();
+    assert_eq!(open_body["data"][0]["display_quantity"], "0.5");
+    assert_eq!(open_body["data"][0]["stp"], "CancelTaker");
 }
 
 #[tokio::test]

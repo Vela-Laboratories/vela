@@ -643,6 +643,10 @@ pub fn openapi_spec() -> serde_json::Value {
                         "quantity": { "type": "integer", "description": "Base × 1e6" },
                         "nonce": { "type": "integer" },
                         "client_order_id": { "type": "string" },
+                        "signature_version": { "type": "integer", "enum": [2], "description": "Required for advanced controls. V2 signs the compact JSON array [\"vela:order:v2\",market,side,order_type,price,quantity,nonce,client_order_id|null,stp,min_quantity|null,display_quantity|null]." },
+                        "stp": { "type": "string", "enum": ["None", "CancelTaker", "CancelMaker", "CancelBoth", "DecrementAndCancel"], "default": "None" },
+                        "min_quantity": { "type": "integer", "minimum": 1, "description": "Atomic minimum fill, base × 1e6" },
+                        "display_quantity": { "type": "integer", "minimum": 1, "description": "Visible iceberg slice, base × 1e6" },
                         "signature": { "type": "string", "description": "0x-prefixed 65-byte ECDSA" }
                     }
                 },

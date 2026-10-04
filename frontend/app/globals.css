@@ -1741,6 +1741,9 @@
 .terminal-advanced-toggle i { font-style: normal; }
 .terminal-advanced-note { padding: 9px; display: grid; gap: 4px; color: #70798d; background: #090c13; border-radius: 8px; font-size: .61rem; line-height: 1.45; }
 .terminal-advanced-note strong { color: #b5bac5; font-weight: 550; }
+.terminal-advanced-note .terminal-input { margin-top: 5px; }
+.terminal-advanced-note .terminal-input input { height: 35px; font-size: .74rem; }
+.terminal-advanced-note .terminal-input select { width: 100%; height: 35px; padding: 0 9px; color: #eef0f4; background: #090c13; border: 1px solid rgba(137,148,174,.19); border-radius: 9px; font: 500 .7rem var(--font-mono), monospace; }
 .terminal-order-preview { margin: 0; padding-top: 8px; display: grid; gap: 5px; border-top: 1px solid rgba(137,148,174,.08); }
 .terminal-order-preview div { display: flex; justify-content: space-between; }
 .terminal-order-preview dt { color: #70788a; font-size: .61rem; }

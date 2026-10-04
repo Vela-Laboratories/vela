@@ -1440,6 +1440,9 @@ async fn get_open_orders(
                         "price": format_amount(o.price, PRICE_DECIMALS),
                         "quantity": format_amount(o.quantity, QUANTITY_DECIMALS),
                         "filled_quantity": format_amount(o.filled_quantity, QUANTITY_DECIMALS),
+                        "display_quantity": o.display_quantity.map(|q| format_amount(q, QUANTITY_DECIMALS)),
+                        "min_quantity": o.min_quantity.map(|q| format_amount(q, QUANTITY_DECIMALS)),
+                        "stp": format!("{:?}", o.stp),
                         "status": format!("{:?}", o.status).to_lowercase(),
                         "nonce": o.nonce,
                         "client_order_id": o.client_order_id,
@@ -1555,6 +1558,9 @@ async fn get_order_by_client_id(
                         "price": format_amount(o.price, PRICE_DECIMALS),
                         "quantity": format_amount(o.quantity, QUANTITY_DECIMALS),
                         "filled_quantity": format_amount(o.filled_quantity, QUANTITY_DECIMALS),
+                        "display_quantity": o.display_quantity.map(|q| format_amount(q, QUANTITY_DECIMALS)),
+                        "min_quantity": o.min_quantity.map(|q| format_amount(q, QUANTITY_DECIMALS)),
+                        "stp": format!("{:?}", o.stp),
                         "status": format!("{:?}", o.status).to_lowercase(),
                         "nonce": o.nonce,
                         "client_order_id": o.client_order_id,
@@ -1642,25 +1648,45 @@ async fn post_order(
     }
 
     let side_str = format!("{:?}", body.side).to_lowercase();
-    let msg = order_signing_message(
-        &body.market,
-        &side_str,
-        body.price,
-        body.quantity,
-        body.nonce,
-        body.client_order_id.as_deref(),
-    );
-    // Notional check for the agent cap: use bid notional for bids
-    // (price × qty) and quantity for asks (base being sold). This mirrors
-    // what the engine's credit system computes as the trade's notional.
-    let order_notional_micro = match body.side {
-        types::OrderSide::Bid => body
-            .price
-            .checked_mul(body.quantity)
-            .map(|n| n / 1_000_000)
-            .unwrap_or(u64::MAX),
-        types::OrderSide::Ask => body.quantity,
+    if !matches!(body.signature_version, None | Some(2))
+        || (body.signature_version.is_none()
+            && (body.stp != types::SelfTradePreventionMode::None
+                || body.min_quantity.is_some()
+                || body.display_quantity.is_some()))
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "advanced order controls require signature_version 2",
+            )),
+        )
+            .into_response();
+    }
+    let msg = if body.signature_version == Some(2) {
+        crate::auth::order_signing_message_v2(
+            &body.market,
+            body.side,
+            body.order_type,
+            body.price,
+            body.quantity,
+            body.nonce,
+            body.client_order_id.as_deref(),
+            body.stp,
+            body.min_quantity,
+            body.display_quantity,
+        )
+    } else {
+        order_signing_message(
+            &body.market,
+            &side_str,
+            body.price,
+            body.quantity,
+            body.nonce,
+            body.client_order_id.as_deref(),
+        )
     };
+    // Delegated caps are denominated in USDC for both sides of a market.
+    let order_notional_micro = crate::agents::order_notional_micro(body.price, body.quantity);
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1699,9 +1725,9 @@ async fn post_order(
         nonce: body.nonce,
         client_order_id: body.client_order_id.clone(),
         signature: vec![],
-        stp: Default::default(),
-        min_quantity: None,
-        display_quantity: None,
+        stp: body.stp,
+        min_quantity: body.min_quantity,
+        display_quantity: body.display_quantity,
     };
 
     let ts = std::time::SystemTime::now()
@@ -6962,15 +6988,20 @@ async fn agents_register(
             .into_response();
     }
 
-    state.agents.register(crate::agents::AgentDelegation {
-        master: master_id,
-        agent: agent_id,
-        expires_at_ms: body.expires_at_ms,
-        max_notional_per_order: body.max_notional_per_order,
-        revoked: false,
-        nonce: body.nonce,
-        scope,
-    });
+    let registration = state
+        .agents
+        .register_signed(crate::agents::AgentDelegation {
+            master: master_id,
+            agent: agent_id,
+            expires_at_ms: body.expires_at_ms,
+            max_notional_per_order: body.max_notional_per_order,
+            revoked: false,
+            nonce: body.nonce,
+            scope,
+        });
+    if let Err(reason) = registration {
+        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(reason))).into_response();
+    }
 
     (
         StatusCode::OK,
@@ -7022,7 +7053,17 @@ async fn agents_revoke(
             .into_response();
     }
 
-    let removed = state.agents.revoke(&agent_id);
+    let master_id = match UserId::from_hex(&body.master) {
+        Ok(m) => m,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid master address")),
+            )
+                .into_response()
+        }
+    };
+    let removed = state.agents.revoke(&master_id, &agent_id, body.nonce);
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({

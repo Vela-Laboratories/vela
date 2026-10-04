@@ -5,8 +5,9 @@ import Link from 'next/link'
 import Skeleton from '@/components/ui/Skeleton'
 import TokenIcon from '@/components/TokenIcon'
 import type { IChartApi, ISeriesApi, CandlestickData, HistogramData, Time } from 'lightweight-charts'
-import { cancelOrder, getAccountFeeTier, getAccountFills, getBalances, getFeeSchedule, getOrders, getPublicTrades, postOrder, type AccountFill, type CancelOrderBody, type Order, type PostOrderBody, type PublicTrade } from '@/lib/api'
+import { cancelOrder, getAccountFeeTier, getAccountFills, getBalances, getFeeSchedule, getOrders, getPublicTrades, postOrder, type AccountFill, type CancelOrderBody, type Order, type PublicTrade } from '@/lib/api'
 import { signCancel, signOrder } from '@/lib/signing'
+import { prepareOrder } from '@/lib/order-entry'
 import { useAuth } from '@/lib/auth'
 import { velaWs } from '@/lib/ws'
 import { ORDERED_PAIRS, getMarketInfo, getPriceDecimals } from '@/lib/markets'
@@ -212,27 +213,63 @@ function ActivityDock({ pair, bids, asks, bookLoading, onToast }: { pair: string
   const openOrders = orders.filter((order) => (order.status === 'open' || order.status === 'partial') && order.market === pair); const privateEmpty = !isConnected || !isAuthenticated ? 'Connect and authenticate to view private account activity.' : undefined
   return <section className="terminal-activity-dock"><div className="terminal-dock-tabs" role="tablist" aria-label="Market activity">{([['orders', `Open orders${isAuthenticated ? ` (${openOrders.length})` : ''}`], ['trades', 'Recent trades'], ['fills', 'My fills'], ['book', 'Order book']] as [DockTab, string][]).map(([id, label]) => <button type="button" role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}>{label}</button>)}</div><div className="terminal-dock-content">
     {tab === 'book' ? <OrderBook bids={bids} asks={asks} pair={pair} loading={bookLoading} /> : null}
-    {tab === 'orders' ? privateEmpty ? <EmptyState message={privateEmpty} /> : openOrders.length === 0 ? <EmptyState message="No open orders for this market." /> : <div className="terminal-table"><div className="terminal-table-head terminal-table-head--orders"><span>Time</span><span>Side</span><span>Type</span><span>Price</span><span>Size</span><span>Filled</span><span /></div>{openOrders.map((order) => <div className="terminal-table-row terminal-table-row--orders" key={order.id}><span>{fmtTime(order.timestamp)}</span><span className={order.side === 'buy' ? 'positive' : 'negative'}>{order.side}</span><span>{order.order_type}</span><span>{fmtPrice(order.price, getPriceDecimals(pair))}</span><span>{fmtSize(order.quantity, info.ticker)}</span><span>{fmtSize(order.filled_quantity, info.ticker)}</span><button type="button" onClick={() => void handleCancel(order)}>Cancel</button></div>)}</div> : null}
+    {tab === 'orders' ? privateEmpty ? <EmptyState message={privateEmpty} /> : openOrders.length === 0 ? <EmptyState message="No open orders for this market." /> : <div className="terminal-table"><div className="terminal-table-head terminal-table-head--orders"><span>Time</span><span>Side</span><span>Type</span><span>Price</span><span>Size</span><span>Filled</span><span /></div>{openOrders.map((order) => <div className="terminal-table-row terminal-table-row--orders" key={order.id}><span>{fmtTime(order.timestamp)}</span><span className={order.side === 'buy' || order.side === 'bid' ? 'positive' : 'negative'}>{order.side}</span><span>{order.display_quantity ? `Iceberg ${order.display_quantity}` : order.order_type}</span><span>{fmtPrice(order.price, getPriceDecimals(pair))}</span><span>{fmtSize(order.quantity, info.ticker)}</span><span>{fmtSize(order.filled_quantity, info.ticker)}</span><button type="button" onClick={() => void handleCancel(order)}>Cancel</button></div>)}</div> : null}
     {tab === 'trades' ? trades.length === 0 ? <EmptyState message="No Vela testnet fills have printed for this market yet." /> : <div className="terminal-table"><div className="terminal-table-head terminal-table-head--trades"><span>Time</span><span>Price</span><span>Size</span><span>Liquidity</span></div>{trades.map((trade) => <div className="terminal-table-row terminal-table-row--trades" key={trade.id}><span>{fmtTime(trade.timestamp)}</span><span className={trade.side.toLowerCase() === 'buy' ? 'positive' : 'negative'}>{fmtPrice(trade.price / 1_000_000, getPriceDecimals(pair))}</span><span>{fmtSize(trade.quantity / 1_000_000, info.ticker)}</span><span>{trade.synthetic ? 'Synthetic' : 'Participant'}</span></div>)}</div> : null}
     {tab === 'fills' ? privateEmpty ? <EmptyState message={privateEmpty} /> : fills.length === 0 ? <EmptyState message="No account fills for this market." /> : <div className="terminal-table"><div className="terminal-table-head terminal-table-head--fills"><span>Time</span><span>Side</span><span>Role</span><span>Price</span><span>Size</span></div>{fills.map((fill) => <div className="terminal-table-row terminal-table-row--fills" key={fill.id}><span>{fmtTime(fill.timestamp)}</span><span className={fill.side === 'buy' ? 'positive' : 'negative'}>{fill.side}</span><span>{fill.role}</span><span>{fmtPrice(fill.price, getPriceDecimals(pair))}</span><span>{fmtSize(fill.quantity, info.ticker)}</span></div>)}</div> : null}
   </div></section>
 }
 
 function OrderTicket({ pair, bids, asks, fee, onToast }: { pair: string; bids: BookLevel[]; asks: BookLevel[]; fee: FeeState; onToast: (message: string, variant: Toast['variant']) => void }) {
-  const { address, isConnected, isAuthenticated, connect } = useAuth(); const [side, setSide] = useState<OrderSide>('buy'); const [orderType, setOrderType] = useState<OrderEntryType>('limit'); const [price, setPrice] = useState(''); const [size, setSize] = useState(''); const [advanced, setAdvanced] = useState(false); const [submitting, setSubmitting] = useState(false); const [balances, setBalances] = useState({ base: '0', quote: '0' })
+  const { address, isConnected, isAuthenticated, connect } = useAuth(); const [side, setSide] = useState<OrderSide>('buy'); const [orderType, setOrderType] = useState<OrderEntryType>('limit'); const [price, setPrice] = useState(''); const [size, setSize] = useState(''); const [displaySize, setDisplaySize] = useState(''); const [minSize, setMinSize] = useState(''); const [stp, setStp] = useState<'None' | 'CancelTaker' | 'CancelMaker' | 'CancelBoth'>('None'); const [advanced, setAdvanced] = useState(false); const [submitting, setSubmitting] = useState(false); const [balances, setBalances] = useState({ base: '0', quote: '0' })
   const info = getMarketInfo(pair); const bestBid = bids[0]?.price; const bestAsk = asks[0]?.price; const mid = bestBid && bestAsk ? ((Number(bestBid) + Number(bestAsk)) / 2).toString() : undefined
   useEffect(() => { if (!address || !isAuthenticated) return; const refresh = () => void getBalances(address).then((response) => { if (response.ok && response.data) setBalances({ base: response.data.find((item) => item.asset.toUpperCase() === info.ticker)?.available ?? '0', quote: response.data.find((item) => item.asset.toUpperCase() === info.quoteTicker)?.available ?? '0' }) }).catch(() => {}); refresh(); const timer = window.setInterval(refresh, 10000); return () => window.clearInterval(timer) }, [address, info.quoteTicker, info.ticker, isAuthenticated])
   const executablePrice = orderType === 'market' ? (side === 'buy' ? bestAsk : bestBid) : price; const total = Number(executablePrice) * Number(size); const feeBps = orderType === 'market' ? fee.takerBps : fee.makerBps; const feeAmount = Number.isFinite(total) ? total * feeBps / 10000 : 0; const available = side === 'buy' ? balances.quote : balances.base; const availableAsset = side === 'buy' ? info.quoteTicker : info.ticker
   const setPercentage = (percentage: number) => { const balance = Number(available); if (!(balance > 0)) return; if (side === 'buy') { const px = Number(executablePrice); if (px > 0) setSize((balance * percentage / px).toFixed(6)) } else setSize((balance * percentage).toFixed(6)) }
-  const submit = async () => { if (!address || !isConnected || !isAuthenticated || !(Number(size) > 0) || (orderType === 'limit' && !(Number(price) > 0))) return; setSubmitting(true); try { const priceRaw = orderType === 'market' ? 0 : Math.round(Number(price) * 1_000_000); const quantity = Math.round(Number(size) * 1_000_000); const nonce = Date.now(); const signature = await signOrder({ market: pair, side, price: priceRaw, quantity, nonce, address }); const body: PostOrderBody = { market: pair, side, order_type: orderType, price: priceRaw, quantity, nonce, address, signature }; const response = await postOrder(body); if (response.ok) { onToast('Order placed', 'success'); setSize(''); if (orderType === 'limit') setPrice('') } else onToast(response.error ?? 'Order rejected', 'error') } catch (error) { onToast(error instanceof Error ? error.message : 'Signing failed', 'error') } finally { setSubmitting(false) } }
+  const submit = async () => {
+    if (!address || !isConnected || !isAuthenticated) return
+    setSubmitting(true)
+    try {
+      const unsigned = prepareOrder({
+        market: pair,
+        side,
+        kind: orderType,
+        limitPrice: price,
+        bestBid,
+        bestAsk,
+        size,
+        displaySize,
+        minSize,
+        stp,
+        nonce: Date.now(),
+        address,
+      })
+      const signature = await signOrder(unsigned)
+      const response = await postOrder({ ...unsigned, signature })
+      if (response.ok) {
+        onToast(orderType === 'market' ? 'Immediate order submitted' : 'Order placed', 'success')
+        setSize('')
+        if (orderType === 'limit') setPrice('')
+      } else onToast(response.error ?? 'Order rejected', 'error')
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : 'Signing failed', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
   const actionLabel = !isConnected ? 'Connect wallet' : !isAuthenticated ? 'Authenticate wallet' : submitting ? 'Submitting…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${info.ticker}`
-  return <section className="terminal-order-ticket"><div className="terminal-side-switch">{(['buy', 'sell'] as const).map((item) => <button type="button" key={item} className={`${item}${side === item ? ' is-active' : ''}`} onClick={() => setSide(item)}>{item}</button>)}</div><div className="terminal-order-types" role="tablist" aria-label="Order type">{(['limit', 'market'] as const).map((item) => <button type="button" role="tab" key={item} aria-selected={orderType === item} onClick={() => setOrderType(item)}>{item}</button>)}</div><div className="terminal-ticket-body">
+  return <section className="terminal-order-ticket"><div className="terminal-side-switch">{(['buy', 'sell'] as const).map((item) => <button type="button" key={item} className={`${item}${side === item ? ' is-active' : ''}`} onClick={() => setSide(item)}>{item}</button>)}</div><div className="terminal-order-types" role="tablist" aria-label="Order type">{(['limit', 'market'] as const).map((item) => <button type="button" role="tab" key={item} aria-selected={orderType === item} onClick={() => { setOrderType(item); if (item === 'market') setDisplaySize('') }}>{item === 'market' ? 'Immediate' : 'Limit'}</button>)}</div><div className="terminal-ticket-body">
     <div className="terminal-available"><span>Available</span><strong>{fmtSize(available, availableAsset)} {availableAsset}</strong></div>
-    {orderType === 'limit' ? <label className="terminal-input"><span>Price <i>{info.quoteTicker}</i></span><input type="number" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0.00" /><div>{([['Bid', bestBid], ['Mid', mid], ['Ask', bestAsk]] as [string, string | undefined][]).map(([label, value]) => <button type="button" key={label} disabled={!value} onClick={() => value && setPrice(value)}>{label}</button>)}</div></label> : <div className="terminal-market-execution"><Icon name="info" /><span>Market orders execute against the synthetic Vela testnet book. The preview uses the current best {side === 'buy' ? 'ask' : 'bid'}.</span></div>}
+    {orderType === 'limit' ? <label className="terminal-input"><span>Price <i>{info.quoteTicker}</i></span><input type="number" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0.00" /><div>{([['Bid', bestBid], ['Mid', mid], ['Ask', bestAsk]] as [string, string | undefined][]).map(([label, value]) => <button type="button" key={label} disabled={!value} onClick={() => value && setPrice(value)}>{label}</button>)}</div></label> : <div className="terminal-market-execution"><Icon name="info" /><span>Immediate order at the current Vela best {side === 'buy' ? 'ask' : 'bid'} price. Any amount not filled at that price cancels.</span></div>}
     <label className="terminal-input terminal-input--size"><span>Amount <i>{info.ticker}</i></span><input type="number" inputMode="decimal" value={size} onChange={(event) => setSize(event.target.value)} placeholder="0.000000" /></label>
     <div className="terminal-percentages">{([[.1, '10%'], [.25, '25%'], [.5, '50%'], [1, 'Max']] as [number, string][]).map(([value, label]) => <button type="button" key={label} onClick={() => setPercentage(value)}>{label}</button>)}</div>
     <button type="button" className="terminal-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}><span><Icon name="settings" />Advanced</span><i>{advanced ? '−' : '+'}</i></button>
-    {advanced ? <div className="terminal-advanced-note"><strong>Time in force: Good ’til cancelled</strong><span>Post-only, stop triggers, and custom slippage remain hidden until those constraints are bound and enforced by the order API.</span></div> : null}
+    {advanced ? <div className="terminal-advanced-note">
+      <strong>Time in force: {orderType === 'market' ? 'Immediate or cancel' : 'Good ’til cancelled'}</strong>
+      {orderType === 'limit' ? <label className="terminal-input"><span>Iceberg display size <i>{info.ticker}</i></span><input type="number" inputMode="decimal" min="0" value={displaySize} onChange={(event) => setDisplaySize(event.target.value)} placeholder="Optional" /></label> : null}
+      <label className="terminal-input"><span>Minimum immediate fill <i>{info.ticker}</i></span><input type="number" inputMode="decimal" min="0" value={minSize} onChange={(event) => setMinSize(event.target.value)} placeholder="Optional" /></label>
+      <label className="terminal-input"><span>Self-trade prevention</span><select value={stp} onChange={(event) => setStp(event.target.value as typeof stp)}><option value="None">Skip self-match</option><option value="CancelTaker">Cancel incoming order</option><option value="CancelMaker">Cancel resting order</option><option value="CancelBoth">Cancel both orders</option></select></label>
+      <span>{displaySize ? 'Only the display size appears in public depth; the full order can still match. ' : ''}{minSize ? 'The order rejects if it cannot fill at least this amount immediately.' : 'Leave minimum fill blank to accept any fill size.'}</span>
+    </div> : null}
     <dl className="terminal-order-preview"><div><dt>Estimated total</dt><dd>{Number.isFinite(total) && total > 0 ? `${total.toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div><div><dt>Fee · tier {fee.tier} ({feeBps} bps)</dt><dd>{Number.isFinite(feeAmount) && total > 0 ? `${feeAmount.toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div><div><dt>Estimated debit</dt><dd>{Number.isFinite(total) && total > 0 ? `${(total + Math.max(0, feeAmount)).toFixed(4)} ${info.quoteTicker}` : '—'}</dd></div></dl>
     <button type="button" className={`terminal-submit terminal-submit--${side}`} disabled={isConnected && isAuthenticated && submitting} onClick={isConnected && isAuthenticated ? () => void submit() : connect}>{actionLabel}</button>
   </div></section>
