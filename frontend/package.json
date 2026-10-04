@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "generate:api-types": "openapi-typescript ${VELA_OPENAPI_URL:-http://localhost:3001}/openapi.json --output lib/api-types.gen.ts"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^16.0.0",

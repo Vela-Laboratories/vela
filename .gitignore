@@ -22,6 +22,8 @@ perf.data.old
 # Python bytecode / caches (from one-off patch scripts)
 *.pyc
 __pycache__/
+test-results/
+playwright-report/
 
 # IDE
 .idea/
