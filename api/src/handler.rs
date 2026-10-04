@@ -6761,26 +6761,25 @@ async fn post_twap_algo(
     // authorization event; individual child orders bypass sig verify
     // (they're synthesized internally and inherit this authorization).
     // Notional cap enforced against total quantity.
-    let notional_micro = match body.side {
-        types::OrderSide::Bid => body
-            .price_limit
-            .and_then(|p| p.checked_mul(body.quantity))
-            .map(|n| n / 1_000_000)
-            .unwrap_or(u64::MAX),
-        types::OrderSide::Ask => body.quantity,
-    };
+    let notional_micro = body
+        .price_limit
+        .map(|price| crate::agents::order_notional_micro(price, body.quantity))
+        .unwrap_or(u64::MAX);
     let msg = twap_signing_message(&body.market, body.quantity, body.duration_secs, body.nonce);
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if crate::agents::verify_master_or_agent_async(
+    if crate::agents::verify_master_or_agent_scoped_async(
         msg,
         body.signature.clone(),
         body.address.clone(),
         notional_micro,
         now_ms,
         Arc::clone(&state.agents),
+        MarketId(body.market.clone()),
+        body.side,
+        types::OrderType::ImmediateOrCancel,
     )
     .await
     .is_err()

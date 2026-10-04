@@ -486,24 +486,21 @@ async fn mcp_place_order(state: &Arc<AppState>, args: &Value) -> Result<Value, S
         nonce,
         client_order_id.as_deref(),
     );
-    let notional_micro = match side {
-        types::OrderSide::Bid => price
-            .checked_mul(quantity)
-            .map(|n| n / 1_000_000)
-            .unwrap_or(u64::MAX),
-        types::OrderSide::Ask => quantity,
-    };
+    let notional_micro = crate::agents::order_notional_micro(price, quantity);
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    crate::agents::verify_master_or_agent_async(
+    crate::agents::verify_master_or_agent_scoped_async(
         msg,
         signature,
         address.clone(),
         notional_micro,
         now_ms,
         Arc::clone(&state.agents),
+        types::MarketId(market.clone()),
+        side,
+        order_type,
     )
     .await
     .map_err(|_| "invalid signature".to_string())?;
@@ -627,13 +624,9 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         return Err("quantity must be >= slices (need at least 1 unit per slice)".to_string());
     }
 
-    let notional_micro = match side {
-        types::OrderSide::Bid => price_limit
-            .and_then(|p| p.checked_mul(quantity))
-            .map(|n| n / 1_000_000)
-            .unwrap_or(u64::MAX),
-        types::OrderSide::Ask => quantity,
-    };
+    let notional_micro = price_limit
+        .map(|price| crate::agents::order_notional_micro(price, quantity))
+        .unwrap_or(u64::MAX);
     let msg = format!(
         "vela:algo:twap:{}:{}:{}:{}",
         market, quantity, duration_secs, nonce
@@ -643,13 +636,16 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    crate::agents::verify_master_or_agent_async(
+    crate::agents::verify_master_or_agent_scoped_async(
         msg,
         signature,
         address.clone(),
         notional_micro,
         now_ms,
         Arc::clone(&state.agents),
+        types::MarketId(market.clone()),
+        side,
+        types::OrderType::ImmediateOrCancel,
     )
     .await
     .map_err(|_| "invalid signature".to_string())?;
