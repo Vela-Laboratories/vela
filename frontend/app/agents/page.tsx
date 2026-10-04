@@ -14,6 +14,10 @@ function statusFor(agent: AgentListResponse['agents'][number]): string {
   return 'Active'
 }
 
+function nextRevocationNonce(previous: number): number {
+  return Math.max(Date.now(), previous + 1)
+}
+
 export default function AgentsPage() {
   const { address, isAuthenticated, connect } = useAuth()
   const [snapshot, setSnapshot] = useState<AgentListResponse | null>(null)
@@ -21,6 +25,7 @@ export default function AgentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [revokingAgent, setRevokingAgent] = useState<string | null>(null)
   const agents = snapshot && snapshot.master.toLowerCase() === address?.toLowerCase() ? snapshot.agents : []
+  const initialLoading = isAuthenticated && snapshot?.master.toLowerCase() !== address?.toLowerCase()
 
   const refresh = useCallback(async () => {
     if (!address || !isAuthenticated) return
@@ -37,7 +42,21 @@ export default function AgentsPage() {
     }
   }, [address, isAuthenticated])
 
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    if (!address || !isAuthenticated) return
+    let cancelled = false
+    void getAgents(address).then((response) => {
+      if (cancelled) return
+      if (!response.ok || !response.data) {
+        setError(response.error ?? 'Unable to load agents')
+      } else {
+        setSnapshot(response.data)
+      }
+    }).catch((caught: unknown) => {
+      if (!cancelled) setError(caught instanceof Error ? caught.message : 'Unable to load agents')
+    })
+    return () => { cancelled = true }
+  }, [address, isAuthenticated])
 
   async function revoke(agent: AgentListResponse['agents'][number]) {
     if (!address || !isAuthenticated) return
@@ -46,7 +65,7 @@ export default function AgentsPage() {
     try {
       if (!Number.isSafeInteger(agent.nonce)) throw new Error('Agent nonce cannot be signed safely in this browser')
       if (!window.ethereum) throw new Error('No browser wallet detected')
-      const nonce = Math.max(Date.now(), agent.nonce + 1)
+      const nonce = nextRevocationNonce(agent.nonce)
       const message = agentRevocationMessage(agent.agent, nonce)
       const signature = await window.ethereum.request({ method: 'personal_sign', params: [message, address] })
       if (typeof signature !== 'string') throw new Error('Wallet did not return a signature')
@@ -76,7 +95,7 @@ export default function AgentsPage() {
         <h1 className="text-ink text-3xl font-serif mt-2">Agent wallets</h1>
         <p className="text-brown text-sm mt-2">Delegated trading keys for {address.slice(0, 6)}…{address.slice(-4)}</p>
       </div>
-      <Button variant="ghost" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
+      <Button variant="ghost" onClick={() => void refresh()} disabled={loading || initialLoading}>{loading || initialLoading ? 'Loading…' : 'Refresh'}</Button>
     </header>
 
     <Card className="p-5 text-brown text-sm">
@@ -84,7 +103,7 @@ export default function AgentsPage() {
       A revoked key stops working on this server immediately; this is not an on-chain revocation.
     </Card>
     {error && <Card className="p-4 text-terra text-sm" role="alert">{error}</Card>}
-    {!loading && agents.length === 0 && <Card className="p-8 text-brown text-sm">No agent wallets are registered for this account.</Card>}
+    {!loading && !initialLoading && agents.length === 0 && <Card className="p-8 text-brown text-sm">No agent wallets are registered for this account.</Card>}
     <div className="space-y-3">
       {agents.map((agent) => <Card key={agent.agent} className="p-5 flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-2">
