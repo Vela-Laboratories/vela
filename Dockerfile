@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1.88-slim AS builder
+FROM rust:1.99-slim AS builder
 WORKDIR /app
 
 # Prime the dependency layer separately from source so incremental builds
@@ -29,6 +29,7 @@ RUN mkdir -p api/src/bin engine/src engine/benches state/src types/src committer
     && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
     && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
     && echo 'fn main() {}' > ledger/src/bin/bootstrap.rs \
+    && echo 'fn main() {}' > ledger/src/bin/daily_report.rs \
     && echo '' > indexer/src/lib.rs \
     && echo 'fn main() {}' > indexer/src/main.rs \
     && echo 'fn main() {}' > indexer/src/bin/register.rs \
@@ -47,7 +48,7 @@ RUN mkdir -p api/src/bin engine/src engine/benches state/src types/src committer
 COPY . .
 RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src withdrawal-worker/src reconciliation-worker/src \
       -type f -exec touch {} + \
-    && cargo build --release --bin api --bin engine-recovery --bin ledger-migrate --bin ledger-bootstrap \
+    && cargo build --release --bin api --bin engine-recovery --bin ledger-migrate --bin ledger-bootstrap --bin ledger-daily-report \
       --bin deposit-indexer --bin deposit-indexer-register
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ COPY --from=builder /app/target/release/api /usr/local/bin/api
 COPY --from=builder /app/target/release/engine-recovery /usr/local/bin/engine-recovery
 COPY --from=builder /app/target/release/ledger-migrate /usr/local/bin/ledger-migrate
 COPY --from=builder /app/target/release/ledger-bootstrap /usr/local/bin/ledger-bootstrap
+COPY --from=builder /app/target/release/ledger-daily-report /usr/local/bin/ledger-daily-report
 COPY --from=builder /app/target/release/deposit-indexer /usr/local/bin/deposit-indexer
 COPY --from=builder /app/target/release/deposit-indexer-register /usr/local/bin/deposit-indexer-register
 
