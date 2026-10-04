@@ -21,7 +21,7 @@ import { FullPageSpinner } from '@/components/ui/Spinner'
 
 type CostBasisMethod = 'FIFO' | 'HIFO'
 
-function formatMicroUsdc(raw: string | number | undefined): string {
+function formatMicroUsdc(raw: string | number | null | undefined): string {
   if (raw === undefined || raw === null) return '—'
   const n = typeof raw === 'string' ? parseFloat(raw) : raw
   if (!Number.isFinite(n)) return '—'

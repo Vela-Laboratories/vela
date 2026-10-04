@@ -2451,22 +2451,45 @@ export interface components {
             /** @description Unix seconds */
             acquired_at: number;
             asset: string;
-            /** @description µUSDC */
+            /** @description Decimal USDC, not atomic units */
             cost_basis_usdc: string;
+            /** @description Decimal base-asset units */
             quantity: string;
+        };
+        PortfolioMarket: {
+            base_asset: string;
+            cost_basis_price_usdc: string;
+            fill_count: number;
+            mark_price_usdc: string | null;
+            market_id: string;
+            open_cost_basis_usdc: string;
+            position_base: string;
+            realized_pnl_usdc: string;
+            unrealized_pnl_usdc: string | null;
         };
         PortfolioPerMarket: {
             market: string;
+            /** @description Decimal USDC */
             realized_usdc: string;
-            unrealized_usdc: string;
+            /** @description Null when no mark price is available */
+            unrealized_usdc: string | null;
         };
         PortfolioResponse: {
             address: string;
             /** @enum {string} */
             cost_basis_method: "FIFO" | "HIFO";
+            markets: components["schemas"]["PortfolioMarket"][];
             per_market: components["schemas"]["PortfolioPerMarket"][];
+            /** @description Decimal USDC */
             realized_pnl_usdc: string;
             tax_lots: components["schemas"]["PortfolioLot"][];
+            /** @description Decimal USDC */
+            total_pnl_usdc: string;
+            /** @description Same value as realized_pnl_usdc */
+            total_realized_pnl_usdc: string;
+            /** @description Same value as unrealized_pnl_usdc */
+            total_unrealized_pnl_usdc: string;
+            /** @description Decimal USDC; excludes markets without a mark */
             unrealized_pnl_usdc: string;
         };
         PostOrderBody: {

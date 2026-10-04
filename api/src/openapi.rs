@@ -800,8 +800,8 @@ pub fn openapi_spec() -> serde_json::Value {
                     "required": ["asset", "quantity", "cost_basis_usdc", "acquired_at"],
                     "properties": {
                         "asset": { "type": "string" },
-                        "quantity": { "type": "string" },
-                        "cost_basis_usdc": { "type": "string", "description": "µUSDC" },
+                        "quantity": { "type": "string", "description": "Decimal base-asset units" },
+                        "cost_basis_usdc": { "type": "string", "description": "Decimal USDC, not atomic units" },
                         "acquired_at": { "type": "integer", "description": "Unix seconds" }
                     }
                 },
@@ -810,8 +810,23 @@ pub fn openapi_spec() -> serde_json::Value {
                     "required": ["market", "realized_usdc", "unrealized_usdc"],
                     "properties": {
                         "market": { "type": "string" },
-                        "realized_usdc": { "type": "string" },
-                        "unrealized_usdc": { "type": "string" }
+                        "realized_usdc": { "type": "string", "description": "Decimal USDC" },
+                        "unrealized_usdc": { "type": ["string", "null"], "description": "Null when no mark price is available" }
+                    }
+                },
+                "PortfolioMarket": {
+                    "type": "object",
+                    "required": ["market_id", "base_asset", "position_base", "cost_basis_price_usdc", "open_cost_basis_usdc", "mark_price_usdc", "realized_pnl_usdc", "unrealized_pnl_usdc", "fill_count"],
+                    "properties": {
+                        "market_id": { "type": "string" },
+                        "base_asset": { "type": "string" },
+                        "position_base": { "type": "string" },
+                        "cost_basis_price_usdc": { "type": "string" },
+                        "open_cost_basis_usdc": { "type": "string" },
+                        "mark_price_usdc": { "type": ["string", "null"] },
+                        "realized_pnl_usdc": { "type": "string" },
+                        "unrealized_pnl_usdc": { "type": ["string", "null"] },
+                        "fill_count": { "type": "integer" }
                     }
                 },
                 "PortfolioResponse": {
@@ -820,17 +835,25 @@ pub fn openapi_spec() -> serde_json::Value {
                         "address",
                         "realized_pnl_usdc",
                         "unrealized_pnl_usdc",
+                        "total_realized_pnl_usdc",
+                        "total_unrealized_pnl_usdc",
+                        "total_pnl_usdc",
                         "cost_basis_method",
                         "tax_lots",
-                        "per_market"
+                        "per_market",
+                        "markets"
                     ],
                     "properties": {
                         "address": { "type": "string" },
-                        "realized_pnl_usdc": { "type": "string" },
-                        "unrealized_pnl_usdc": { "type": "string" },
+                        "realized_pnl_usdc": { "type": "string", "description": "Decimal USDC" },
+                        "unrealized_pnl_usdc": { "type": "string", "description": "Decimal USDC; excludes markets without a mark" },
+                        "total_realized_pnl_usdc": { "type": "string", "description": "Same value as realized_pnl_usdc" },
+                        "total_unrealized_pnl_usdc": { "type": "string", "description": "Same value as unrealized_pnl_usdc" },
+                        "total_pnl_usdc": { "type": "string", "description": "Decimal USDC" },
                         "cost_basis_method": { "type": "string", "enum": ["FIFO", "HIFO"] },
                         "tax_lots": { "type": "array", "items": { "$ref": "#/components/schemas/PortfolioLot" } },
-                        "per_market": { "type": "array", "items": { "$ref": "#/components/schemas/PortfolioPerMarket" } }
+                        "per_market": { "type": "array", "items": { "$ref": "#/components/schemas/PortfolioPerMarket" } },
+                        "markets": { "type": "array", "items": { "$ref": "#/components/schemas/PortfolioMarket" } }
                     }
                 },
                 "PerpMarket": {
