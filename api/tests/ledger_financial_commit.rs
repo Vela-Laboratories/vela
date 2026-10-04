@@ -19,6 +19,196 @@ use uuid::Uuid;
 
 const MARKET: &str = "ETH-USDC";
 
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn testnet_finalized_deposit_trade_and_withdrawal_reservation_reconcile(pool: sqlx::PgPool) {
+    let maker = user(31);
+    let taker = user(32);
+    let fixture = LedgerFixture::new(pool.clone()).await;
+    fixture.seed("ETH", &maker, 2_000_000_000_000_000_000).await;
+    let vault = "0x1111111111111111111111111111111111111111";
+    let token = "0x2222222222222222222222222222222222222222";
+    let asset_id: Uuid = sqlx::query_scalar("UPDATE ledger_assets SET chain_id=84532, contract_address=$1 WHERE code='USDC' RETURNING id")
+        .bind(token).fetch_one(&pool).await.unwrap();
+    sqlx::query("INSERT INTO ledger_chain_deployments (id,chain_id,network,vault_address,deployment_version,runtime_code_hash,deposit_event_signature,deposit_event_topic,finality_policy,start_block) VALUES ($1,84532,'base-sepolia',$2,'test-v3',$3,'Deposited(bytes32,address,bytes32,address,uint256)',$4,'rpc_finalized_two_provider',0)")
+        .bind(Uuid::new_v4()).bind(vault).bind(format!("0x{}", "11".repeat(32))).bind(format!("0x{}", "22".repeat(32)))
+        .execute(&pool).await.unwrap();
+    let available_id = Uuid::new_v4();
+    let custody_id = Uuid::new_v4();
+    for (id, owner_type, owner_reference, account_type, allow_negative) in [
+        (
+            available_id,
+            "customer",
+            taker.to_hex(),
+            "customer_available",
+            false,
+        ),
+        (
+            custody_id,
+            "custody",
+            vault.to_string(),
+            "custody_vault",
+            true,
+        ),
+    ] {
+        fixture
+            .ledger
+            .create_account(&NewAccount {
+                id,
+                asset_id,
+                owner_type: owner_type.into(),
+                owner_reference,
+                account_type: account_type.into(),
+                allow_negative,
+            })
+            .await
+            .unwrap();
+    }
+    let event = ledger::DepositChainEvent {
+        chain_id: 84532,
+        block_number: 100,
+        block_hash: format!("0x{}", "33".repeat(32)),
+        transaction_hash: format!("0x{}", "44".repeat(32)),
+        transaction_index: 0,
+        log_index: 1,
+        vault_address: vault.into(),
+        vault_deposit_id: format!("0x{}", "55".repeat(32)),
+        sender_address: taker.to_hex(),
+        asset_address: Some(token.into()),
+        actual_amount: BigDecimal::from(10_000_000_000_i64),
+    };
+    let deposit_id = Uuid::new_v4();
+    fixture
+        .ledger
+        .observe_deposit(&ledger::ObserveDeposit {
+            deposit_id,
+            customer_reference: taker.to_hex(),
+            destination_account_id: available_id,
+            asset_id,
+            amount: event.actual_amount.clone(),
+            event: event.clone(),
+        })
+        .await
+        .unwrap();
+    fixture
+        .ledger
+        .mark_deposit_confirming(deposit_id, 20, 120, &format!("0x{}", "66".repeat(32)))
+        .await
+        .unwrap();
+    let first = ledger::RpcFinalityObservation {
+        provider: "test-provider-a".into(),
+        chain_id: 84532,
+        finalized_block_number: 120,
+        finalized_block_hash: format!("0x{}", "66".repeat(32)),
+        deposit_block_hash: event.block_hash.clone(),
+        transaction_hash: event.transaction_hash.clone(),
+        log_index: event.log_index,
+        vault_address: event.vault_address.clone(),
+        vault_deposit_id: event.vault_deposit_id.clone(),
+        sender_address: event.sender_address.clone(),
+        credited_account_reference: taker.to_hex(),
+        asset_address: event.asset_address.clone(),
+        actual_amount: event.actual_amount.clone(),
+    };
+    fixture
+        .ledger
+        .finalize_deposit(&ledger::FinalizeDeposit {
+            deposit_id,
+            first: first.clone(),
+            second: ledger::RpcFinalityObservation {
+                provider: "test-provider-b".into(),
+                ..first
+            },
+        })
+        .await
+        .unwrap();
+    let credited = fixture
+        .ledger
+        .credit_finalized_deposit(deposit_id, custody_id, Uuid::new_v4())
+        .await
+        .unwrap();
+    assert_eq!(credited.deposit.state, ledger::DepositState::Credited);
+
+    // The matcher restores its financial cache from immutable journal history.
+    let mut matching_engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+    matching_engine.add_market(market());
+    api::ledger_coordinator::restore_engine_financial_state(&mut matching_engine, &fixture.ledger)
+        .await
+        .unwrap();
+    let user_state = Arc::new(RwLock::new(UserState::new(5.0)));
+    user_state.write().await.sync_from_engine(&matching_engine);
+    let mut builder = MarketShards::new(user_state);
+    builder.add_shard(MarketId(MARKET.into()), matching_engine);
+    let shards = Arc::new(builder);
+    let committer = leader_committer(fixture.ledger.clone()).await;
+    for (owner, side, nonce) in [
+        (maker, OrderSide::Ask, 1),
+        (taker.clone(), OrderSide::Bid, 1),
+    ] {
+        let responses = submit(
+            shards.clone(),
+            committer.clone(),
+            PostOrderRequest {
+                user: owner,
+                market: MarketId(MARKET.into()),
+                side,
+                order_type: OrderType::GoodTillCanceled,
+                price: 2_000 * PRICE_SCALE,
+                quantity: QUANTITY_SCALE,
+                nonce,
+                client_order_id: None,
+                signature: vec![],
+                stp: Default::default(),
+                min_quantity: None,
+                display_quantity: None,
+            },
+            nonce,
+        )
+        .await;
+        assert!(responses
+            .iter()
+            .all(|response| !matches!(response, Response::Error(_))));
+    }
+    assert_eq!(
+        fixture.ledger.balance(available_id).await.unwrap(),
+        BigDecimal::from(7_999_000_000_i64)
+    );
+    let withdrawal = ledger::ReserveWithdrawal {
+        withdrawal_id: Uuid::new_v4(),
+        reservation_transaction_id: Uuid::new_v4(),
+        customer_reference: taker.to_hex(),
+        asset_code: "USDC".into(),
+        destination_address: taker.to_hex(),
+        amount: BigDecimal::from(100_000_000_i64),
+        nonce: 2,
+        expires_at: None,
+    };
+    let reserved = fixture
+        .ledger
+        .reserve_withdrawal(&withdrawal)
+        .await
+        .unwrap();
+    assert_eq!(reserved.withdrawal.state, ledger::WithdrawalState::Reserved);
+    fixture
+        .ledger
+        .reserve_withdrawal(&withdrawal)
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.ledger.balance(available_id).await.unwrap(),
+        BigDecimal::from(7_899_000_000_i64)
+    );
+    fixture
+        .ledger
+        .cancel_reserved_withdrawal(withdrawal.withdrawal_id, &taker.to_hex(), Uuid::new_v4())
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.ledger.balance(available_id).await.unwrap(),
+        BigDecimal::from(7_999_000_000_i64)
+    );
+    assert!(fixture.ledger.verify_balance_projection().await.unwrap());
+}
+
 fn user(last_byte: u8) -> UserId {
     let mut bytes = [0_u8; 20];
     bytes[19] = last_byte;
