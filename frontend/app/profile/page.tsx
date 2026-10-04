@@ -189,7 +189,7 @@ export default function ProfilePage() {
   const positions = useMemo(() => data.balances.filter((balance) => balance.asset.toUpperCase() !== 'USDC' && toNumber(balance.total) > 0).map((balance) => ({ ...balance, price: marketPrice(balance.asset, markets), value: toNumber(balance.total) * marketPrice(balance.asset, markets) })).sort((left, right) => right.value - left.value), [data.balances, markets])
   const allocations = useMemo(() => data.balances.map((balance) => ({ asset: balance.asset.toUpperCase(), value: toNumber(balance.total) * marketPrice(balance.asset, markets) })).filter((item) => item.value > 0).sort((left, right) => right.value - left.value), [data.balances, markets])
   const traderRank = useMemo(() => { if (!address || !data.leaderboard) return null; const index = data.leaderboard.top_traders.findIndex((trader) => trader.address.toLowerCase() === address.toLowerCase()); return index === -1 ? null : index + 1 }, [address, data.leaderboard])
-  const totalPnl = useMemo(() => data.portfolio ? (toNumber(data.portfolio.realized_pnl_usdc) + toNumber(data.portfolio.unrealized_pnl_usdc)) / 1_000_000 : null, [data.portfolio])
+  const totalPnl = useMemo(() => data.portfolio ? toNumber(data.portfolio.realized_pnl_usdc) + toNumber(data.portfolio.unrealized_pnl_usdc) : null, [data.portfolio])
 
   const activity = useMemo<ActivityItem[]>(() => {
     const fills: ActivityItem[] = data.fills.map((fill) => ({ id: `fill-${fill.id}`, type: 'Trade', title: `${fill.side === 'buy' ? 'Bought' : 'Sold'} ${fill.market.split('-')[0]}`, detail: `${formatQuantity(fill.quantity)} at ${formatMoney(toNumber(fill.price), 6)}`, status: fill.role, timestamp: normalizeTimestamp(fill.timestamp), tone: fill.side }))
