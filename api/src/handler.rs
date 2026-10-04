@@ -7108,6 +7108,7 @@ async fn agents_list(
                 "revoked": d.revoked,
                 "active": active,
                 "nonce": d.nonce,
+                "scope": d.scope,
             })
         })
         .collect();

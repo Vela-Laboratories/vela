@@ -491,7 +491,13 @@ export async function deposit(
 export type PortfolioLot = ApiSchemas['PortfolioLot']
 export type PortfolioResponse = ApiSchemas['PortfolioResponse']
 
-// Agent delegations are read from the server's current in-memory registry.
+export interface AgentCapabilityScope {
+  allowed_markets?: string[] | null
+  allowed_order_types?: string[] | null
+  allowed_sides?: string[] | null
+  max_notional_per_hour?: number | null
+  max_notional_per_day?: number | null
+}
 
 export interface AgentStatus {
   agent: string
@@ -500,6 +506,7 @@ export interface AgentStatus {
   revoked: boolean
   active: boolean
   nonce: number
+  scope: AgentCapabilityScope
 }
 
 export interface AgentListResponse {

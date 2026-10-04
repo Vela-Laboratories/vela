@@ -15,9 +15,8 @@ mechanism. Do not use this beta delegation as a custody control for real funds.
 ## Inspect delegations
 
 `GET /agents/{master}` returns the registered agent addresses, expiry,
-per-order cap in micro-USDC, nonce, and active/revoked flags. The account page
-at `/agents` shows the same list for the connected wallet. The response does
-not include the full capability scope; keep your signed registration record.
+per-order cap in micro-USDC, nonce, full capability scope, and active/revoked
+flags. The account page at `/agents` shows the same list for the connected wallet.
 
 ## Revoke an agent
 
