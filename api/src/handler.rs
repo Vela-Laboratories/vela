@@ -7508,6 +7508,7 @@ async fn get_portfolio_handler(
                 "market": market["market_id"],
                 "realized_usdc": market["realized_pnl_usdc"],
                 "unrealized_usdc": market["unrealized_pnl_usdc"],
+                "pnl_complete": market["pnl_complete"],
             })
         })
         .collect();

@@ -2463,12 +2463,17 @@ export interface components {
             mark_price_usdc: string | null;
             market_id: string;
             open_cost_basis_usdc: string;
+            pnl_complete: boolean;
             position_base: string;
             realized_pnl_usdc: string;
+            /** @description Decimal base units sold without a retained acquisition lot */
+            unmatched_sell_quantity_base: string;
             unrealized_pnl_usdc: string | null;
         };
         PortfolioPerMarket: {
             market: string;
+            /** @description False when a sell has no matching retained acquisition lot */
+            pnl_complete: boolean;
             /** @description Decimal USDC */
             realized_usdc: string;
             /** @description Null when no mark price is available */

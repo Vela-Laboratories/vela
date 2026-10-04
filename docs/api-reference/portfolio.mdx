@@ -14,6 +14,10 @@ These figures are testnet estimates reconstructed from recorded fills. Open
 positions use current order-book marks. A per-market `unrealized_usdc` value
 is `null` when no mark is available; aggregate unrealized and combined PnL
 exclude that market. The page at `/portfolio` flags this condition.
+If a sell has no matching retained acquisition fill, its market reports
+`pnl_complete: false` and `unmatched_sell_quantity_base`. The page hides
+PnL totals while any market is incomplete. The API's numeric fields remain
+provisional in that case.
 
 `GET /portfolio/{address}/csv` returns a CSV of the account's fills. Its
 columns are `timestamp_ms`, `market`, `side`, `price_usdc`, `quantity_base`,

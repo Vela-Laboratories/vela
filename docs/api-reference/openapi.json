@@ -717,10 +717,17 @@
           "open_cost_basis_usdc": {
             "type": "string"
           },
+          "pnl_complete": {
+            "type": "boolean"
+          },
           "position_base": {
             "type": "string"
           },
           "realized_pnl_usdc": {
+            "type": "string"
+          },
+          "unmatched_sell_quantity_base": {
+            "description": "Decimal base units sold without a retained acquisition lot",
             "type": "string"
           },
           "unrealized_pnl_usdc": {
@@ -739,7 +746,9 @@
           "mark_price_usdc",
           "realized_pnl_usdc",
           "unrealized_pnl_usdc",
-          "fill_count"
+          "fill_count",
+          "pnl_complete",
+          "unmatched_sell_quantity_base"
         ],
         "type": "object"
       },
@@ -747,6 +756,10 @@
         "properties": {
           "market": {
             "type": "string"
+          },
+          "pnl_complete": {
+            "description": "False when a sell has no matching retained acquisition lot",
+            "type": "boolean"
           },
           "realized_usdc": {
             "description": "Decimal USDC",
@@ -763,7 +776,8 @@
         "required": [
           "market",
           "realized_usdc",
-          "unrealized_usdc"
+          "unrealized_usdc",
+          "pnl_complete"
         ],
         "type": "object"
       },

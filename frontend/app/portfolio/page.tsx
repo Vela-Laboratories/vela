@@ -92,6 +92,10 @@ export default function PortfolioPage() {
   const unpricedMarkets = data?.per_market
     .filter((row) => row.unrealized_usdc === null)
     .map((row) => row.market) ?? []
+  const incompleteMarkets = data?.per_market
+    .filter((row) => !row.pnl_complete)
+    .map((row) => row.market) ?? []
+  const pnlComplete = incompleteMarkets.length === 0
 
   const handleExport = useCallback(async () => {
     if (!address || !isAuthenticated) return
@@ -185,7 +189,7 @@ export default function PortfolioPage() {
                 Realized PnL
               </div>
               <div className="text-ink text-2xl font-mono">
-                {formatUsdc(data.realized_pnl_usdc)}
+                {formatUsdc(pnlComplete ? data.realized_pnl_usdc : null)}
               </div>
               <Badge variant={pnlVariant(data.realized_pnl_usdc)} className="mt-3">
                 {data.cost_basis_method}
@@ -196,7 +200,7 @@ export default function PortfolioPage() {
                 Unrealized PnL
               </div>
               <div className="text-ink text-2xl font-mono">
-                {formatUsdc(data.unrealized_pnl_usdc)}
+                {formatUsdc(pnlComplete ? data.unrealized_pnl_usdc : null)}
               </div>
               <Badge variant={pnlVariant(data.unrealized_pnl_usdc)} className="mt-3">
                 {unpricedMarkets.length > 0 ? 'Priced markets only' : 'Mark-to-market'}
@@ -206,7 +210,7 @@ export default function PortfolioPage() {
               <div className="text-brown uppercase tracking-[0.18em] text-[10px] mb-2">
                 Combined PnL
               </div>
-              <div className="text-ink text-2xl font-mono">{formatUsdc(totalPnl)}</div>
+              <div className="text-ink text-2xl font-mono">{formatUsdc(pnlComplete ? totalPnl : null)}</div>
               <Badge variant={pnlVariant(totalPnl)} className="mt-3">
                 {unpricedMarkets.length > 0 ? 'Excludes unpriced markets' : 'Since inception'}
               </Badge>
@@ -216,6 +220,11 @@ export default function PortfolioPage() {
           {unpricedMarkets.length > 0 && (
             <Card className="p-4 mb-6 text-brown text-sm" role="status">
               No current mark is available for {unpricedMarkets.join(', ')}. Unrealized and combined PnL exclude these markets.
+            </Card>
+          )}
+          {incompleteMarkets.length > 0 && (
+            <Card className="p-4 mb-6 text-terra text-sm" role="status">
+              PnL is incomplete for {incompleteMarkets.join(', ')} because recorded sells lack matching acquisition fills. Totals are hidden until the fill history is complete.
             </Card>
           )}
 
@@ -240,12 +249,12 @@ export default function PortfolioPage() {
                   <tbody>
                     {data.per_market.map((row) => (
                       <tr key={row.market} className="border-b border-border last:border-0">
-                        <td className="px-6 py-3 text-ink font-mono">{row.market}</td>
+                        <td className="px-6 py-3 text-ink font-mono">{row.market}{!row.pnl_complete ? ' · Incomplete' : ''}</td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
-                          {formatUsdc(row.realized_usdc)}
+                          {formatUsdc(row.pnl_complete ? row.realized_usdc : null)}
                         </td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
-                          {formatUsdc(row.unrealized_usdc)}
+                          {formatUsdc(row.pnl_complete ? row.unrealized_usdc : null)}
                         </td>
                       </tr>
                     ))}

@@ -807,16 +807,17 @@ pub fn openapi_spec() -> serde_json::Value {
                 },
                 "PortfolioPerMarket": {
                     "type": "object",
-                    "required": ["market", "realized_usdc", "unrealized_usdc"],
+                    "required": ["market", "realized_usdc", "unrealized_usdc", "pnl_complete"],
                     "properties": {
                         "market": { "type": "string" },
                         "realized_usdc": { "type": "string", "description": "Decimal USDC" },
-                        "unrealized_usdc": { "type": ["string", "null"], "description": "Null when no mark price is available" }
+                        "unrealized_usdc": { "type": ["string", "null"], "description": "Null when no mark price is available" },
+                        "pnl_complete": { "type": "boolean", "description": "False when a sell has no matching retained acquisition lot" }
                     }
                 },
                 "PortfolioMarket": {
                     "type": "object",
-                    "required": ["market_id", "base_asset", "position_base", "cost_basis_price_usdc", "open_cost_basis_usdc", "mark_price_usdc", "realized_pnl_usdc", "unrealized_pnl_usdc", "fill_count"],
+                    "required": ["market_id", "base_asset", "position_base", "cost_basis_price_usdc", "open_cost_basis_usdc", "mark_price_usdc", "realized_pnl_usdc", "unrealized_pnl_usdc", "fill_count", "pnl_complete", "unmatched_sell_quantity_base"],
                     "properties": {
                         "market_id": { "type": "string" },
                         "base_asset": { "type": "string" },
@@ -826,7 +827,9 @@ pub fn openapi_spec() -> serde_json::Value {
                         "mark_price_usdc": { "type": ["string", "null"] },
                         "realized_pnl_usdc": { "type": "string" },
                         "unrealized_pnl_usdc": { "type": ["string", "null"] },
-                        "fill_count": { "type": "integer" }
+                        "fill_count": { "type": "integer" },
+                        "pnl_complete": { "type": "boolean" },
+                        "unmatched_sell_quantity_base": { "type": "string", "description": "Decimal base units sold without a retained acquisition lot" }
                     }
                 },
                 "PortfolioResponse": {
