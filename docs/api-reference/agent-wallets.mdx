@@ -8,9 +8,17 @@ for trading. The master remains the account owner. Delegations have an expiry,
 a maximum USDC notional per order, and optional market, side, order-type, and
 rolling notional limits.
 
-Vela's current registry is held in server memory. A restart clears it, and a
-revocation only takes effect on that server. It is not an on-chain revocation
-mechanism. Do not use this beta delegation as a custody control for real funds.
+With `DATABASE_URL` configured and migration 15 applied, Vela persists signed
+registrations and revocation tombstones in a namespace for its runtime and
+chain. Every delegated request consults that database. Nonces and UTC hour/day
+notional buckets are serialized across instances; a database outage rejects
+delegated requests. Revocation does not cancel an already-authorized request.
+
+Without a database the registry remains in server memory. A restart clears it,
+and revocation takes effect only on that server. `GET /agents/{master}` returns
+`storage: "postgres"` or `storage: "memory"` so clients can identify the mode.
+The public demo currently uses memory. Do not use this beta delegation as a
+custody control for real funds.
 
 ## Inspect delegations
 

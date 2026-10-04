@@ -511,6 +511,7 @@ export interface AgentStatus {
 
 export interface AgentListResponse {
   master: string
+  storage?: 'memory' | 'postgres'
   agents: AgentStatus[]
 }
 

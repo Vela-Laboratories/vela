@@ -15,9 +15,9 @@
 //! - Master can always sign directly; the agent is additive, not
 //!   replacement.
 //!
-//! v1 keeps the registry in memory only. Restart clears all agents and
-//! users must re-authorize. Persistence via snapshot / WAL is a v2
-//! follow-up.
+//! With a configured ledger database, signed public delegations use a
+//! runtime/chain namespace in PostgreSQL. Development without a database
+//! uses the in-memory registry and loses registrations on restart.
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -137,6 +137,7 @@ pub struct AgentDelegation {
 /// touching the main `inner` map on every order.
 #[derive(Default)]
 pub struct AgentRegistry {
+    store: Option<crate::agents_store::AgentStore>,
     inner: DashMap<UserId, AgentDelegation>,
     /// (agent_address, bucket_seconds, bucket_id) → cumulative notional in
     /// that bucket. bucket_seconds is 3600 for hourly, 86400 for daily.
@@ -146,9 +147,63 @@ pub struct AgentRegistry {
 impl AgentRegistry {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
+            store: None,
             inner: DashMap::new(),
             rate: DashMap::new(),
         })
+    }
+
+    pub fn with_store(store: crate::agents_store::AgentStore) -> Arc<Self> {
+        Arc::new(Self {
+            store: Some(store),
+            ..Self::default()
+        })
+    }
+
+    pub fn is_durable(&self) -> bool {
+        self.store.is_some()
+    }
+
+    pub async fn register_signed_async(
+        &self,
+        delegation: AgentDelegation,
+        message: &str,
+        signature: &str,
+    ) -> Result<(), crate::agents_store::AgentStoreError> {
+        if let Some(store) = &self.store {
+            store.register_signed(&delegation, message, signature).await
+        } else {
+            self.register_signed(delegation)
+                .map_err(crate::agents_store::AgentStoreError::Conflict)
+        }
+    }
+
+    pub async fn revoke_signed_async(
+        &self,
+        master: &UserId,
+        agent: &UserId,
+        nonce: u64,
+        message: &str,
+        signature: &str,
+    ) -> Result<bool, crate::agents_store::AgentStoreError> {
+        if let Some(store) = &self.store {
+            store
+                .revoke_signed(master, agent, nonce, message, signature)
+                .await
+        } else {
+            Ok(self.revoke(master, agent, nonce))
+        }
+    }
+
+    pub async fn agents_for_async(
+        &self,
+        master: &UserId,
+    ) -> Result<Vec<AgentDelegation>, crate::agents_store::AgentStoreError> {
+        if let Some(store) = &self.store {
+            store.agents_for(master).await
+        } else {
+            Ok(self.agents_for(master))
+        }
     }
 
     /// Try to record `notional` against the agent's hourly + daily
@@ -242,6 +297,10 @@ impl AgentRegistry {
     /// Look up an agent by its address. Returns `None` if unknown,
     /// revoked, or expired.
     pub fn get_active(&self, agent: &UserId, now_ms: u64) -> Option<AgentDelegation> {
+        // A synchronous call cannot consult durable authority safely.
+        if self.store.is_some() {
+            return None;
+        }
         self.inner
             .get(agent)
             .filter(|d| !d.revoked && d.expires_at_ms > now_ms)
@@ -359,19 +418,16 @@ pub async fn verify_master_or_agent_async(
     now_ms: u64,
     registry: Arc<AgentRegistry>,
 ) -> Result<UserId, VelaError> {
-    tokio::task::spawn_blocking(move || {
-        verify_master_or_agent(
-            &message,
-            &signature,
-            &expected,
-            order_notional_micro,
-            now_ms,
-            &registry,
-            None,
-        )
-    })
+    verify_async(
+        message,
+        signature,
+        expected,
+        order_notional_micro,
+        now_ms,
+        registry,
+        None,
+    )
     .await
-    .map_err(|_| VelaError::InvalidSignature)?
 }
 
 /// Async variant that also enforces the agent's `CapabilityScope`
@@ -388,24 +444,72 @@ pub async fn verify_master_or_agent_scoped_async(
     side: OrderSide,
     order_type: OrderType,
 ) -> Result<UserId, VelaError> {
-    tokio::task::spawn_blocking(move || {
-        let scope = OrderScopeCheck {
-            market: &market,
-            side,
-            order_type,
-        };
-        verify_master_or_agent(
-            &message,
-            &signature,
-            &expected,
-            order_notional_micro,
-            now_ms,
-            &registry,
-            Some(&scope),
-        )
-    })
+    verify_async(
+        message,
+        signature,
+        expected,
+        order_notional_micro,
+        now_ms,
+        registry,
+        Some((market, side, order_type)),
+    )
     .await
-    .map_err(|_| VelaError::InvalidSignature)?
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn verify_async(
+    message: Vec<u8>,
+    signature: String,
+    expected: String,
+    notional: u64,
+    now_ms: u64,
+    registry: Arc<AgentRegistry>,
+    order: Option<(MarketId, OrderSide, OrderType)>,
+) -> Result<UserId, VelaError> {
+    if registry.store.is_none() {
+        return tokio::task::spawn_blocking(move || {
+            let scope = order
+                .as_ref()
+                .map(|(market, side, order_type)| OrderScopeCheck {
+                    market,
+                    side: *side,
+                    order_type: *order_type,
+                });
+            verify_master_or_agent(
+                &message,
+                &signature,
+                &expected,
+                notional,
+                now_ms,
+                &registry,
+                scope.as_ref(),
+            )
+        })
+        .await
+        .map_err(|_| VelaError::InvalidSignature)?;
+    }
+    let signer = tokio::task::spawn_blocking(move || recover_signer(&message, &signature))
+        .await
+        .map_err(|_| VelaError::InvalidSignature)??;
+    let master = UserId::from_hex(&expected).map_err(|_| VelaError::InvalidSignature)?;
+    if signer == master {
+        return Ok(signer);
+    }
+    let scope = order
+        .as_ref()
+        .map(|(market, side, order_type)| OrderScopeCheck {
+            market,
+            side: *side,
+            order_type: *order_type,
+        });
+    registry
+        .store
+        .as_ref()
+        .expect("checked above")
+        .authorize(&master, &signer, notional, now_ms, scope.as_ref())
+        .await
+        .map_err(|_| VelaError::InvalidSignature)?;
+    Ok(signer)
 }
 
 #[cfg(test)]

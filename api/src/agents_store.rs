@@ -1,7 +1,7 @@
 //! PostgreSQL authority for delegated-agent permissions. Every operation
 //! locks the same namespace/agent key, including the first registration.
 
-use crate::agents::{AgentDelegation, CapabilityScope};
+use crate::agents::{AgentDelegation, CapabilityScope, OrderScopeCheck};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use types::UserId;
 
@@ -176,5 +176,62 @@ impl AgentStore {
             .await?;
         tx.commit().await?;
         Ok(true)
+    }
+
+    /// Serialize permission reads and cap consumption with revocations.
+    /// Database failure rejects the delegation; no cached fallback is used.
+    pub async fn authorize(
+        &self,
+        master: &UserId,
+        agent: &UserId,
+        notional: u64,
+        now_ms: u64,
+        order: Option<&OrderScopeCheck<'_>>,
+    ) -> Result<(), AgentStoreError> {
+        let mut tx = self.pool.begin().await?;
+        self.lock(&mut tx, agent).await?;
+        let delegation = self
+            .read(&mut tx, agent)
+            .await?
+            .ok_or(AgentStoreError::Conflict("unknown agent"))?;
+        if delegation.master != *master
+            || delegation.revoked
+            || delegation.expires_at_ms <= now_ms
+            || notional > delegation.max_notional_per_order
+        {
+            return Err(AgentStoreError::Conflict(
+                "delegation does not authorize request",
+            ));
+        }
+        if let Some(order) = order {
+            delegation
+                .scope
+                .check_order_static(order.market, order.side, order.order_type)
+                .map_err(AgentStoreError::Conflict)?;
+            for (seconds, cap) in [
+                (3600i64, delegation.scope.max_notional_per_hour),
+                (86400i64, delegation.scope.max_notional_per_day),
+            ] {
+                let Some(cap) = cap else { continue };
+                let bucket_id = now_ms / 1000 / seconds as u64;
+                let used: Option<String> = sqlx::query_scalar("SELECT notional::text FROM api_agent_notional_buckets WHERE namespace=$1 AND agent=$2 AND bucket_seconds=$3 AND bucket_id=$4::text::numeric")
+                    .bind(&self.namespace).bind(agent.to_hex()).bind(seconds).bind(bucket_id.to_string())
+                    .fetch_optional(&mut *tx).await?;
+                let used: u128 = used
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse()
+                    .map_err(|_| AgentStoreError::InvalidRecord)?;
+                let next = used + u128::from(notional);
+                if next > u128::from(cap) {
+                    return Err(AgentStoreError::Conflict("delegated notional cap exceeded"));
+                }
+                sqlx::query("INSERT INTO api_agent_notional_buckets (namespace,agent,bucket_seconds,bucket_id,notional) VALUES ($1,$2,$3,$4::text::numeric,$5::text::numeric) ON CONFLICT (namespace,agent,bucket_seconds,bucket_id) DO UPDATE SET notional=EXCLUDED.notional")
+                    .bind(&self.namespace).bind(agent.to_hex()).bind(seconds).bind(bucket_id.to_string()).bind(next.to_string())
+                    .execute(&mut *tx).await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(())
     }
 }

@@ -150,8 +150,10 @@ export default function AgentsPage() {
     </header>
 
     <Card className="p-5 text-brown text-sm">
-      Delegations are held in this testnet server’s memory. They disappear after a server restart.
-      A revoked key stops working on this server immediately; this is not an on-chain revocation.
+      {snapshot?.storage === 'postgres'
+        ? 'Delegations are stored in the testnet database and checked on every delegated request. Revocations apply to all instances using this runtime and chain.'
+        : 'Delegations are held in this testnet server’s memory and disappear after a restart. Revocation applies to this server.'}
+      {' '}Revocation does not cancel a request that was already authorized.
     </Card>
     <Card className="p-5 space-y-4">
       <div><h2 className="text-ink font-serif text-xl">Register an existing agent</h2>

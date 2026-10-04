@@ -423,6 +423,19 @@ impl AppState {
         let admin_token = std::env::var("ADMIN_TOKEN")
             .expect("ADMIN_TOKEN env var must be set; refusing to boot with a hardcoded default");
 
+        let agents = match ledger.as_ref() {
+            Some(ledger) => {
+                crate::agents::AgentRegistry::with_store(crate::agents_store::AgentStore::new(
+                    ledger.pool().clone(),
+                    format!(
+                        "{}:{}",
+                        runtime_mode.as_str(),
+                        std::env::var("VELA_CHAIN_ID").unwrap_or_else(|_| "11155111".to_string())
+                    ),
+                ))
+            }
+            None => crate::agents::AgentRegistry::new(),
+        };
         let state = Arc::new(AppState {
             runtime_mode,
             ledger,
@@ -475,7 +488,7 @@ impl AppState {
             committee_config,
             decryption_proofs: Arc::new(Mutex::new(Vec::new())),
             batch_metrics: Arc::clone(&batch_metrics),
-            agents: crate::agents::AgentRegistry::new(),
+            agents,
             algos: std::sync::Arc::new(dashmap::DashMap::new()),
             listings: std::sync::Arc::new(dashmap::DashMap::new()),
             vaults: crate::vaults::VaultRegistry::new(),

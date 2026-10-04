@@ -5599,7 +5599,7 @@ async fn create_subaccount(
         }
     };
     let msg = subaccount_create_signing_message(body.subaccount_id, &body.name, body.nonce);
-    if crate::auth::verify_matches_async(msg, body.signature.clone(), body.master.clone())
+    if crate::auth::verify_matches_async(msg.clone(), body.signature.clone(), body.master.clone())
         .await
         .is_err()
     {
@@ -6978,7 +6978,7 @@ async fn agents_register(
         body.nonce,
         &scope,
     );
-    if crate::auth::verify_matches_async(msg, body.signature.clone(), body.master.clone())
+    if crate::auth::verify_matches_async(msg.clone(), body.signature.clone(), body.master.clone())
         .await
         .is_err()
     {
@@ -7014,17 +7014,27 @@ async fn agents_register(
 
     let registration = state
         .agents
-        .register_signed(crate::agents::AgentDelegation {
-            master: master_id,
-            agent: agent_id,
-            expires_at_ms: body.expires_at_ms,
-            max_notional_per_order: body.max_notional_per_order,
-            revoked: false,
-            nonce: body.nonce,
-            scope,
-        });
+        .register_signed_async(
+            crate::agents::AgentDelegation {
+                master: master_id,
+                agent: agent_id,
+                expires_at_ms: body.expires_at_ms,
+                max_notional_per_order: body.max_notional_per_order,
+                revoked: false,
+                nonce: body.nonce,
+                scope,
+            },
+            &String::from_utf8_lossy(&msg),
+            &body.signature,
+        )
+        .await;
     if let Err(reason) = registration {
-        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(reason))).into_response();
+        let status = if matches!(reason, crate::agents_store::AgentStoreError::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        };
+        return (status, Json(ApiResponse::<()>::err(reason.to_string()))).into_response();
     }
 
     (
@@ -7087,7 +7097,27 @@ async fn agents_revoke(
                 .into_response()
         }
     };
-    let removed = state.agents.revoke(&master_id, &agent_id, body.nonce);
+    let revoke_message = crate::agents::revocation_signing_message(&agent_id, body.nonce);
+    let removed = match state
+        .agents
+        .revoke_signed_async(
+            &master_id,
+            &agent_id,
+            body.nonce,
+            &String::from_utf8_lossy(&revoke_message),
+            &body.signature,
+        )
+        .await
+    {
+        Ok(removed) => removed,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("delegation storage unavailable")),
+            )
+                .into_response()
+        }
+    };
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
@@ -7117,9 +7147,17 @@ async fn agents_list(
         .unwrap_or_default()
         .as_millis() as u64;
 
-    let agents: Vec<serde_json::Value> = state
-        .agents
-        .agents_for(&master_id)
+    let registrations = match state.agents.agents_for_async(&master_id).await {
+        Ok(agents) => agents,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("delegation storage unavailable")),
+            )
+                .into_response()
+        }
+    };
+    let agents: Vec<serde_json::Value> = registrations
         .into_iter()
         .map(|d| {
             let active = !d.revoked && d.expires_at_ms > now_ms;
@@ -7139,6 +7177,7 @@ async fn agents_list(
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
             "master": master.to_lowercase(),
+            "storage": if state.agents.is_durable() { "postgres" } else { "memory" },
             "agents": agents,
         }))),
     )
