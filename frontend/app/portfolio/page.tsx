@@ -3,14 +3,10 @@
 // ---------------------------------------------------------------------------
 // Portfolio page.
 //
-// Backend surface: `/account/:address/portfolio` (JSON) and
-// `/account/:address/portfolio/csv` (CSV blob for Koinly / CoinTracker).
-// Both are already served by the api crate; this page is the first
-// user-visible surface for them (audit item 8 / BUILDPLAN Tier 1
-// portfolio dashboard).
+// Backend surface: `/portfolio/:address` and `/portfolio/:address/csv`.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { getPortfolio, getPortfolioCsv, type PortfolioResponse } from '@/lib/api'
@@ -83,12 +79,7 @@ export default function PortfolioPage() {
     load()
   }, [load])
 
-  const totalPnl = useMemo(() => {
-    if (!data) return '0'
-    const realized = parseFloat(data.realized_pnl_usdc) || 0
-    const unrealized = parseFloat(data.unrealized_pnl_usdc) || 0
-    return String(realized + unrealized)
-  }, [data])
+  const totalPnl = data?.total_pnl_usdc
   const unpricedMarkets = data?.per_market
     .filter((row) => row.unrealized_usdc === null)
     .map((row) => row.market) ?? []
