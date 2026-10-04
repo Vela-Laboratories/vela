@@ -764,6 +764,9 @@ impl RpcLog {
     }
 }
 
+// `async_trait` adds `must_use` to boxed futures. Clippy 1.99 also treats
+// their Result output as must-use, so the generated methods trip this lint.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Rpc: Send + Sync {
     fn name(&self) -> &str;
