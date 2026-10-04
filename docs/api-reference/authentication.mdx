@@ -149,58 +149,37 @@ function nextNonce() {
 }
 ```
 
-## Implementation: ethers.js
+## Example: ethers.js v6
 
-<CodeGroup>
-```javascript ethers.js v6
+```javascript
 import { ethers } from 'ethers';
 
 const provider = new ethers.BrowserProvider(window.ethereum);
 const signer = await provider.getSigner();
 
 async function signOrder(order) {
-  const message = JSON.stringify(order);
-  return await signer.signMessage(message);
+  const message = JSON.stringify([
+    'vela:order:v2', order.market, order.side, order.order_type,
+    order.price, order.quantity, order.nonce,
+    order.client_order_id ?? null, order.stp ?? 'None',
+    order.min_quantity ?? null, order.display_quantity ?? null,
+  ]);
+  return signer.signMessage(message);
 }
 
 async function submitOrder(order) {
   const signature = await signOrder(order);
   const address = await signer.getAddress();
-  
+
   const response = await fetch('https://vela-engine.fly.dev/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ order, signature, address })
+    body: JSON.stringify({ ...order, signature_version: 2, signature, address })
   });
-  
+
   return response.json();
 }
 ```
-
-```python Python (eth_account)
-from eth_account import Account
-from eth_account.messages import encode_defunct
-import json
-
-def sign_order(private_key: str, order: dict) -> str:
-    message = json.dumps(order, separators=(',', ':'))
-    msg = encode_defunct(text=message)
-    signed = Account.sign_message(msg, private_key=private_key)
-    return signed.signature.hex()
-
-def submit_order(private_key: str, order: dict):
-    account = Account.from_key(private_key)
-    signature = sign_order(private_key, order)
-    
-    payload = {
-        "order": order,
-        "signature": "0x" + signature,
-        "address": account.address
-    }
-    # POST to /orders
-    return payload
-```
-</CodeGroup>
 
 ## Address Derivation
 
