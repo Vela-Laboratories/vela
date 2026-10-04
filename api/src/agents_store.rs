@@ -152,4 +152,29 @@ impl AgentStore {
             .bind(&self.namespace).bind(master.to_hex()).fetch_all(&self.pool).await?;
         rows.into_iter().map(AgentDelegation::try_from).collect()
     }
+
+    pub async fn revoke_signed(
+        &self,
+        master: &UserId,
+        agent: &UserId,
+        nonce: u64,
+        message: &str,
+        signature: &str,
+    ) -> Result<bool, AgentStoreError> {
+        let mut tx = self.pool.begin().await?;
+        self.lock(&mut tx, agent).await?;
+        let Some(previous) = self.read(&mut tx, agent).await? else {
+            return Ok(false);
+        };
+        if previous.master != *master || nonce <= previous.nonce {
+            return Ok(false);
+        }
+        sqlx::query("UPDATE api_agent_delegations SET revoked=true, nonce=$3::text::numeric, updated_at=now() WHERE namespace=$1 AND agent=$2")
+            .bind(&self.namespace).bind(agent.to_hex()).bind(nonce.to_string())
+            .execute(&mut *tx).await?;
+        self.record_event(&mut tx, master, agent, nonce, "revoke", message, signature)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
 }
