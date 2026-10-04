@@ -1,72 +1,1590 @@
 {
-  "openapi": "3.1.0",
-  "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
-    "license": {
-      "name": "MIT"
+  "components": {
+    "schemas": {
+      "AccountFillResponse": {
+        "properties": {
+          "counterparty_order_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "order_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "price": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "maker",
+              "taker"
+            ],
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "market",
+          "price",
+          "quantity",
+          "order_id",
+          "counterparty_order_id",
+          "role",
+          "side",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "ApiResponse": {
+        "properties": {
+          "data": {},
+          "error": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "BalanceResponse": {
+        "properties": {
+          "asset": {
+            "type": "string"
+          },
+          "available": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "available",
+          "locked",
+          "total"
+        ],
+        "type": "object"
+      },
+      "BorrowLendAccount": {
+        "properties": {
+          "borrowing_power_micro_usdc": {
+            "type": "string"
+          },
+          "health_factor_bps": {
+            "type": "string"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/BorrowLendPosition"
+            },
+            "type": "array"
+          },
+          "total_borrow_value_micro_usdc": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "positions",
+          "borrowing_power_micro_usdc",
+          "total_borrow_value_micro_usdc",
+          "health_factor_bps"
+        ],
+        "type": "object"
+      },
+      "BorrowLendMarket": {
+        "properties": {
+          "asset": {
+            "type": "string"
+          },
+          "borrow_rate_apr_bps": {
+            "type": "integer"
+          },
+          "collateral_factor_bps": {
+            "type": "integer"
+          },
+          "liquidation_bonus_bps": {
+            "type": "integer"
+          },
+          "price_micro_usdc": {
+            "type": "integer"
+          },
+          "supply_rate_apr_bps": {
+            "type": "integer"
+          },
+          "total_borrows": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "utilization_bps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset",
+          "total_supply",
+          "total_borrows",
+          "utilization_bps",
+          "borrow_rate_apr_bps",
+          "supply_rate_apr_bps",
+          "collateral_factor_bps",
+          "liquidation_bonus_bps",
+          "price_micro_usdc"
+        ],
+        "type": "object"
+      },
+      "BorrowLendPosition": {
+        "properties": {
+          "asset": {
+            "type": "string"
+          },
+          "borrow_native": {
+            "type": "string"
+          },
+          "borrow_value_micro_usdc": {
+            "type": "string"
+          },
+          "supply_native": {
+            "type": "string"
+          },
+          "supply_value_micro_usdc": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "supply_native",
+          "borrow_native",
+          "supply_value_micro_usdc",
+          "borrow_value_micro_usdc"
+        ],
+        "type": "object"
+      },
+      "CancelOrderBody": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "client_order_id": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "integer"
+          },
+          "order_id": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "nonce",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "CancelWithdrawalBody": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "nonce": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nonce",
+          "address",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "DepositStatusResponse": {
+        "properties": {
+          "amount": {
+            "description": "Human-readable exact decimal amount",
+            "type": "string"
+          },
+          "amount_atomic": {
+            "description": "Integer amount in the asset's smallest unit",
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "asset_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "block_hash": {
+            "type": "string"
+          },
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "credited_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "log_index": {
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reversed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "observed",
+              "confirming",
+              "finalized",
+              "credited",
+              "rejected",
+              "orphaned",
+              "reversed",
+              "quarantined"
+            ],
+            "type": "string"
+          },
+          "transaction_hash": {
+            "type": "string"
+          },
+          "transaction_index": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "vault_address": {
+            "type": "string"
+          },
+          "vault_deposit_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset",
+          "amount",
+          "amount_atomic",
+          "state",
+          "chain_id",
+          "block_number",
+          "block_hash",
+          "transaction_hash",
+          "transaction_index",
+          "log_index",
+          "vault_address",
+          "vault_deposit_id",
+          "observed_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "HttpAuthChallengeRequest": {
+        "properties": {
+          "address": {
+            "description": "0x-prefixed Ethereum address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "HttpAuthChallengeResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "expires_at_ms": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              },
+              "nonce": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "address",
+              "nonce",
+              "message",
+              "expires_at_ms"
+            ],
+            "type": "object"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ],
+        "type": "object"
+      },
+      "HttpAuthSessionRequest": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "signature": {
+            "description": "personal_sign signature over the exact challenge message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "nonce",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "HttpAuthSessionResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "expires_at_ms": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "token": {
+                "description": "Opaque bearer token; store in memory only",
+                "type": "string"
+              }
+            },
+            "required": [
+              "address",
+              "token",
+              "expires_at_ms"
+            ],
+            "type": "object"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ],
+        "type": "object"
+      },
+      "MarketResponse": {
+        "properties": {
+          "base": {
+            "type": "string"
+          },
+          "best_ask": {
+            "type": "string"
+          },
+          "best_bid": {
+            "type": "string"
+          },
+          "id": {
+            "example": "BTC-USDC",
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "spread": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "base",
+          "quote"
+        ],
+        "type": "object"
+      },
+      "OraclePriceEntry": {
+        "properties": {
+          "asset": {
+            "type": "string"
+          },
+          "price_micro_usdc": {
+            "type": "integer"
+          },
+          "timestamp_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset",
+          "price_micro_usdc",
+          "timestamp_ms"
+        ],
+        "type": "object"
+      },
+      "PerpAccount": {
+        "properties": {
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PerpPosition"
+            },
+            "type": "array"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "positions"
+        ],
+        "type": "object"
+      },
+      "PerpLiquidateBody": {
+        "properties": {
+          "borrower": {
+            "type": "string"
+          },
+          "liquidator": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "liquidator",
+          "signature",
+          "borrower",
+          "market",
+          "nonce"
+        ],
+        "type": "object"
+      },
+      "PerpLiquidationCandidate": {
+        "properties": {
+          "entry_price_micro_usdc": {
+            "type": "integer"
+          },
+          "equity_micro_usdc": {
+            "type": "string"
+          },
+          "maintenance_requirement_micro_usdc": {
+            "type": "string"
+          },
+          "mark_price_micro_usdc": {
+            "type": "integer"
+          },
+          "market": {
+            "type": "string"
+          },
+          "notional_micro_usdc": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "market",
+          "size",
+          "entry_price_micro_usdc",
+          "mark_price_micro_usdc",
+          "notional_micro_usdc",
+          "maintenance_requirement_micro_usdc",
+          "equity_micro_usdc"
+        ],
+        "type": "object"
+      },
+      "PerpMarket": {
+        "properties": {
+          "funding_index": {
+            "type": "integer"
+          },
+          "funding_rate_bps_per_hour": {
+            "type": "integer"
+          },
+          "gross_open_interest": {
+            "type": "integer"
+          },
+          "index_price_micro_usdc": {
+            "type": "integer"
+          },
+          "initial_margin_bps": {
+            "type": "integer"
+          },
+          "maintenance_margin_bps": {
+            "type": "integer"
+          },
+          "mark_price_micro_usdc": {
+            "type": "integer"
+          },
+          "market": {
+            "example": "BTC-PERP",
+            "type": "string"
+          },
+          "max_leverage": {
+            "type": "integer"
+          },
+          "net_open_interest": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "market",
+          "mark_price_micro_usdc",
+          "index_price_micro_usdc",
+          "funding_index",
+          "funding_rate_bps_per_hour",
+          "gross_open_interest",
+          "net_open_interest",
+          "initial_margin_bps",
+          "maintenance_margin_bps",
+          "max_leverage"
+        ],
+        "type": "object"
+      },
+      "PerpPosition": {
+        "properties": {
+          "entry_price_micro_usdc": {
+            "type": "integer"
+          },
+          "initial_requirement_micro_usdc": {
+            "type": "string"
+          },
+          "maintenance_requirement_micro_usdc": {
+            "type": "string"
+          },
+          "mark_price_micro_usdc": {
+            "type": "integer"
+          },
+          "market": {
+            "type": "string"
+          },
+          "notional_micro_usdc": {
+            "type": "string"
+          },
+          "realized_pnl_micro_usdc": {
+            "type": "string"
+          },
+          "size": {
+            "description": "Signed size, base × 1e6 (positive = long)",
+            "type": "string"
+          },
+          "unrealized_pnl_micro_usdc": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "market",
+          "size",
+          "entry_price_micro_usdc",
+          "realized_pnl_micro_usdc",
+          "notional_micro_usdc",
+          "unrealized_pnl_micro_usdc",
+          "initial_requirement_micro_usdc",
+          "maintenance_requirement_micro_usdc",
+          "mark_price_micro_usdc"
+        ],
+        "type": "object"
+      },
+      "PortfolioLot": {
+        "properties": {
+          "acquired_at": {
+            "description": "Unix seconds",
+            "type": "integer"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "cost_basis_usdc": {
+            "description": "Decimal USDC, not atomic units",
+            "type": "string"
+          },
+          "quantity": {
+            "description": "Decimal base-asset units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "quantity",
+          "cost_basis_usdc",
+          "acquired_at"
+        ],
+        "type": "object"
+      },
+      "PortfolioMarket": {
+        "properties": {
+          "base_asset": {
+            "type": "string"
+          },
+          "cost_basis_price_usdc": {
+            "type": "string"
+          },
+          "fill_count": {
+            "type": "integer"
+          },
+          "mark_price_usdc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "market_id": {
+            "type": "string"
+          },
+          "open_cost_basis_usdc": {
+            "type": "string"
+          },
+          "position_base": {
+            "type": "string"
+          },
+          "realized_pnl_usdc": {
+            "type": "string"
+          },
+          "unrealized_pnl_usdc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "market_id",
+          "base_asset",
+          "position_base",
+          "cost_basis_price_usdc",
+          "open_cost_basis_usdc",
+          "mark_price_usdc",
+          "realized_pnl_usdc",
+          "unrealized_pnl_usdc",
+          "fill_count"
+        ],
+        "type": "object"
+      },
+      "PortfolioPerMarket": {
+        "properties": {
+          "market": {
+            "type": "string"
+          },
+          "realized_usdc": {
+            "description": "Decimal USDC",
+            "type": "string"
+          },
+          "unrealized_usdc": {
+            "description": "Null when no mark price is available",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "market",
+          "realized_usdc",
+          "unrealized_usdc"
+        ],
+        "type": "object"
+      },
+      "PortfolioResponse": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "cost_basis_method": {
+            "enum": [
+              "FIFO",
+              "HIFO"
+            ],
+            "type": "string"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioMarket"
+            },
+            "type": "array"
+          },
+          "per_market": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPerMarket"
+            },
+            "type": "array"
+          },
+          "realized_pnl_usdc": {
+            "description": "Decimal USDC",
+            "type": "string"
+          },
+          "tax_lots": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioLot"
+            },
+            "type": "array"
+          },
+          "total_pnl_usdc": {
+            "description": "Decimal USDC",
+            "type": "string"
+          },
+          "total_realized_pnl_usdc": {
+            "description": "Same value as realized_pnl_usdc",
+            "type": "string"
+          },
+          "total_unrealized_pnl_usdc": {
+            "description": "Same value as unrealized_pnl_usdc",
+            "type": "string"
+          },
+          "unrealized_pnl_usdc": {
+            "description": "Decimal USDC; excludes markets without a mark",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "realized_pnl_usdc",
+          "unrealized_pnl_usdc",
+          "total_realized_pnl_usdc",
+          "total_unrealized_pnl_usdc",
+          "total_pnl_usdc",
+          "cost_basis_method",
+          "tax_lots",
+          "per_market",
+          "markets"
+        ],
+        "type": "object"
+      },
+      "PostOrderBody": {
+        "properties": {
+          "address": {
+            "description": "Master wallet (order signer may be master or authorized agent)",
+            "type": "string"
+          },
+          "client_order_id": {
+            "type": "string"
+          },
+          "display_quantity": {
+            "description": "Visible iceberg slice, base × 1e6",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "market": {
+            "example": "BTC-USDC",
+            "type": "string"
+          },
+          "min_quantity": {
+            "description": "Atomic minimum fill, base × 1e6",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nonce": {
+            "type": "integer"
+          },
+          "order_type": {
+            "enum": [
+              "GoodTillCanceled",
+              "PostOnly",
+              "ImmediateOrCancel",
+              "FillOrKill"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "description": "USDC × 1e6",
+            "type": "integer"
+          },
+          "quantity": {
+            "description": "Base × 1e6",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "Bid",
+              "Ask"
+            ],
+            "type": "string"
+          },
+          "signature": {
+            "description": "0x-prefixed 65-byte ECDSA",
+            "type": "string"
+          },
+          "signature_version": {
+            "description": "Required for advanced controls. V2 signs the compact JSON array [\"vela:order:v2\",market,side,order_type,price,quantity,nonce,client_order_id|null,stp,min_quantity|null,display_quantity|null].",
+            "enum": [
+              2
+            ],
+            "type": "integer"
+          },
+          "stp": {
+            "default": "None",
+            "enum": [
+              "None",
+              "CancelTaker",
+              "CancelMaker",
+              "CancelBoth",
+              "DecrementAndCancel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "market",
+          "side",
+          "order_type",
+          "price",
+          "quantity",
+          "nonce",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "ProofStats": {
+        "properties": {
+          "failed": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "proven": {
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "proven",
+          "pending",
+          "skipped",
+          "failed",
+          "provider"
+        ],
+        "type": "object"
+      },
+      "TeeStats": {
+        "properties": {
+          "attested": {
+            "type": "integer"
+          },
+          "binary_hash": {
+            "type": "string"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platform_status": {
+            "type": "string"
+          },
+          "simulated": {
+            "type": "integer"
+          },
+          "total_batches": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_batches",
+          "attested",
+          "simulated",
+          "pending",
+          "failed",
+          "platform",
+          "binary_hash",
+          "platform_status"
+        ],
+        "type": "object"
+      },
+      "TwapAlgoBody": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "duration_secs": {
+            "type": "integer"
+          },
+          "market": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "integer"
+          },
+          "price_limit": {
+            "type": "integer"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "Bid",
+              "Ask"
+            ],
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "slices": {
+            "default": 12,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "address",
+          "market",
+          "side",
+          "quantity",
+          "duration_secs",
+          "nonce",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "WithdrawBody": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "amount": {
+            "description": "Positive integer in the matching engine's 8-decimal units",
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "asset": {
+            "enum": [
+              "ETH",
+              "USDC"
+            ],
+            "type": "string"
+          },
+          "destination_address": {
+            "type": "string"
+          },
+          "nonce": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "withdrawal_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "withdrawal_id",
+          "asset",
+          "amount",
+          "nonce",
+          "address",
+          "destination_address",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "WithdrawalStatusResponse": {
+        "properties": {
+          "action_required": {
+            "enum": [
+              "none",
+              "wait",
+              "wait_for_finality",
+              "operator_review"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "description": "Human-readable exact decimal amount",
+            "type": "string"
+          },
+          "amount_atomic": {
+            "description": "Integer amount in the asset's smallest unit",
+            "type": "string"
+          },
+          "asset": {
+            "enum": [
+              "ETH",
+              "USDC"
+            ],
+            "type": "string"
+          },
+          "can_cancel": {
+            "type": "boolean"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "completion_transaction_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "destination_address": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "funds_status": {
+            "enum": [
+              "reserved",
+              "released",
+              "settled"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "review",
+              "custody",
+              "chain",
+              "recovery",
+              "complete"
+            ],
+            "type": "string"
+          },
+          "release_transaction_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reservation_transaction_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "requested",
+              "reserved",
+              "approved",
+              "signing",
+              "signed",
+              "broadcast",
+              "confirmed",
+              "rejected",
+              "cancelled",
+              "signing_failed",
+              "broadcast_failed",
+              "replaced",
+              "dropped",
+              "reversed"
+            ],
+            "type": "string"
+          },
+          "status_message": {
+            "type": "string"
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "transaction_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "vault_address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset",
+          "amount",
+          "amount_atomic",
+          "state",
+          "destination_address",
+          "phase",
+          "funds_status",
+          "terminal",
+          "can_cancel",
+          "action_required",
+          "status_message",
+          "chain_id",
+          "vault_address",
+          "nonce",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      }
     },
-    "version": "1.0.0"
+    "securitySchemes": {
+      "BearerAuth": {
+        "bearerFormat": "opaque-session-token",
+        "description": "Short-lived account-bound session returned by POST /auth/session",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
   },
-  "servers": [
-    {
-      "url": "http://sandbox.mintlify.com"
-    }
-  ],
-  "security": [
-    {
-      "bearerAuth": []
-    }
-  ],
+  "info": {
+    "contact": {
+      "email": "asomu@ucsd.edu"
+    },
+    "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/Monolith-Investments-LP/vela for source and https://vela.monolithsystematic.com for live beta.",
+    "title": "Vela Exchange API",
+    "version": "0.4.0"
+  },
+  "openapi": "3.1.0",
   "paths": {
-    "/plants": {
+    "/account/{address}/balances": {
       "get": {
-        "description": "Returns all plants from the system that the user has access to",
         "parameters": [
           {
-            "name": "limit",
-            "in": "query",
-            "description": "The maximum number of results to return",
+            "in": "path",
+            "name": "address",
+            "required": true,
             "schema": {
-              "type": "integer",
-              "format": "int32"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Plant response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
-                  }
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/BalanceResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
                 }
               }
+            },
+            "description": "Balances"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Balances by asset"
+      }
+    },
+    "/account/{address}/deposits": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           },
-          "400": {
-            "description": "Unexpected error",
+          {
+            "in": "query",
+            "name": "transaction_hash",
+            "required": false,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/DepositStatusResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
                 }
               }
+            },
+            "description": "Ledger-backed deposit states"
+          },
+          "400": {
+            "description": "Invalid address, transaction hash, or limit"
+          },
+          "503": {
+            "description": "Authoritative ledger is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Authoritative verified-deposit status and chain evidence"
+      }
+    },
+    "/account/{address}/fills": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        }
-      },
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/AccountFillResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "At most 500 newest account fills"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Session belongs to another account"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Private fill history for an account"
+      }
+    },
+    "/account/{address}/orders": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open orders"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Open orders for an account"
+      }
+    },
+    "/account/{address}/orders/by-client-id/{client_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order owned by the authenticated account"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Session belongs to another account"
+          },
+          "404": {
+            "description": "Order not found"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Look up an account order by client order ID"
+      }
+    },
+    "/account/{address}/withdrawals": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/WithdrawalStatusResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Ledger-backed withdrawal states"
+          },
+          "400": {
+            "description": "Invalid address or limit"
+          },
+          "503": {
+            "description": "Authoritative ledger is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Authoritative customer withdrawal reservations and status"
+      }
+    },
+    "/agents/register": {
       "post": {
-        "description": "Creates a new plant in the store",
+        "responses": {
+          "200": {
+            "description": "Delegation stored"
+          }
+        },
+        "summary": "Register a session-key / agent wallet"
+      }
+    },
+    "/agents/revoke": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          }
+        },
+        "summary": "Revoke an agent"
+      }
+    },
+    "/agents/{master}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "master",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents + status"
+          }
+        },
+        "summary": "List agents for a master wallet"
+      }
+    },
+    "/auth/challenge": {
+      "post": {
         "requestBody": {
-          "description": "Plant to add to the store",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/HttpAuthChallengeRequest"
               }
             }
           },
@@ -74,144 +1592,925 @@
         },
         "responses": {
           "200": {
-            "description": "plant response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Plant"
+                  "$ref": "#/components/schemas/HttpAuthChallengeResponse"
                 }
               }
-            }
+            },
+            "description": "Versioned message to sign"
           },
           "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "description": "Invalid address"
+          },
+          "429": {
+            "description": "Challenge capacity reached"
           }
-        }
+        },
+        "summary": "Issue a single-use wallet authentication challenge"
       }
     },
-    "/plants/{id}": {
-      "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "ID of plant to delete",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Plant deleted",
-            "content": {}
-          },
-          "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
+    "/auth/session": {
       "post": {
-        "description": "Information about a new plant added to the store",
         "requestBody": {
-          "description": "Plant added to the store",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/HttpAuthSessionRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpAuthSessionResponse"
+                }
+              }
+            },
+            "description": "Opaque bearer session"
+          },
+          "401": {
+            "description": "Invalid or replayed proof"
+          },
+          "503": {
+            "description": "Session capacity reached"
           }
-        }
+        },
+        "summary": "Exchange a wallet signature for a short-lived account session"
+      }
+    },
+    "/auth/session/revoke": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Session revoked"
+          },
+          "401": {
+            "description": "Invalid or expired session"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Revoke the current account session"
+      }
+    },
+    "/borrow-lend/account/{address}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BorrowLendAccount"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Account"
+          }
+        },
+        "summary": "Borrow-lend positions + health factor"
+      }
+    },
+    "/borrow-lend/markets": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/BorrowLendMarket"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Markets"
+          }
+        },
+        "summary": "Borrow-lend market state"
+      }
+    },
+    "/deposit": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Demo credit created"
+          },
+          "503": {
+            "description": "Disabled outside testnet-demo"
+          }
+        },
+        "summary": "Create an unverified demo credit (testnet-demo only)"
+      }
+    },
+    "/deposit/bridge": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Credited"
+          },
+          "401": {
+            "description": "Bridge sig invalid or not allowlisted"
+          }
+        },
+        "summary": "Cross-chain bridge-attested deposit"
+      }
+    },
+    "/deposit/bridges": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Bridges + pubkeys"
+          }
+        },
+        "summary": "Public bridge allowlist"
+      }
+    },
+    "/fees/schedule": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Tier table"
+          }
+        },
+        "summary": "Volume-tiered fee schedule"
+      }
+    },
+    "/fees/tier/{address}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tier + volume + next threshold"
+          }
+        },
+        "summary": "Current fee tier for an address"
+      }
+    },
+    "/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        },
+        "summary": "Liveness check"
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Leaderboard"
+          }
+        },
+        "summary": "Top traders by points, 30d rolling"
+      }
+    },
+    "/listings": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Listings"
+          }
+        },
+        "summary": "Pending / accepted / rejected permissionless listings"
+      }
+    },
+    "/listings/propose": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Proposal"
+          }
+        },
+        "summary": "Propose a market (posts bond)"
+      }
+    },
+    "/markets": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/MarketResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Markets with best bid/ask/spread"
+          }
+        },
+        "summary": "List all markets"
+      }
+    },
+    "/markets/{market}/book": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "market",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bids + asks up to N levels"
+          }
+        },
+        "summary": "Order book snapshot"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Prometheus text 0.0.4"
+          }
+        },
+        "summary": "Prometheus metrics"
+      }
+    },
+    "/ohlcv/{market_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "market_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candles"
+          }
+        },
+        "summary": "OHLCV candles derived from real fills"
+      }
+    },
+    "/orders": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Order accepted; response contains fills + status"
+          },
+          "401": {
+            "description": "Signature invalid or agent cap exceeded"
+          },
+          "504": {
+            "description": "Engine dispatch timed out"
+          }
+        },
+        "summary": "Place a signed order (master or agent-wallet)"
+      }
+    },
+    "/orders/algo/cancel": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Canceled"
+          }
+        },
+        "summary": "Cancel a running algo by parent_id"
+      }
+    },
+    "/orders/algo/twap": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwapAlgoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "parent_id + status"
+          }
+        },
+        "summary": "Start a server-side TWAP"
+      }
+    },
+    "/orders/algo/{parent_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "TWAP parent status"
+          }
+        },
+        "summary": "Algo snapshot"
+      }
+    },
+    "/orders/cancel": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel result"
+          }
+        },
+        "summary": "Cancel an order by id or client_order_id"
+      }
+    },
+    "/orders/{order_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order details"
+          }
+        },
+        "summary": "Order lifecycle with fill history"
+      }
+    },
+    "/perp/account/{address}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PerpAccount"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Perp account"
+          }
+        },
+        "summary": "Perp positions + margin report for one address"
+      }
+    },
+    "/perp/liquidatable": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/PerpLiquidationCandidate"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Candidates"
+          }
+        },
+        "summary": "Positions below maintenance margin (eligible for public liquidator)"
+      }
+    },
+    "/perp/liquidate": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerpLiquidateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Liquidation applied"
+          },
+          "401": {
+            "description": "Signature invalid"
+          },
+          "404": {
+            "description": "Unknown market"
+          },
+          "409": {
+            "description": "Borrower not liquidatable / no open position"
+          }
+        },
+        "summary": "Execute a public perp liquidation"
+      }
+    },
+    "/perp/markets": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/PerpMarket"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Perp markets"
+          }
+        },
+        "summary": "Perp market state (mark/index/funding)"
+      }
+    },
+    "/points/{address}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Points breakdown"
+          }
+        },
+        "summary": "Points + toxicity-gated fill counts"
+      }
+    },
+    "/portfolio/{address}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "method",
+            "required": false,
+            "schema": {
+              "enum": [
+                "fifo",
+                "hifo"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PortfolioResponse"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Portfolio breakdown"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Realized + unrealized PnL, cost basis, per market"
+      }
+    },
+    "/portfolio/{address}/csv": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "text/csv"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Full fill history as CSV (Koinly/CoinTracker)"
+      }
+    },
+    "/proofs/stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProofStats"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Proof stats"
+          }
+        },
+        "summary": "ZK proof counts + provider label"
+      }
+    },
+    "/ready": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Ready to serve this runtime mode"
+          },
+          "503": {
+            "description": "A required dependency is unavailable"
+          }
+        },
+        "summary": "Dependency readiness check"
+      }
+    },
+    "/reserves/public": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Aggregate liabilities with scope and verification status"
+          }
+        },
+        "summary": "Sanitized aggregate engine liabilities"
+      }
+    },
+    "/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Status"
+          }
+        },
+        "summary": "Engine status + today's counters"
+      }
+    },
+    "/tee/stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TeeStats"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "TEE stats"
+          }
+        },
+        "summary": "TEE attestation counts + platform label"
+      }
+    },
+    "/trades": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Fills"
+          }
+        },
+        "summary": "Recent fills (all markets)"
+      }
+    },
+    "/trades/{market_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "market_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fills"
+          }
+        },
+        "summary": "Recent fills for one market"
+      }
+    },
+    "/vaults": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Vaults"
+          }
+        },
+        "summary": "List MM credit vaults + AUM"
+      }
+    },
+    "/vaults/create": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Vault created"
+          }
+        },
+        "summary": "Create a vault (operator-signed)"
+      }
+    },
+    "/vaults/{vault_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vault_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vault"
+          }
+        },
+        "summary": "Vault snapshot + share price"
+      }
+    },
+    "/vaults/{vault_id}/deposit": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Deposited"
+          }
+        },
+        "summary": "LP deposits USDC, receives shares"
+      }
+    },
+    "/vaults/{vault_id}/positions/{lp}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Position"
+          }
+        },
+        "summary": "LP position in a vault"
+      }
+    },
+    "/vaults/{vault_id}/withdraw": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Withdrawn"
+          }
+        },
+        "summary": "LP burns shares, receives USDC"
+      }
+    },
+    "/withdrawals": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawal durably reserved"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Invalid customer signature"
+          },
+          "409": {
+            "description": "Insufficient balance or idempotency conflict"
+          },
+          "503": {
+            "description": "Authoritative reservation unavailable"
+          }
+        },
+        "summary": "Authenticate and atomically reserve a customer withdrawal"
+      }
+    },
+    "/withdrawals/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelWithdrawalBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation released exactly once"
+          },
+          "401": {
+            "description": "Invalid customer signature"
+          },
+          "404": {
+            "description": "Withdrawal not found for customer"
+          },
+          "409": {
+            "description": "Withdrawal can no longer be safely cancelled"
+          }
+        },
+        "summary": "Cancel a pre-signing withdrawal and release its reservation"
+      }
+    },
+    "/ws": {
+      "get": {
+        "responses": {
+          "101": {
+            "description": "Switching Protocols"
+          }
+        },
+        "summary": "WebSocket upgrade — see WS section for channel protocol"
       }
     }
   },
-  "components": {
-    "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
-          },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
-          }
-        }
-      },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
-          },
-          {
-            "required": [
-              "id"
-            ],
-            "type": "object",
-            "properties": {
-              "id": {
-                "description": "Identification number of the plant",
-                "type": "integer",
-                "format": "int64"
-              }
-            }
-          }
-        ]
-      },
-      "Error": {
-        "required": [
-          "error",
-          "message"
-        ],
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      }
+  "servers": [
+    {
+      "description": "Live beta (Sepolia)",
+      "url": "https://vela-engine.fly.dev"
     },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
-      }
+    {
+      "description": "Local dev",
+      "url": "http://127.0.0.1:3001"
     }
+  ],
+  "x-websocket": {
+    "auth": "Send { type: 'auth', address, signature, timestamp } after connect. `signature` covers `vela:ws:{address}:{timestamp}` via personal_sign.",
+    "channels": {
+      "account:{address}": "Authenticated: balances, orders, fills for one account",
+      "dropcopy:{address}": "Authenticated: fills-only, delivered on connection independent of trading",
+      "feed/toxicity": "Authenticated: per-fill toxicity scores",
+      "markets": "Best bid/ask/spread across all markets every 5s",
+      "orderbook:{market}": "Top-50 depth snapshots per second",
+      "trades:{market}": "Fills as they land"
+    },
+    "url": "wss://vela-engine.fly.dev/ws"
   }
 }
