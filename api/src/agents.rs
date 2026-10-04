@@ -229,7 +229,7 @@ impl AgentRegistry {
             let key = (agent.clone(), 3_600u64, hour_bucket);
             let entry = self.rate.entry(key).or_insert_with(|| AtomicU64::new(0));
             if entry
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
                     used.checked_add(notional).filter(|next| *next <= cap)
                 })
                 .is_err()
@@ -241,7 +241,7 @@ impl AgentRegistry {
             let key = (agent.clone(), 86_400u64, day_bucket);
             let entry = self.rate.entry(key).or_insert_with(|| AtomicU64::new(0));
             if entry
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
                     used.checked_add(notional).filter(|next| *next <= cap)
                 })
                 .is_err()
