@@ -460,7 +460,7 @@ async fn readiness_rejects_database_without_current_schema(pool: PgPool) {
     assert!(matches!(
         ledger.health_check().await,
         Err(LedgerError::SchemaVersion {
-            expected: 14,
+            expected: 15,
             found: 0
         })
     ));

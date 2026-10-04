@@ -93,6 +93,11 @@ REVOKE UPDATE, DELETE ON ledger_reconciliation_failures FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_reconciliation_failure_halts FROM vela_ledger_writer;
 REVOKE DELETE ON ledger_reconciliation_worker_checkpoints FROM vela_ledger_writer;
 REVOKE INSERT, DELETE ON ledger_engine_leadership FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON api_agent_events FROM vela_ledger_writer;
+REVOKE DELETE ON api_agent_delegations, api_agent_notional_buckets FROM vela_ledger_writer;
+GRANT UPDATE (expires_at_ms, max_notional_per_order, nonce, revoked, scope, updated_at)
+    ON api_agent_delegations TO vela_ledger_writer;
+GRANT UPDATE (notional) ON api_agent_notional_buckets TO vela_ledger_writer;
 
 GRANT UPDATE (balance, version, updated_at) ON ledger_account_balances TO vela_ledger_writer;
 GRANT UPDATE (published_at) ON ledger_outbox TO vela_ledger_writer;
