@@ -812,12 +812,12 @@ pub fn openapi_spec() -> serde_json::Value {
                         "market": { "type": "string" },
                         "realized_usdc": { "type": "string", "description": "Decimal USDC" },
                         "unrealized_usdc": { "type": ["string", "null"], "description": "Null when no mark price is available" },
-                        "pnl_complete": { "type": "boolean", "description": "False when a sell has no matching retained acquisition lot" }
+                        "pnl_complete": { "type": "boolean", "description": "False when an acquisition lot or fee evidence is missing" }
                     }
                 },
                 "PortfolioMarket": {
                     "type": "object",
-                    "required": ["market_id", "base_asset", "position_base", "cost_basis_price_usdc", "open_cost_basis_usdc", "mark_price_usdc", "mark_source", "mark_observed_at_ms", "realized_pnl_usdc", "unrealized_pnl_usdc", "fill_count", "pnl_complete", "unmatched_sell_quantity_base"],
+                    "required": ["market_id", "base_asset", "position_base", "cost_basis_price_usdc", "open_cost_basis_usdc", "mark_price_usdc", "mark_source", "mark_observed_at_ms", "realized_pnl_usdc", "unrealized_pnl_usdc", "fill_count", "pnl_complete", "fee_complete", "unmatched_sell_quantity_base"],
                     "properties": {
                         "market_id": { "type": "string" },
                         "base_asset": { "type": "string" },
@@ -831,6 +831,7 @@ pub fn openapi_spec() -> serde_json::Value {
                         "unrealized_pnl_usdc": { "type": ["string", "null"] },
                         "fill_count": { "type": "integer" },
                         "pnl_complete": { "type": "boolean" },
+                        "fee_complete": { "type": "boolean", "description": "False when a retained fill lacks fee evidence" },
                         "unmatched_sell_quantity_base": { "type": "string", "description": "Decimal base units sold without a retained acquisition lot" }
                     }
                 },

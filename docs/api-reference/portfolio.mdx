@@ -18,9 +18,11 @@ Each market also reports `mark_source` (`midpoint`, `best_bid`, or `best_ask`)
 and `mark_observed_at_ms`. The timestamp is when the book was read, not proof
 that the resting quote was recently placed.
 If a sell has no matching retained acquisition fill, its market reports
-`pnl_complete: false` and `unmatched_sell_quantity_base`. The page hides
-PnL totals while any market is incomplete. The API's numeric fields remain
-provisional in that case.
+`pnl_complete: false` and `unmatched_sell_quantity_base`. Fills also retain
+their signed maker and taker fees; a legacy fill without fee evidence reports
+`fee_complete: false` and makes PnL incomplete. Buy fees enter lot cost basis,
+and sell fees reduce realized proceeds. The page hides PnL totals while any
+market is incomplete. The API's numeric fields remain provisional in that case.
 
 `GET /portfolio/{address}/csv` returns a CSV of the account's fills. Its
 columns are `timestamp_ms`, `market`, `side`, `price_usdc`, `quantity_base`,

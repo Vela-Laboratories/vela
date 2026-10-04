@@ -7233,8 +7233,19 @@ struct Lot {
     quantity: u64,
     /// Price per unit of base, fixed-point 1e6.
     price: u64,
+    /// Remaining acquisition cost including the signed buy-side fee.
+    cost_micro: i128,
     /// Acquisition time of the remaining lot, in milliseconds.
     timestamp: u64,
+}
+
+struct PortfolioTrade<'a> {
+    buy: bool,
+    price: u64,
+    quantity: u64,
+    timestamp: u64,
+    id: &'a str,
+    fee_micro: Option<i64>,
 }
 
 /// Split a market id like "BTC-USDC" into `(base, quote)`. Returns `None`
@@ -7246,10 +7257,6 @@ fn split_market(market_id: &str) -> Option<(&str, &str)> {
 /// Notional in micro-USDC from fixed-point price and quantity (each 1e6).
 fn notional_micro(price: u64, quantity: u64) -> u128 {
     u128::from(price) * u128::from(quantity) / 1_000_000
-}
-
-fn decimal_from_fixed_product(price: u64, quantity: u64) -> String {
-    format_unsigned_micro(notional_micro(price, quantity))
 }
 
 fn format_unsigned_micro(value: u128) -> String {
@@ -7275,15 +7282,16 @@ struct MarketPnl {
     /// Base held right now (sum(buys) − sum(sells)).
     position_base_micro: u128,
     /// Weighted-average cost basis per base unit for the current position.
-    cost_basis_price_micro: u128,
+    cost_basis_price_micro: i128,
     /// Sum of remaining lots' quantity × price / QUANTITY_SCALE, in USDC.
-    open_cost_basis_micro: u128,
+    open_cost_basis_micro: i128,
     /// If we have a mark price, current value of the open position in USDC.
     mark_price_micro: Option<u64>,
     /// Unrealized PnL = current_value − open_cost_basis_usdc.
     unrealized_micro: Option<i128>,
     fill_count: u64,
     unmatched_sell_quantity_micro: u128,
+    fee_complete: bool,
     open_lots: Vec<Lot>,
 }
 
@@ -7307,7 +7315,7 @@ fn compute_market_pnl(
     };
 
     // Fill IDs break timestamp ties so replay and input order choose the same lots.
-    let mut trades: Vec<(bool, u64, u64, u64, &str)> = Vec::new();
+    let mut trades: Vec<PortfolioTrade<'_>> = Vec::new();
     for f in fills {
         let is_maker = f.maker_address.to_ascii_lowercase() == addr;
         let is_taker = f.taker_address.to_ascii_lowercase() == addr;
@@ -7319,24 +7327,51 @@ fn compute_market_pnl(
         // sold base (the maker was on the ask side).
         let taker_was_bidding = f.side.eq_ignore_ascii_case("bid");
         let user_bought = (is_taker && taker_was_bidding) || (is_maker && !taker_was_bidding);
-        trades.push((user_bought, f.price, f.quantity, f.timestamp, &f.id));
+        let fee = if is_taker {
+            f.taker_fee_micro
+        } else {
+            f.maker_fee_micro
+        };
+        trades.push(PortfolioTrade {
+            buy: user_bought,
+            price: f.price,
+            quantity: f.quantity,
+            timestamp: f.timestamp,
+            id: &f.id,
+            fee_micro: fee,
+        });
     }
-    trades.sort_by(|a, b| (a.3, a.4).cmp(&(b.3, b.4)));
+    trades.sort_by(|a, b| (a.timestamp, a.id).cmp(&(b.timestamp, b.id)));
 
     let mut lots: std::collections::VecDeque<Lot> = std::collections::VecDeque::new();
     let mut realized_micro: i128 = 0;
     let mut unmatched_sell_quantity_micro: u128 = 0;
+    let mut fee_complete = true;
     let fill_count = trades.len() as u64;
 
-    for (buy, price, qty, ts, _) in trades {
+    for PortfolioTrade {
+        buy,
+        price,
+        quantity: qty,
+        timestamp: ts,
+        fee_micro: fee,
+        ..
+    } in trades
+    {
+        if fee.is_none() {
+            fee_complete = false;
+        }
+        let fee_micro = i128::from(fee.unwrap_or(0));
         if buy {
             lots.push_back(Lot {
                 quantity: qty,
                 price,
+                cost_micro: notional_micro(price, qty) as i128 + fee_micro,
                 timestamp: ts,
             });
         } else {
             // Sell: draw from lots according to method until qty exhausted.
+            realized_micro -= fee_micro;
             let mut remaining = qty;
             while remaining > 0 && !lots.is_empty() {
                 let idx = match method {
@@ -7351,8 +7386,13 @@ fn compute_market_pnl(
                 let mut lot = lots.remove(idx).unwrap();
                 let matched = lot.quantity.min(remaining);
                 let proceeds = notional_micro(price, matched) as i128;
-                let basis = notional_micro(lot.price, matched) as i128;
+                let basis = if matched == lot.quantity {
+                    lot.cost_micro
+                } else {
+                    lot.cost_micro * i128::from(matched) / i128::from(lot.quantity)
+                };
                 realized_micro += proceeds - basis;
+                lot.cost_micro -= basis;
                 lot.quantity -= matched;
                 remaining -= matched;
                 if lot.quantity > 0 {
@@ -7368,16 +7408,14 @@ fn compute_market_pnl(
     }
 
     // Compute open position from remaining lots.
-    let (open_qty_fp, open_cost_basis_micro) = lots.iter().fold((0u128, 0u128), |(q, n), l| {
-        (
-            q + u128::from(l.quantity),
-            n + notional_micro(l.price, l.quantity),
-        )
+    let (open_qty_fp, open_cost_basis_micro) = lots.iter().fold((0u128, 0i128), |(q, n), l| {
+        (q + u128::from(l.quantity), n + l.cost_micro)
     });
     let cost_basis_price_micro = if open_qty_fp > 0 {
-        let whole = open_cost_basis_micro / open_qty_fp;
-        let remainder = open_cost_basis_micro % open_qty_fp;
-        whole * 1_000_000 + remainder * 1_000_000 / open_qty_fp
+        let quantity = open_qty_fp as i128;
+        let whole = open_cost_basis_micro / quantity;
+        let remainder = open_cost_basis_micro % quantity;
+        whole * 1_000_000 + remainder * 1_000_000 / quantity
     } else {
         0
     };
@@ -7387,7 +7425,7 @@ fn compute_market_pnl(
             .iter()
             .map(|lot| notional_micro(mark, lot.quantity))
             .sum();
-        marked as i128 - open_cost_basis_micro as i128
+        marked as i128 - open_cost_basis_micro
     });
 
     MarketPnl {
@@ -7401,6 +7439,7 @@ fn compute_market_pnl(
         unrealized_micro,
         fill_count,
         unmatched_sell_quantity_micro,
+        fee_complete,
         open_lots: lots.into_iter().collect(),
     }
 }
@@ -7492,22 +7531,23 @@ async fn get_portfolio_handler(
             tax_lots.extend(p.open_lots.iter().map(|lot| serde_json::json!({
                 "asset": p.base_asset,
                 "quantity": format!("{}.{:06}", lot.quantity / 1_000_000, lot.quantity % 1_000_000),
-                "cost_basis_usdc": decimal_from_fixed_product(lot.price, lot.quantity),
+                "cost_basis_usdc": format_signed_micro(lot.cost_micro),
                 "acquired_at": lot.timestamp / 1_000,
             })));
             serde_json::json!({
                 "market_id": p.market_id,
                 "base_asset": p.base_asset,
                 "position_base": format_unsigned_micro(p.position_base_micro),
-                "cost_basis_price_usdc": format_unsigned_micro(p.cost_basis_price_micro),
-                "open_cost_basis_usdc": format_unsigned_micro(p.open_cost_basis_micro),
+                "cost_basis_price_usdc": format_signed_micro(p.cost_basis_price_micro),
+                "open_cost_basis_usdc": format_signed_micro(p.open_cost_basis_micro),
                 "mark_price_usdc": p.mark_price_micro.map(|v| format_unsigned_micro(u128::from(v))),
                 "mark_source": mark.map(|m| m.source),
                 "mark_observed_at_ms": mark.map(|m| m.observed_at_ms),
                 "realized_pnl_usdc": format_signed_micro(p.realized_micro),
                 "unrealized_pnl_usdc": p.unrealized_micro.map(format_signed_micro),
                 "fill_count": p.fill_count,
-                "pnl_complete": p.unmatched_sell_quantity_micro == 0,
+                "pnl_complete": p.unmatched_sell_quantity_micro == 0 && p.fee_complete,
+                "fee_complete": p.fee_complete,
                 "unmatched_sell_quantity_base": format_unsigned_micro(p.unmatched_sell_quantity_micro),
             })
         })
@@ -8721,7 +8761,8 @@ mod points_tests {
 #[cfg(test)]
 mod portfolio_tests {
     use super::{
-        compute_market_pnl, decimal_from_fixed_product, format_signed_micro, CostBasisMethod,
+        compute_market_pnl, format_signed_micro, format_unsigned_micro, notional_micro,
+        CostBasisMethod,
     };
     use crate::types::StoredFill;
 
@@ -8772,6 +8813,47 @@ mod portfolio_tests {
         let p = compute_market_pnl("0xuser", "BTC-USDC", &fills, None, CostBasisMethod::Fifo);
         assert_eq!(p.realized_micro, 20_000_000);
         assert_eq!(p.position_base_micro, 0);
+    }
+
+    #[test]
+    fn fees_adjust_buy_basis_and_sell_proceeds() {
+        let mut buy = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 1_000_000, 1);
+        buy.taker_fee_micro = Some(1_000_000);
+        let mut sell = mk_fill("BTC-USDC", true, "ask", 120 * 1_000_000, 1_000_000, 2);
+        sell.taker_fee_micro = Some(2_000_000);
+        let pnl = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &[&buy, &sell],
+            None,
+            CostBasisMethod::Fifo,
+        );
+        assert_eq!(pnl.realized_micro, 17_000_000);
+        assert!(pnl.fee_complete);
+    }
+
+    #[test]
+    fn partial_sale_retains_unconsumed_fee_basis() {
+        let mut buy = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 2_000_000, 1);
+        buy.taker_fee_micro = Some(2_000_000);
+        let sell = mk_fill("BTC-USDC", true, "ask", 150 * 1_000_000, 1_000_000, 2);
+        let pnl = compute_market_pnl(
+            "0xuser",
+            "BTC-USDC",
+            &[&buy, &sell],
+            None,
+            CostBasisMethod::Fifo,
+        );
+        assert_eq!(pnl.realized_micro, 49_000_000);
+        assert_eq!(pnl.open_lots[0].cost_micro, 101_000_000);
+    }
+
+    #[test]
+    fn missing_historical_fee_evidence_marks_pnl_incomplete() {
+        let mut buy = mk_fill("BTC-USDC", true, "bid", 100 * 1_000_000, 1_000_000, 1);
+        buy.taker_fee_micro = None;
+        let pnl = compute_market_pnl("0xuser", "BTC-USDC", &[&buy], None, CostBasisMethod::Fifo);
+        assert!(!pnl.fee_complete);
     }
 
     #[test]
@@ -8881,7 +8963,7 @@ mod portfolio_tests {
     #[test]
     fn tax_lot_cost_basis_uses_exact_fixed_point_product() {
         assert_eq!(
-            decimal_from_fixed_product(123_456_789, 2_500_000),
+            format_unsigned_micro(notional_micro(123_456_789, 2_500_000)),
             "308.641972"
         );
     }

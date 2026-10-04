@@ -702,6 +702,10 @@
           "cost_basis_price_usdc": {
             "type": "string"
           },
+          "fee_complete": {
+            "description": "False when a retained fill lacks fee evidence",
+            "type": "boolean"
+          },
           "fill_count": {
             "type": "integer"
           },
@@ -769,6 +773,7 @@
           "unrealized_pnl_usdc",
           "fill_count",
           "pnl_complete",
+          "fee_complete",
           "unmatched_sell_quantity_base"
         ],
         "type": "object"
@@ -779,7 +784,7 @@
             "type": "string"
           },
           "pnl_complete": {
-            "description": "False when a sell has no matching retained acquisition lot",
+            "description": "False when an acquisition lot or fee evidence is missing",
             "type": "boolean"
           },
           "realized_usdc": {

@@ -215,7 +215,7 @@ export default function PortfolioPage() {
           )}
           {incompleteMarkets.length > 0 && (
             <Card className="p-4 mb-6 text-terra text-sm" role="status">
-              PnL is incomplete for {incompleteMarkets.join(', ')} because recorded sells lack matching acquisition fills. Totals are hidden until the fill history is complete.
+              PnL is incomplete for {incompleteMarkets.join(', ')} because retained fills lack acquisition or fee evidence. Totals are hidden until the history is complete.
             </Card>
           )}
 

@@ -2459,6 +2459,8 @@ export interface components {
         PortfolioMarket: {
             base_asset: string;
             cost_basis_price_usdc: string;
+            /** @description False when a retained fill lacks fee evidence */
+            fee_complete: boolean;
             fill_count: number;
             /** @description Unix milliseconds when the order-book snapshot was read, not the age of the quote */
             mark_observed_at_ms: number | null;
@@ -2476,7 +2478,7 @@ export interface components {
         };
         PortfolioPerMarket: {
             market: string;
-            /** @description False when a sell has no matching retained acquisition lot */
+            /** @description False when an acquisition lot or fee evidence is missing */
             pnl_complete: boolean;
             /** @description Decimal USDC */
             realized_usdc: string;
