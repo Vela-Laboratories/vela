@@ -112,4 +112,20 @@ describe('lib/api', () => {
       expect.objectContaining({ cache: 'no-store' }),
     )
   })
+
+  it('sends a signed revocation without treating revoked=false as success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: { agent: '0xagent', revoked: false } }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { revokeAgent } = await import('./api')
+    const body = { master: '0xmaster', agent: '0xagent', nonce: 42, signature: '0xsig' }
+    const response = await revokeAgent(body)
+    expect(response.data?.revoked).toBe(false)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://vela-engine.fly.dev/agents/revoke',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(body) }),
+    )
+  })
 })

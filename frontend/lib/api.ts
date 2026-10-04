@@ -511,6 +511,21 @@ export function getAgents(master: string): Promise<ApiResponse<AgentListResponse
   return apiFetch(`/agents/${encodeURIComponent(master)}`, { cache: 'no-store' })
 }
 
+export interface RevokeAgentBody {
+  master: string
+  agent: string
+  nonce: number
+  signature: string
+}
+
+/** POST /agents/revoke. A 200 response can still report revoked=false. */
+export function revokeAgent(body: RevokeAgentBody): Promise<ApiResponse<{ agent: string; revoked: boolean }>> {
+  return apiFetch('/agents/revoke', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 /** GET /portfolio/:address */
 export function getPortfolio(
   address: string,
