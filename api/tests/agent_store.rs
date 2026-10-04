@@ -63,3 +63,57 @@ async fn shared_notional_caps_cannot_be_exceeded_concurrently(pool: PgPool) {
         .await
         .is_err());
 }
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn restart_recovers_registration_and_revocation_tombstone(pool: PgPool) {
+    let original = AgentStore::new(pool.clone(), "testnet-demo:11155111".into());
+    let d = delegation(10);
+    original
+        .register_signed(&d, "registered message", "registered signature")
+        .await
+        .unwrap();
+    drop(original);
+    let restarted = AgentStore::new(pool.clone(), "testnet-demo:11155111".into());
+    let recovered = restarted.agents_for(&d.master).await.unwrap();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].nonce, 10);
+    restarted
+        .authorize(&d.master, &d.agent, 10, 1, None)
+        .await
+        .unwrap();
+    assert!(restarted
+        .revoke_signed(
+            &d.master,
+            &d.agent,
+            11,
+            "revoked message",
+            "revoked signature"
+        )
+        .await
+        .unwrap());
+    drop(restarted);
+    let restarted = AgentStore::new(pool.clone(), "testnet-demo:11155111".into());
+    let recovered = restarted.agents_for(&d.master).await.unwrap();
+    assert!(recovered[0].revoked);
+    assert_eq!(recovered[0].nonce, 11);
+    assert!(restarted
+        .register_signed(&d, "old message", "old signature")
+        .await
+        .is_err());
+    assert!(restarted
+        .authorize(&d.master, &d.agent, 1, 1, None)
+        .await
+        .is_err());
+    let evidence: Vec<(String, String)> =
+        sqlx::query_as("SELECT action, message FROM api_agent_events ORDER BY nonce")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        evidence,
+        vec![
+            ("register".into(), "registered message".into()),
+            ("revoke".into(), "revoked message".into())
+        ]
+    );
+}
