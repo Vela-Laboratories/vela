@@ -569,6 +569,24 @@ async fn test_withdrawal_reservation_and_cancellation_are_ledger_backed(pool: sq
     ] {
         ledger.create_account(&account).await.unwrap();
     }
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_chain_deployments (
+            id, chain_id, network, vault_address, deployment_version,
+            runtime_code_hash, deposit_event_signature, deposit_event_topic,
+            finality_policy, start_block
+        ) VALUES ($1, 84532, 'base-sepolia', $2, 'test-v3',
+                  $3, 'Deposited(bytes32,address,bytes32,address,uint256)', $4,
+                  'rpc_finalized_two_provider', 0)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind("0x2222222222222222222222222222222222222222")
+    .bind(format!("0x{}", "11".repeat(32)))
+    .bind(format!("0x{}", "22".repeat(32)))
+    .execute(ledger.pool())
+    .await
+    .unwrap();
     ledger
         .post(&ledger::PostTransaction {
             id: Uuid::new_v4(),
