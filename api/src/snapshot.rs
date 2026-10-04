@@ -573,6 +573,8 @@ pub fn replay_wal_entries(
                         taker_address: fill.taker_address.clone(),
                         timestamp: entry.timestamp_ns / 1_000_000,
                         side: String::new(),
+                        maker_fee_micro: Some(fill.maker_fee),
+                        taker_fee_micro: i64::try_from(fill.taker_fee).ok(),
                         synthetic: false,
                         toxicity_score: 0.0,
                     };

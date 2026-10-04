@@ -163,6 +163,8 @@ pub async fn pyth_feed_task(state: Arc<AppState>) {
                                 taker_address: String::new(),
                                 timestamp: fill_ts,
                                 side: side.to_string(),
+                                maker_fee_micro: None,
+                                taker_fee_micro: None,
                                 synthetic: true,
                                 toxicity_score: 0.0,
                             });

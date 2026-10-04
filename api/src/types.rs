@@ -13,6 +13,12 @@ pub struct StoredFill {
     pub taker_address: String,
     pub timestamp: u64,
     pub side: String,
+    /// Signed quote-asset fee in micro-USDC. Negative values are rebates.
+    /// Missing on legacy observations whose fee evidence was not retained.
+    #[serde(default)]
+    pub maker_fee_micro: Option<i64>,
+    #[serde(default)]
+    pub taker_fee_micro: Option<i64>,
     #[serde(default)]
     pub synthetic: bool,
     /// Toxicity score for the taker order this fill contributed to,

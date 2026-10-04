@@ -1936,6 +1936,8 @@ async fn record_order_and_fills(
                 taker_address: f.taker.to_hex(),
                 timestamp: f.timestamp,
                 side: side_to_str(f.side).to_string(),
+                maker_fee_micro: Some(f.maker_fee),
+                taker_fee_micro: Some(f.taker_fee),
                 synthetic: false,
                 toxicity_score: f.toxicity_score,
             });
@@ -8663,6 +8665,8 @@ mod points_tests {
             taker_address: String::new(),
             timestamp: 0,
             side: String::new(),
+            maker_fee_micro: None,
+            taker_fee_micro: None,
             synthetic: false,
             toxicity_score: toxicity,
         }
@@ -8752,6 +8756,8 @@ mod portfolio_tests {
             },
             timestamp: ts,
             side: taker_side.to_string(),
+            maker_fee_micro: Some(0),
+            taker_fee_micro: Some(0),
             synthetic: false,
             toxicity_score: 0.0,
         }
