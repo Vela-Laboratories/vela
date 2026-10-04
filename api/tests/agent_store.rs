@@ -117,3 +117,49 @@ async fn restart_recovers_registration_and_revocation_tombstone(pool: PgPool) {
         ]
     );
 }
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn revocation_on_one_instance_invalidates_signatures_on_another(pool: PgPool) {
+    use api::agents::{verify_master_or_agent_async, AgentRegistry};
+    use k256::ecdsa::SigningKey;
+    use sha3::{Digest, Keccak256};
+
+    let key = SigningKey::from_slice(&[7; 32]).unwrap();
+    let public = key.verifying_key().to_encoded_point(false);
+    let hash = Keccak256::digest(&public.as_bytes()[1..]);
+    let agent = UserId::from_hex(&format!("0x{}", hex::encode(&hash[12..]))).unwrap();
+    let mut d = delegation(1);
+    d.agent = agent;
+    let writer = AgentStore::new(pool.clone(), "testnet-demo:11155111".into());
+    let second = AgentRegistry::with_store(AgentStore::new(pool, "testnet-demo:11155111".into()));
+    writer
+        .register_signed(&d, "message", "signature")
+        .await
+        .unwrap();
+    let message = b"signed testnet request".to_vec();
+    let hash = api::auth::eth_message_hash(&message);
+    let (signature, recovery) = key.sign_prehash_recoverable(&hash).unwrap();
+    let mut bytes = signature.to_bytes().to_vec();
+    bytes.push(recovery.to_byte() + 27);
+    let signature = format!("0x{}", hex::encode(bytes));
+
+    assert!(verify_master_or_agent_async(
+        message.clone(),
+        signature.clone(),
+        d.master.to_hex(),
+        1,
+        1,
+        second.clone()
+    )
+    .await
+    .is_ok());
+    assert!(writer
+        .revoke_signed(&d.master, &d.agent, 2, "revoke", "signature")
+        .await
+        .unwrap());
+    assert!(
+        verify_master_or_agent_async(message, signature, d.master.to_hex(), 1, 1, second)
+            .await
+            .is_err()
+    );
+}
