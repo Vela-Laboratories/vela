@@ -228,19 +228,24 @@ impl AgentRegistry {
         if let Some(cap) = scope.max_notional_per_hour {
             let key = (agent.clone(), 3_600u64, hour_bucket);
             let entry = self.rate.entry(key).or_insert_with(|| AtomicU64::new(0));
-            let new_val = entry.fetch_add(notional, Ordering::Relaxed) + notional;
-            if new_val > cap {
-                // Roll back before returning.
-                entry.fetch_sub(notional, Ordering::Relaxed);
+            if entry
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+                    used.checked_add(notional).filter(|next| *next <= cap)
+                })
+                .is_err()
+            {
                 return Err("hourly notional cap exceeded");
             }
         }
         if let Some(cap) = scope.max_notional_per_day {
             let key = (agent.clone(), 86_400u64, day_bucket);
             let entry = self.rate.entry(key).or_insert_with(|| AtomicU64::new(0));
-            let new_val = entry.fetch_add(notional, Ordering::Relaxed) + notional;
-            if new_val > cap {
-                entry.fetch_sub(notional, Ordering::Relaxed);
+            if entry
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+                    used.checked_add(notional).filter(|next| *next <= cap)
+                })
+                .is_err()
+            {
                 // Also roll back the hourly credit on failure to keep
                 // both counters consistent.
                 if scope.max_notional_per_hour.is_some() {
@@ -522,6 +527,24 @@ mod tests {
     fn order_notional_uses_quote_value_for_both_sides() {
         assert_eq!(order_notional_micro(100_000_000, 2_000_000), 200_000_000);
         assert_eq!(order_notional_micro(u64::MAX, u64::MAX), u64::MAX);
+    }
+
+    #[test]
+    fn notional_buckets_reject_overflow_without_wrapping() {
+        let registry = AgentRegistry::default();
+        let agent = UserId([1; 20]);
+        let scope = CapabilityScope {
+            max_notional_per_hour: Some(u64::MAX),
+            max_notional_per_day: Some(u64::MAX),
+            ..CapabilityScope::default()
+        };
+        assert!(registry
+            .check_rate_and_record(&agent, &scope, u64::MAX, 0)
+            .is_ok());
+        assert!(registry
+            .check_rate_and_record(&agent, &scope, 1, 0)
+            .is_err());
+        assert!(registry.check_rate_and_record(&agent, &scope, 0, 0).is_ok());
     }
 
     /// Deterministic keypair from a fixed seed; return (SigningKey, address).
