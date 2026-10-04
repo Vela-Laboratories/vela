@@ -5,10 +5,11 @@
 // generated `api-types.gen.ts` is the ground truth mirror of the
 // backend's `/openapi.json`. To regenerate:
 //
-//     cargo run --quiet --bin dump-openapi > /tmp/vela-openapi.json \
-//       && (cd frontend && npm run generate:api-types \
-//             && VELA_OPENAPI_URL= npx openapi-typescript \
-//                  /tmp/vela-openapi.json -o lib/api-types.gen.ts)
+//     cargo run --quiet -p api --bin dump-openapi > /tmp/vela-openapi.json
+//     cp /tmp/vela-openapi.json docs/api-reference/openapi.json
+//     ./frontend/node_modules/.bin/openapi-typescript /tmp/vela-openapi.json \
+//       -o frontend/lib/api-types.gen.ts
+//     ./scripts/check_openapi_snapshot.sh
 //
 // Or point the script at a running dev server:
 //
