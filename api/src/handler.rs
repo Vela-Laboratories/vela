@@ -7251,6 +7251,15 @@ fn decimal_from_fixed_product(price: u64, quantity: u64) -> String {
     format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000)
 }
 
+fn format_usdc_decimal(value: f64) -> String {
+    let rendered = format!("{value:.6}");
+    if rendered == "-0.000000" {
+        "0.000000".to_owned()
+    } else {
+        rendered
+    }
+}
+
 #[derive(Debug, Default)]
 struct MarketPnl {
     market_id: String,
@@ -7458,11 +7467,11 @@ async fn get_portfolio_handler(
                 "market_id": p.market_id,
                 "base_asset": p.base_asset,
                 "position_base": format!("{:.6}", p.position_base),
-                "cost_basis_price_usdc": format!("{:.6}", p.cost_basis_price),
-                "open_cost_basis_usdc": format!("{:.6}", p.open_cost_basis_usdc),
-                "mark_price_usdc": p.mark_price_usdc.map(|v| format!("{:.6}", v)),
-                "realized_pnl_usdc": format!("{:.6}", p.realized_usdc),
-                "unrealized_pnl_usdc": p.unrealized_usdc.map(|v| format!("{:.6}", v)),
+                "cost_basis_price_usdc": format_usdc_decimal(p.cost_basis_price),
+                "open_cost_basis_usdc": format_usdc_decimal(p.open_cost_basis_usdc),
+                "mark_price_usdc": p.mark_price_usdc.map(format_usdc_decimal),
+                "realized_pnl_usdc": format_usdc_decimal(p.realized_usdc),
+                "unrealized_pnl_usdc": p.unrealized_usdc.map(format_usdc_decimal),
                 "fill_count": p.fill_count,
             })
         })
@@ -7501,11 +7510,11 @@ async fn get_portfolio_handler(
         Json(ApiResponse::ok(serde_json::json!({
             "address": addr,
             "cost_basis_method": method.as_str(),
-            "total_realized_pnl_usdc": format!("{:.6}", total_realized),
-            "total_unrealized_pnl_usdc": format!("{:.6}", total_unrealized),
-            "total_pnl_usdc": format!("{:.6}", total_realized + total_unrealized),
-            "realized_pnl_usdc": format!("{:.6}", total_realized),
-            "unrealized_pnl_usdc": format!("{:.6}", total_unrealized),
+            "total_realized_pnl_usdc": format_usdc_decimal(total_realized),
+            "total_unrealized_pnl_usdc": format_usdc_decimal(total_unrealized),
+            "total_pnl_usdc": format_usdc_decimal(total_realized + total_unrealized),
+            "realized_pnl_usdc": format_usdc_decimal(total_realized),
+            "unrealized_pnl_usdc": format_usdc_decimal(total_unrealized),
             "per_market": per_market,
             "markets": markets,
             "tax_lots": tax_lots,
@@ -8682,7 +8691,9 @@ mod points_tests {
 
 #[cfg(test)]
 mod portfolio_tests {
-    use super::{compute_market_pnl, decimal_from_fixed_product, CostBasisMethod};
+    use super::{
+        compute_market_pnl, decimal_from_fixed_product, format_usdc_decimal, CostBasisMethod,
+    };
     use crate::types::StoredFill;
 
     /// Helper: make a StoredFill where `user_is_taker` and taker was on the
@@ -8807,5 +8818,12 @@ mod portfolio_tests {
             decimal_from_fixed_product(123_456_789, 2_500_000),
             "308.641972"
         );
+    }
+
+    #[test]
+    fn portfolio_zero_does_not_render_as_negative_zero() {
+        assert_eq!(format_usdc_decimal(-0.0), "0.000000");
+        assert_eq!(format_usdc_decimal(-0.0000001), "0.000000");
+        assert_eq!(format_usdc_decimal(-0.01), "-0.010000");
     }
 }
