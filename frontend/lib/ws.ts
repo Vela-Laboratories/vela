@@ -112,6 +112,7 @@ export class VelaWsClient {
   private statusHandlers = new Set<StatusHandler>()
   private subscriptions = new Map<string, Set<(data: unknown) => void>>()
   private seqNums = new Map<string, number>()
+  private resyncingBooks = new Set<string>()
   private reconnectDelay = INITIAL_RECONNECT_DELAY_MS
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null
   private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
@@ -240,6 +241,10 @@ export class VelaWsClient {
   }
 
   private handleOpen(): void {
+    // The server may have restarted, resetting per-channel sequence numbers.
+    // Subscriptions receive fresh snapshots where available.
+    this.seqNums.clear()
+    this.resyncingBooks.clear()
     this.connectionAttempts = 0
     this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
     this.setStatus('connected')
@@ -305,8 +310,17 @@ export class VelaWsClient {
         if (this.ws?.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({ type: 'subscribe', channels: [channel] }))
         }
+        // A full order-book snapshot is authoritative even after a gap.
+        // Do not hand a partial book update to consumers before resync.
+        if (channel.startsWith('orderbook:') && raw['type'] !== 'snapshot') {
+          this.resyncingBooks.add(channel)
+        }
       }
       this.seqNums.set(channel, seq)
+      if (this.resyncingBooks.has(channel)) {
+        if (raw['type'] !== 'snapshot') return
+        this.resyncingBooks.delete(channel)
+      }
 
       const callbacks = this.subscriptions.get(channel)
       if (callbacks) {
