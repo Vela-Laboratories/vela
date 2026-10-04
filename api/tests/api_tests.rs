@@ -731,6 +731,31 @@ async fn test_get_balances_empty() {
 }
 
 #[tokio::test]
+async fn test_portfolio_response_matches_documented_empty_shape() {
+    let server = test_server(engine_with_market());
+    let (key, address) = wallet(1);
+    let token = auth_token_for(&server, &key, &address).await;
+
+    for (method, expected) in [("fifo", "FIFO"), ("hifo", "HIFO")] {
+        let response = server
+            .get(&format!("/portfolio/{address}?method={method}"))
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        response.assert_status_ok();
+        let body: Value = response.json();
+        let data = &body["data"];
+        assert_eq!(data["address"], address.to_ascii_lowercase());
+        assert_eq!(data["cost_basis_method"], expected);
+        assert_eq!(data["realized_pnl_usdc"], "0.000000");
+        assert_eq!(data["unrealized_pnl_usdc"], "0.000000");
+        assert_eq!(data["total_pnl_usdc"], "0.000000");
+        assert!(data["markets"].as_array().unwrap().is_empty());
+        assert!(data["per_market"].as_array().unwrap().is_empty());
+        assert!(data["tax_lots"].as_array().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
 async fn test_every_customer_data_route_requires_wallet_session() {
     let server = test_server(engine_with_market());
     let address = user_addr();
