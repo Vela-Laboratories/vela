@@ -66,7 +66,7 @@
         "groups": [
           {
             "group": "API Reference",
-            "pages": ["api-reference/authentication", "api-reference/http", "api-reference/websocket", "api-reference/errors"]
+            "pages": ["api-reference/authentication", "api-reference/agent-wallets", "api-reference/http", "api-reference/websocket", "api-reference/errors"]
           }
         ]
       }

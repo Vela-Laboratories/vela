@@ -1,0 +1,38 @@
+---
+title: "Agent wallets"
+description: "Inspect and revoke delegated trading keys on the Vela testnet."
+---
+
+An agent wallet is a separate signing key that a master wallet can authorize
+for trading. The master remains the account owner. Delegations have an expiry,
+a maximum USDC notional per order, and optional market, side, order-type, and
+rolling notional limits.
+
+Vela's current registry is held in server memory. A restart clears it, and a
+revocation only takes effect on that server. It is not an on-chain revocation
+mechanism. Do not use this beta delegation as a custody control for real funds.
+
+## Inspect delegations
+
+`GET /agents/{master}` returns the registered agent addresses, expiry,
+per-order cap in micro-USDC, nonce, and active/revoked flags. The account page
+at `/agents` shows the same list for the connected wallet. The response does
+not include the full capability scope; keep your signed registration record.
+
+## Revoke an agent
+
+The master wallet signs this exact EIP-191 message, with the lowercase agent
+address and a nonce greater than the agent's last registration or revocation
+nonce:
+
+```text
+vela:agent:revoke:0x<40 lowercase hex characters>:<nonce>
+```
+
+Submit `{ "master", "agent", "nonce", "signature" }` to `POST /agents/revoke`.
+Check `data.revoked`: the API can return HTTP 200 with `revoked: false` when
+the agent is unknown, belongs to another master, or the nonce did not advance.
+The account page signs and submits this request with the connected wallet.
+
+Never enter an agent private key into the Vela website. The current account
+page manages existing delegations and does not create or store agent keys.
