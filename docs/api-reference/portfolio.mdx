@@ -1,0 +1,21 @@
+---
+title: "Portfolio estimates"
+description: "Read fill-based PnL, open lots, and export your fill history."
+---
+
+`GET /portfolio/{address}?method=fifo` requires an account-bound bearer
+session. Use `method=hifo` to consume the highest-cost lot first instead.
+The response includes realized and unrealized PnL, a per-market breakdown,
+and remaining open lots. All USDC values are decimal strings, not micro-USDC
+integers. Lot quantities are decimal base-asset units and `acquired_at` is a
+Unix timestamp in seconds.
+
+These figures are testnet estimates reconstructed from recorded fills. Open
+positions use current order-book marks. A per-market `unrealized_usdc` value
+is `null` when no mark is available; aggregate unrealized and combined PnL
+exclude that market. The page at `/portfolio` flags this condition.
+
+`GET /portfolio/{address}/csv` returns a CSV of the account's fills. Its
+columns are `timestamp_ms`, `market`, `side`, `price_usdc`, `quantity_base`,
+`notional_usdc`, `counterparty`, and `fill_id`. It is a fill-history export,
+not a tax-lot or tax-filing export. It requires the same bearer session.
