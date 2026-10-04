@@ -7246,6 +7246,11 @@ fn notional_from_fixed(price: u64, quantity: u64) -> f64 {
     (price as f64 * quantity as f64) / 1_000_000_000_000.0
 }
 
+fn decimal_from_fixed_product(price: u64, quantity: u64) -> String {
+    let micros = u128::from(price) * u128::from(quantity) / 1_000_000;
+    format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000)
+}
+
 #[derive(Debug, Default)]
 struct MarketPnl {
     market_id: String,
@@ -7437,11 +7442,18 @@ async fn get_portfolio_handler(
         }
     }
 
+    let mut tax_lots = Vec::new();
     let mut markets: Vec<serde_json::Value> = per_market
         .into_iter()
         .map(|(mid, fs)| {
             let mark = marks.get(&mid).copied().flatten();
             let p = compute_market_pnl(&addr, &mid, &fs, mark, method);
+            tax_lots.extend(p.open_lots.iter().map(|lot| serde_json::json!({
+                "asset": p.base_asset,
+                "quantity": format!("{}.{:06}", lot.quantity / 1_000_000, lot.quantity % 1_000_000),
+                "cost_basis_usdc": decimal_from_fixed_product(lot.price, lot.quantity),
+                "acquired_at": lot.timestamp / 1_000,
+            })));
             serde_json::json!({
                 "market_id": p.market_id,
                 "base_asset": p.base_asset,
@@ -7461,6 +7473,7 @@ async fn get_portfolio_handler(
             .unwrap_or("")
             .cmp(b["market_id"].as_str().unwrap_or(""))
     });
+    tax_lots.sort_by(|a, b| a["acquired_at"].as_u64().cmp(&b["acquired_at"].as_u64()));
 
     let total_realized: f64 = markets
         .iter()
@@ -7482,6 +7495,7 @@ async fn get_portfolio_handler(
             "total_unrealized_pnl_usdc": format!("{:.6}", total_unrealized),
             "total_pnl_usdc": format!("{:.6}", total_realized + total_unrealized),
             "markets": markets,
+            "tax_lots": tax_lots,
         }))),
     )
         .into_response()
@@ -8655,7 +8669,7 @@ mod points_tests {
 
 #[cfg(test)]
 mod portfolio_tests {
-    use super::{compute_market_pnl, CostBasisMethod};
+    use super::{compute_market_pnl, decimal_from_fixed_product, CostBasisMethod};
     use crate::types::StoredFill;
 
     /// Helper: make a StoredFill where `user_is_taker` and taker was on the
@@ -8772,5 +8786,13 @@ mod portfolio_tests {
         );
         assert!((p.position_base - 1.0).abs() < 1e-9);
         assert!((p.cost_basis_price - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn tax_lot_cost_basis_uses_exact_fixed_point_product() {
+        assert_eq!(
+            decimal_from_fixed_product(123_456_789, 2_500_000),
+            "308.641972"
+        );
     }
 }
