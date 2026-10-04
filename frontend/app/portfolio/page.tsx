@@ -91,7 +91,7 @@ export default function PortfolioPage() {
     setExporting(false)
     if (res.ok && res.csv) {
       const stamp = new Date().toISOString().slice(0, 10)
-      downloadBlob(`vela-portfolio-${address.slice(0, 8)}-${stamp}.csv`, res.csv, 'text/csv')
+      downloadBlob(`vela-fills-${address.slice(0, 8)}-${stamp}.csv`, res.csv, 'text/csv')
     } else {
       setError(res.error ?? 'Failed to export CSV')
     }
@@ -151,7 +151,7 @@ export default function PortfolioPage() {
             Refresh
           </Button>
           <Button onClick={handleExport} disabled={exporting || !data}>
-            {exporting ? 'Exporting…' : 'Export CSV'}
+            {exporting ? 'Exporting…' : 'Export fills CSV'}
           </Button>
         </div>
       </div>
