@@ -38,3 +38,9 @@ export async function signCancel(cancel: {
     params: [message, cancel.address],
   }) as Promise<string>
 }
+
+export function agentRevocationMessage(agent: string, nonce: number): string {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(agent)) throw new Error('Invalid agent address')
+  if (!Number.isSafeInteger(nonce) || nonce < 1) throw new Error('Invalid revocation nonce')
+  return `vela:agent:revoke:${agent.toLowerCase()}:${nonce}`
+}
