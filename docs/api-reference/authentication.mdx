@@ -34,46 +34,51 @@ The resulting signature is a 65-byte (130 hex character) value: `r` (32 bytes) +
 
 ## Order Signing
 
-Every order submitted to Vela must be signed by the account's private key. The signing payload is the canonical JSON serialization of the order parameters:
+The browser ticket signs the v2 payload as a compact JSON array. The array order and
+Rust enum spellings are part of the signature. Prices and quantities are integers
+scaled by `1_000_000`.
 
 ```javascript
 const order = {
-  market_id: "ETH-USDC",
-  side: "bid",
-  price: "3200000000",
-  quantity: "1000000",
-  order_type: "limit",
-  time_in_force: "gtc",
-  nonce: 1
+  market: 'ETH-USDC', side: 'Bid', order_type: 'GoodTillCanceled',
+  price: 3200000000, quantity: 1000000, nonce: 1,
+  client_order_id: 'example-1', stp: 'CancelTaker',
+  min_quantity: null, display_quantity: null,
 };
-
-const message = JSON.stringify(order);
+const message = JSON.stringify([
+  'vela:order:v2', order.market, order.side, order.order_type,
+  order.price, order.quantity, order.nonce, order.client_order_id,
+  order.stp, order.min_quantity, order.display_quantity,
+]);
 const signature = await signer.signMessage(message);
 ```
 
 <Warning>
-The field order in the JSON matters for signature verification. Always use the canonical field order shown above: `market_id`, `side`, `price`, `quantity`, `order_type`, `time_in_force`, `nonce`.
+`stp`, `min_quantity`, and `display_quantity` are signed controls. Send
+`signature_version: 2` with them, and use `null` in the signing array for
+omitted optional fields. A changed control invalidates the signature.
 </Warning>
 
 The signed order is submitted as:
 
 ```json
 {
-  "order": {
-    "market_id": "ETH-USDC",
-    "side": "bid",
-    "price": "3200000000",
-    "quantity": "1000000",
-    "order_type": "limit",
-    "time_in_force": "gtc",
-    "nonce": 1
-  },
+  "market": "ETH-USDC",
+  "side": "Bid",
+  "order_type": "GoodTillCanceled",
+  "price": 3200000000,
+  "quantity": 1000000,
+  "nonce": 1,
+  "client_order_id": "example-1",
+  "stp": "CancelTaker",
+  "signature_version": 2,
   "signature": "0x...",
   "address": "0xYourEthereumAddress"
 }
 ```
 
-The engine recovers the signer address from the signature and verifies it matches the `address` field. If verification fails, the order is rejected with `INVALID_SIGNATURE`.
+The API recovers the signer address and verifies it is the account wallet or
+an active, scoped agent delegated by that wallet.
 
 ## WebSocket Authentication
 
