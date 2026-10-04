@@ -27,6 +27,10 @@ export default function AgentsPage() {
   const [revokingAgent, setRevokingAgent] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
   const [agentAddress, setAgentAddress] = useState('')
+  const [marketLimit, setMarketLimit] = useState('')
+  const [sideLimit, setSideLimit] = useState<'Both' | 'Bid' | 'Ask'>('Both')
+  const [expiryHours, setExpiryHours] = useState('24')
+  const [orderCap, setOrderCap] = useState('100')
   const agents = snapshot && snapshot.master.toLowerCase() === address?.toLowerCase() ? snapshot.agents : []
   const initialLoading = isAuthenticated && snapshot?.master.toLowerCase() !== address?.toLowerCase()
 
@@ -92,12 +96,23 @@ export default function AgentsPage() {
       if (agentAddress.toLowerCase() === address.toLowerCase()) throw new Error('Use a separate agent address')
       const prior = agents.find((agent) => agent.agent.toLowerCase() === agentAddress.toLowerCase())
       if (prior && !Number.isSafeInteger(prior.nonce)) throw new Error('Agent nonce cannot be signed safely in this browser')
+      const hours = Number(expiryHours)
+      if (!Number.isSafeInteger(hours) || hours < 1 || hours > 168) throw new Error('Expiry must be 1 to 168 hours')
+      if (!/^\d{1,9}(?:\.\d{1,6})?$/.test(orderCap)) throw new Error('Enter a valid USDC cap with up to 6 decimals')
+      const [whole, fraction = ''] = orderCap.split('.')
+      const cap = Number(whole) * 1_000_000 + Number(fraction.padEnd(6, '0'))
+      if (!Number.isSafeInteger(cap) || cap < 1) throw new Error('Per-order cap must be positive')
+      const markets = marketLimit.split(',').map((market) => market.trim().toUpperCase()).filter(Boolean)
+      if (markets.some((market) => !/^[A-Z0-9]+-[A-Z0-9]+$/.test(market))) throw new Error('Markets must look like ETH-USDC')
       const body = {
         agent: agentAddress,
-        expires_at_ms: Date.now() + 24 * 60 * 60 * 1000,
-        max_notional_per_order: 100_000_000,
+        expires_at_ms: Date.now() + hours * 60 * 60 * 1000,
+        max_notional_per_order: cap,
         nonce: Math.max(Date.now(), (prior?.nonce ?? 0) + 1),
-        scope: {},
+        scope: {
+          allowed_markets: markets.length ? markets : null,
+          allowed_sides: sideLimit === 'Both' ? null : [sideLimit],
+        },
       }
       const signature = await window.ethereum.request({
         method: 'personal_sign',
@@ -142,7 +157,16 @@ export default function AgentsPage() {
       <div><h2 className="text-ink font-serif text-xl">Register an existing agent</h2>
         <p className="text-brown text-sm mt-1">Enter the public address of a separate wallet you control. Never enter its private key here.</p></div>
       <Input label="Agent public address" value={agentAddress} onChange={(event) => setAgentAddress(event.target.value.trim())} placeholder="0x…" autoComplete="off" />
-      <p className="text-brown text-xs">Initial permission: 24 hours, up to $100 USDC per order. You can revoke it at any time.</p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Input label="Expires after (hours)" type="number" min="1" max="168" value={expiryHours} onChange={(event) => setExpiryHours(event.target.value)} />
+        <Input label="Per-order cap (USDC)" inputMode="decimal" value={orderCap} onChange={(event) => setOrderCap(event.target.value)} />
+        <Input label="Allowed markets (optional)" value={marketLimit} onChange={(event) => setMarketLimit(event.target.value)} placeholder="ETH-USDC, BTC-USDC" hint="Leave blank for any market; separate multiple markets with commas." />
+        <div className="flex flex-col gap-1.5"><label htmlFor="agent-side" className="text-[0.7rem] font-medium text-brown uppercase tracking-[0.12em]">Allowed side</label>
+          <select id="agent-side" className="h-10 px-3 bg-parchment border border-border text-ink text-sm" value={sideLimit} onChange={(event) => setSideLimit(event.target.value as typeof sideLimit)}>
+            <option value="Both">Buy and sell</option><option value="Bid">Buy only</option><option value="Ask">Sell only</option>
+          </select></div>
+      </div>
+      <p className="text-brown text-xs">These limits are included in the message signed by your wallet. Revocation remains available at any time.</p>
       <Button onClick={() => void register()} disabled={registering || revokingAgent !== null}>{registering ? 'Signing…' : 'Sign and register'}</Button>
     </Card>
     {error && <Card className="p-4 text-terra text-sm" role="alert">{error}</Card>}
@@ -153,6 +177,7 @@ export default function AgentsPage() {
           <p className="font-mono text-ink text-sm break-all">{agent.agent}</p>
           <p className="text-brown text-xs">{statusFor(agent)} · Expires {new Date(agent.expires_at_ms).toLocaleString()}</p>
           <p className="text-brown text-xs">Per-order cap: ${(agent.max_notional_per_order / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</p>
+          <p className="text-brown text-xs">Markets: {agent.scope?.allowed_markets?.length ? agent.scope.allowed_markets.join(', ') : 'Any'} · Side: {agent.scope?.allowed_sides?.length ? agent.scope.allowed_sides.join(', ') : 'Buy and sell'}</p>
         </div>
         {statusFor(agent) === 'Active' && <Button variant="danger" disabled={revokingAgent !== null} onClick={() => void revoke(agent)}>
           {revokingAgent === agent.agent ? 'Revoking…' : 'Revoke'}

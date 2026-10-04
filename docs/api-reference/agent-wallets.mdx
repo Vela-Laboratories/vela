@@ -17,6 +17,8 @@ mechanism. Do not use this beta delegation as a custody control for real funds.
 The account page can register an existing agent wallet by public address. It
 never creates or stores the agent private key. The connected master wallet
 signs the registration payload.
+The form allows a 1 to 168 hour expiry, a per-order USDC cap, a market allowlist,
+and buy-only or sell-only scope. Blank market selection allows all markets.
 
 `GET /agents/{master}` returns the registered agent addresses, expiry,
 per-order cap in micro-USDC, nonce, full capability scope, and active/revoked
