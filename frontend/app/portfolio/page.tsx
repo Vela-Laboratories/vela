@@ -238,9 +238,17 @@ export default function PortfolioPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.per_market.map((row) => (
-                      <tr key={row.market} className="border-b border-border last:border-0">
-                        <td className="px-6 py-3 text-ink font-mono">{row.market}{!row.pnl_complete ? ' · Incomplete' : ''}</td>
+                    {data.per_market.map((row) => {
+                      const mark = data.markets.find((market) => market.market_id === row.market)
+                      return <tr key={row.market} className="border-b border-border last:border-0">
+                        <td className="px-6 py-3 text-ink font-mono">
+                          {row.market}{!row.pnl_complete ? ' · Incomplete' : ''}
+                          {mark?.mark_source && mark.mark_observed_at_ms && (
+                            <span className="block text-brown text-xs font-sans mt-1">
+                              {mark.mark_source.replace('_', ' ')} mark · book read {new Date(mark.mark_observed_at_ms).toLocaleTimeString()}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
                           {formatUsdc(row.pnl_complete ? row.realized_usdc : null)}
                         </td>
@@ -248,7 +256,7 @@ export default function PortfolioPage() {
                           {formatUsdc(row.pnl_complete ? row.unrealized_usdc : null)}
                         </td>
                       </tr>
-                    ))}
+                    })}
                   </tbody>
                 </table>
               </div>
