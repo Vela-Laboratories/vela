@@ -21,6 +21,7 @@ const SECONDARY_LINKS = [
   { href: '/analytics', label: 'Analytics' },
   { href: '/transparency', label: 'Transparency' },
   { href: '/portfolio', label: 'Tax lots' },
+  { href: '/agents', label: 'Agent keys' },
   { href: '/benchmarks', label: 'Benchmarks' },
   { href: '/decisions', label: 'Decisions' },
 ]
@@ -134,6 +135,7 @@ function AccountControls({
               <strong>{address.slice(0, 6)}…{address.slice(-4)}</strong>
             </div>
             <Link href="/profile" onClick={() => setMenuOpen(false)}>View profile</Link>
+            <Link href="/agents" onClick={() => setMenuOpen(false)}>Agent keys</Link>
             <Link href="/deposit" onClick={() => setMenuOpen(false)}>Deposit funds</Link>
             <Link href="/withdraw" onClick={() => setMenuOpen(false)}>Withdraw funds</Link>
             <button type="button" onClick={signOut}>Sign out</button>
