@@ -89,6 +89,9 @@ export default function PortfolioPage() {
     const unrealized = parseFloat(data.unrealized_pnl_usdc) || 0
     return String(realized + unrealized)
   }, [data])
+  const unpricedMarkets = data?.per_market
+    .filter((row) => row.unrealized_usdc === null)
+    .map((row) => row.market) ?? []
 
   const handleExport = useCallback(async () => {
     if (!address || !isAuthenticated) return
@@ -192,7 +195,7 @@ export default function PortfolioPage() {
                 {formatUsdc(data.unrealized_pnl_usdc)}
               </div>
               <Badge variant={pnlVariant(data.unrealized_pnl_usdc)} className="mt-3">
-                Mark-to-market
+                {unpricedMarkets.length > 0 ? 'Priced markets only' : 'Mark-to-market'}
               </Badge>
             </Card>
             <Card className="p-6">
@@ -201,10 +204,16 @@ export default function PortfolioPage() {
               </div>
               <div className="text-ink text-2xl font-mono">{formatUsdc(totalPnl)}</div>
               <Badge variant={pnlVariant(totalPnl)} className="mt-3">
-                Since inception
+                {unpricedMarkets.length > 0 ? 'Excludes unpriced markets' : 'Since inception'}
               </Badge>
             </Card>
           </div>
+
+          {unpricedMarkets.length > 0 && (
+            <Card className="p-4 mb-6 text-brown text-sm" role="status">
+              No current mark is available for {unpricedMarkets.join(', ')}. Unrealized and combined PnL exclude these markets.
+            </Card>
+          )}
 
           <Card className="mb-8 overflow-hidden">
             <div className="px-6 py-4 border-b border-border">
