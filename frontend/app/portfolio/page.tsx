@@ -21,13 +21,12 @@ import { FullPageSpinner } from '@/components/ui/Spinner'
 
 type CostBasisMethod = 'FIFO' | 'HIFO'
 
-function formatMicroUsdc(raw: string | number | null | undefined): string {
+function formatUsdc(raw: string | number | null | undefined): string {
   if (raw === undefined || raw === null) return '—'
   const n = typeof raw === 'string' ? parseFloat(raw) : raw
   if (!Number.isFinite(n)) return '—'
-  const usd = n / 1_000_000
-  const sign = usd < 0 ? '-' : ''
-  const abs = Math.abs(usd)
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n)
   return `${sign}$${abs.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -173,7 +172,7 @@ export default function PortfolioPage() {
                 Realized PnL
               </div>
               <div className="text-ink text-2xl font-mono">
-                {formatMicroUsdc(data.realized_pnl_usdc)}
+                {formatUsdc(data.realized_pnl_usdc)}
               </div>
               <Badge variant={pnlVariant(data.realized_pnl_usdc)} className="mt-3">
                 {data.cost_basis_method}
@@ -184,7 +183,7 @@ export default function PortfolioPage() {
                 Unrealized PnL
               </div>
               <div className="text-ink text-2xl font-mono">
-                {formatMicroUsdc(data.unrealized_pnl_usdc)}
+                {formatUsdc(data.unrealized_pnl_usdc)}
               </div>
               <Badge variant={pnlVariant(data.unrealized_pnl_usdc)} className="mt-3">
                 Mark-to-market
@@ -194,7 +193,7 @@ export default function PortfolioPage() {
               <div className="text-brown uppercase tracking-[0.18em] text-[10px] mb-2">
                 Combined PnL
               </div>
-              <div className="text-ink text-2xl font-mono">{formatMicroUsdc(totalPnl)}</div>
+              <div className="text-ink text-2xl font-mono">{formatUsdc(totalPnl)}</div>
               <Badge variant={pnlVariant(totalPnl)} className="mt-3">
                 Since inception
               </Badge>
@@ -224,10 +223,10 @@ export default function PortfolioPage() {
                       <tr key={row.market} className="border-b border-border last:border-0">
                         <td className="px-6 py-3 text-ink font-mono">{row.market}</td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
-                          {formatMicroUsdc(row.realized_usdc)}
+                          {formatUsdc(row.realized_usdc)}
                         </td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
-                          {formatMicroUsdc(row.unrealized_usdc)}
+                          {formatUsdc(row.unrealized_usdc)}
                         </td>
                       </tr>
                     ))}
@@ -262,7 +261,7 @@ export default function PortfolioPage() {
                         <td className="px-6 py-3 text-ink font-mono">{lot.asset}</td>
                         <td className="px-6 py-3 text-right font-mono text-ink">{lot.quantity}</td>
                         <td className="px-6 py-3 text-right font-mono text-ink">
-                          {formatMicroUsdc(lot.cost_basis_usdc)}
+                          {formatUsdc(lot.cost_basis_usdc)}
                         </td>
                         <td className="px-6 py-3 text-right font-mono text-brown">
                           {new Date(lot.acquired_at * 1000).toLocaleDateString()}
