@@ -5588,6 +5588,9 @@ async fn create_subaccount(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateSubaccountBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "subaccount creation") {
+        return response;
+    }
     let master = match UserId::from_hex(&body.master) {
         Ok(u) => u,
         Err(_) => {
@@ -5855,6 +5858,9 @@ async fn create_vault(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateVaultBody>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "vault creation") {
+        return response;
+    }
     let operator = match UserId::from_hex(&body.operator) {
         Ok(u) => u,
         Err(_) => {

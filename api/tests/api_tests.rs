@@ -422,6 +422,22 @@ async fn test_ledger_backed_api_ignores_cache_and_rejects_demo_credit(pool: sqlx
         .as_str()
         .unwrap_or_default()
         .contains("PostgreSQL ledger is authoritative"));
+    for (path, payload) in [
+        (
+            "/subaccounts/create",
+            json!({"master": user_addr(), "subaccount_id": 1, "name": "test", "nonce": 1, "signature": "0x00"}),
+        ),
+        (
+            "/vaults/create",
+            json!({"operator": user_addr(), "name": "test", "nonce": 1, "signature": "0x00"}),
+        ),
+    ] {
+        server
+            .post(path)
+            .json(&payload)
+            .await
+            .assert_status(axum::http::StatusCode::NOT_IMPLEMENTED);
+    }
 }
 
 #[tokio::test]
