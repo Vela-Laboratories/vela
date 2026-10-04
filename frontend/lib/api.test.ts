@@ -98,4 +98,18 @@ describe('lib/api', () => {
     const response = await getPortfolioCsv('0x0000000000000000000000000000000000000001')
     expect(response).toEqual({ ok: false, error: 'Session belongs to another account' })
   })
+
+  it('reads the current delegations for the requested master wallet', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: { master: '0xabc', agents: [] } }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { getAgents } = await import('./api')
+    await getAgents('0xabc')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://vela-engine.fly.dev/agents/0xabc',
+      expect.objectContaining({ cache: 'no-store' }),
+    )
+  })
 })

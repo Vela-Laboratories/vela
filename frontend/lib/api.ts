@@ -490,6 +490,27 @@ export async function deposit(
 export type PortfolioLot = ApiSchemas['PortfolioLot']
 export type PortfolioResponse = ApiSchemas['PortfolioResponse']
 
+// Agent delegations are read from the server's current in-memory registry.
+
+export interface AgentStatus {
+  agent: string
+  expires_at_ms: number
+  max_notional_per_order: number
+  revoked: boolean
+  active: boolean
+  nonce: number
+}
+
+export interface AgentListResponse {
+  master: string
+  agents: AgentStatus[]
+}
+
+/** GET /agents/:master */
+export function getAgents(master: string): Promise<ApiResponse<AgentListResponse>> {
+  return apiFetch(`/agents/${encodeURIComponent(master)}`, { cache: 'no-store' })
+}
+
 /** GET /portfolio/:address */
 export function getPortfolio(
   address: string,
