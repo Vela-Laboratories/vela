@@ -493,8 +493,8 @@ export type PortfolioResponse = ApiSchemas['PortfolioResponse']
 
 export interface AgentCapabilityScope {
   allowed_markets?: string[] | null
-  allowed_order_types?: string[] | null
-  allowed_sides?: string[] | null
+  allowed_order_types?: PostOrderBody['order_type'][] | null
+  allowed_sides?: PostOrderBody['side'][] | null
   max_notional_per_hour?: number | null
   max_notional_per_day?: number | null
 }
@@ -512,6 +512,24 @@ export interface AgentStatus {
 export interface AgentListResponse {
   master: string
   agents: AgentStatus[]
+}
+
+export interface RegisterAgentBody {
+  master: string
+  agent: string
+  expires_at_ms: number
+  max_notional_per_order: number
+  nonce: number
+  scope: AgentCapabilityScope
+  signature: string
+}
+
+/** POST /agents/register */
+export function registerAgent(body: RegisterAgentBody): Promise<ApiResponse<{ agent: string; master: string; expires_at_ms: number }>> {
+  return apiFetch('/agents/register', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }
 
 /** GET /agents/:master */
