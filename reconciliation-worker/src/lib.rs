@@ -176,6 +176,8 @@ pub struct FinalizedBlock {
     pub timestamp: DateTime<Utc>,
 }
 
+// `async_trait` generates must-use futures; Clippy also flags their Result output.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Rpc: Send + Sync {
     fn name(&self) -> &str;

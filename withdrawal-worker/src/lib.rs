@@ -264,6 +264,8 @@ pub struct ProviderObservation {
     pub provider_reference: String,
 }
 
+// `async_trait` generates must-use futures; Clippy also flags their Result output.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ChainProvider: Send + Sync {
     fn name(&self) -> &str;
@@ -277,6 +279,8 @@ pub trait ChainProvider: Send + Sync {
     ) -> Result<ProviderObservation, WorkerError>;
 }
 
+// `async_trait` generates must-use futures; Clippy also flags their Result output.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait WorkerStore: Send + Sync {
     async fn deployment(&self, id: Uuid) -> Result<Deployment, WorkerError>;
