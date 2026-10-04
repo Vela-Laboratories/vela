@@ -116,8 +116,8 @@ export default function PortfolioPage() {
               {isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}
             </h1>
             <p className="text-brown text-sm mt-3">
-              PnL, cost basis, and tax-lot exports are gated to the connected
-              wallet. Nothing is stored server-side beyond your fills.
+              Estimated PnL, cost basis, and fill exports are gated to the
+              connected wallet. Figures are derived from recorded testnet fills.
             </p>
           </div>
           <Button onClick={() => connect().catch(() => setError('Wallet connect rejected.'))}>
@@ -139,6 +139,10 @@ export default function PortfolioPage() {
           <h1 className="text-ink text-3xl lg:text-4xl font-serif">
             {address.slice(0, 6)}…{address.slice(-4)}
           </h1>
+          <p className="text-brown text-sm mt-2">
+            Testnet estimates from recorded fills. Open positions use available book marks;
+            this view is not a tax statement.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex border border-border">
