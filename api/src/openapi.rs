@@ -24,7 +24,7 @@ use axum::Json;
 /// If the spec grows past a few hundred lines this should move into
 /// `api/openapi.json` and be `include_str!`'d.
 pub fn openapi_spec() -> serde_json::Value {
-    serde_json::json!({
+    let mut spec = serde_json::json!({
         "openapi": "3.1.0",
         "info": {
             "title": "Vela Exchange API",
@@ -1073,7 +1073,31 @@ pub fn openapi_spec() -> serde_json::Value {
             },
             "auth": "Send { type: 'auth', address, signature, timestamp } after connect. `signature` covers `vela:ws:{address}:{timestamp}` via personal_sign."
         }
-    })
+    });
+    // Expose the versioned router using the same operation contracts as the
+    // legacy paths. Both route sets are exercised by API contract tests.
+    for path in [
+        "/markets",
+        "/markets/{market}/book",
+        "/account/{address}/balances",
+        "/account/{address}/orders",
+        "/account/{address}/fills",
+        "/orders",
+        "/orders/cancel",
+        "/orders/{order_id}",
+        "/trades",
+        "/trades/{market_id}",
+        "/portfolio/{address}",
+        "/portfolio/{address}/csv",
+        "/agents/register",
+        "/agents/revoke",
+        "/agents/{master}",
+    ] {
+        if let Some(operation) = spec["paths"].get(path).cloned() {
+            spec["paths"][format!("/v1{path}")] = operation;
+        }
+    }
+    spec
 }
 
 /// Serve the OpenAPI JSON.

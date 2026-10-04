@@ -145,6 +145,30 @@ async fn test_health() {
 }
 
 #[tokio::test]
+async fn versioned_v1_routes_match_legacy_contracts() {
+    let server = test_server(engine_with_market());
+    let legacy: Value = server.get("/markets").await.json();
+    let versioned = server.get("/v1/markets").await;
+    versioned.assert_status_ok();
+    assert_eq!(legacy, versioned.json::<Value>());
+
+    let master = user_addr();
+    let agents = server.get(&format!("/v1/agents/{master}")).await;
+    agents.assert_status_ok();
+    assert_eq!(agents.json::<Value>()["data"]["agents"], json!([]));
+
+    let spec = api::openapi::openapi_spec();
+    for path in [
+        "/v1/markets",
+        "/v1/orders",
+        "/v1/portfolio/{address}",
+        "/v1/agents/register",
+    ] {
+        assert!(spec["paths"].get(path).is_some(), "missing {path}");
+    }
+}
+
+#[tokio::test]
 async fn test_development_readiness_allows_unconfigured_ledger() {
     let server = test_server(engine_with_market());
     let response = server.get("/ready").await;

@@ -243,7 +243,27 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any);
 
+    // Versioned integration surface. Existing unversioned paths remain
+    // available for the web app while SDKs can pin a major API contract.
+    let v1 = Router::new()
+        .route("/markets", get(list_markets))
+        .route("/markets/:market/book", get(get_book))
+        .route("/account/:address/balances", get(get_balances))
+        .route("/account/:address/orders", get(get_open_orders))
+        .route("/account/:address/fills", get(get_account_fills))
+        .route("/orders", post(post_order))
+        .route("/orders/cancel", post(cancel_order))
+        .route("/orders/:order_id", get(get_order_by_id))
+        .route("/trades", get(list_trades))
+        .route("/trades/:market_id", get(list_trades_by_market))
+        .route("/portfolio/:address", get(get_portfolio_handler))
+        .route("/portfolio/:address/csv", get(get_portfolio_csv_handler))
+        .route("/agents/register", post(agents_register))
+        .route("/agents/revoke", post(agents_revoke))
+        .route("/agents/:master", get(agents_list));
+
     Router::new()
+        .nest("/v1", v1)
         .route("/health", get(health))
         .route("/ready", get(readiness))
         .route("/metrics", get(metrics_handler))

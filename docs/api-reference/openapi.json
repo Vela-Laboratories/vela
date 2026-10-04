@@ -2378,6 +2378,377 @@
         "summary": "Recent fills for one market"
       }
     },
+    "/v1/account/{address}/balances": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/BalanceResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Balances"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Balances by asset"
+      }
+    },
+    "/v1/account/{address}/fills": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/AccountFillResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "At most 500 newest account fills"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Session belongs to another account"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Private fill history for an account"
+      }
+    },
+    "/v1/account/{address}/orders": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open orders"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Open orders for an account"
+      }
+    },
+    "/v1/agents/register": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Delegation stored"
+          }
+        },
+        "summary": "Register a session-key / agent wallet"
+      }
+    },
+    "/v1/agents/revoke": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          }
+        },
+        "summary": "Revoke an agent"
+      }
+    },
+    "/v1/agents/{master}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "master",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents + status"
+          }
+        },
+        "summary": "List agents for a master wallet"
+      }
+    },
+    "/v1/markets": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/MarketResponse"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Markets with best bid/ask/spread"
+          }
+        },
+        "summary": "List all markets"
+      }
+    },
+    "/v1/markets/{market}/book": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "market",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bids + asks up to N levels"
+          }
+        },
+        "summary": "Order book snapshot"
+      }
+    },
+    "/v1/orders": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Order accepted; response contains fills + status"
+          },
+          "401": {
+            "description": "Signature invalid or agent cap exceeded"
+          },
+          "504": {
+            "description": "Engine dispatch timed out"
+          }
+        },
+        "summary": "Place a signed order (master or agent-wallet)"
+      }
+    },
+    "/v1/orders/cancel": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel result"
+          }
+        },
+        "summary": "Cancel an order by id or client_order_id"
+      }
+    },
+    "/v1/orders/{order_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order details"
+          }
+        },
+        "summary": "Order lifecycle with fill history"
+      }
+    },
+    "/v1/portfolio/{address}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "method",
+            "required": false,
+            "schema": {
+              "enum": [
+                "fifo",
+                "hifo"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PortfolioResponse"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Portfolio breakdown"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Realized + unrealized PnL, cost basis, per market"
+      }
+    },
+    "/v1/portfolio/{address}/csv": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "text/csv"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Account fill history as CSV, including signed fee amounts"
+      }
+    },
+    "/v1/trades": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Fills"
+          }
+        },
+        "summary": "Recent fills (all markets)"
+      }
+    },
+    "/v1/trades/{market_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "market_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fills"
+          }
+        },
+        "summary": "Recent fills for one market"
+      }
+    },
     "/vaults": {
       "get": {
         "responses": {
