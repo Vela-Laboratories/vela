@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { getAgents, revokeAgent, type AgentListResponse } from '@/lib/api'
-import { agentRevocationMessage } from '@/lib/signing'
+import { getAgents, registerAgent, revokeAgent, type AgentListResponse } from '@/lib/api'
+import { agentRegistrationMessage, agentRevocationMessage } from '@/lib/signing'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 
 function statusFor(agent: AgentListResponse['agents'][number]): string {
   if (agent.revoked) return 'Revoked'
@@ -24,6 +25,8 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [revokingAgent, setRevokingAgent] = useState<string | null>(null)
+  const [registering, setRegistering] = useState(false)
+  const [agentAddress, setAgentAddress] = useState('')
   const agents = snapshot && snapshot.master.toLowerCase() === address?.toLowerCase() ? snapshot.agents : []
   const initialLoading = isAuthenticated && snapshot?.master.toLowerCase() !== address?.toLowerCase()
 
@@ -79,6 +82,39 @@ export default function AgentsPage() {
     }
   }
 
+  async function register() {
+    if (!address || !isAuthenticated) return
+    setError(null)
+    setRegistering(true)
+    try {
+      if (!window.ethereum) throw new Error('No browser wallet detected')
+      if (!/^0x[0-9a-fA-F]{40}$/.test(agentAddress)) throw new Error('Enter an existing agent wallet address')
+      if (agentAddress.toLowerCase() === address.toLowerCase()) throw new Error('Use a separate agent address')
+      const prior = agents.find((agent) => agent.agent.toLowerCase() === agentAddress.toLowerCase())
+      if (prior && !Number.isSafeInteger(prior.nonce)) throw new Error('Agent nonce cannot be signed safely in this browser')
+      const body = {
+        agent: agentAddress,
+        expires_at_ms: Date.now() + 24 * 60 * 60 * 1000,
+        max_notional_per_order: 100_000_000,
+        nonce: Math.max(Date.now(), (prior?.nonce ?? 0) + 1),
+        scope: {},
+      }
+      const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [agentRegistrationMessage(body), address],
+      })
+      if (typeof signature !== 'string') throw new Error('Wallet did not return a signature')
+      const response = await registerAgent({ ...body, master: address, signature })
+      if (!response.ok) throw new Error(response.error ?? 'Registration failed')
+      setAgentAddress('')
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Registration failed')
+    } finally {
+      setRegistering(false)
+    }
+  }
+
   if (!address || !isAuthenticated) {
     return <main className="max-w-3xl mx-auto px-6 py-16"><Card className="p-8 space-y-5">
       <p className="text-brown text-xs uppercase tracking-widest">Agent wallets</p>
@@ -101,6 +137,13 @@ export default function AgentsPage() {
     <Card className="p-5 text-brown text-sm">
       Delegations are held in this testnet server’s memory. They disappear after a server restart.
       A revoked key stops working on this server immediately; this is not an on-chain revocation.
+    </Card>
+    <Card className="p-5 space-y-4">
+      <div><h2 className="text-ink font-serif text-xl">Register an existing agent</h2>
+        <p className="text-brown text-sm mt-1">Enter the public address of a separate wallet you control. Never enter its private key here.</p></div>
+      <Input label="Agent public address" value={agentAddress} onChange={(event) => setAgentAddress(event.target.value.trim())} placeholder="0x…" autoComplete="off" />
+      <p className="text-brown text-xs">Initial permission: 24 hours, up to $100 USDC per order. You can revoke it at any time.</p>
+      <Button onClick={() => void register()} disabled={registering || revokingAgent !== null}>{registering ? 'Signing…' : 'Sign and register'}</Button>
     </Card>
     {error && <Card className="p-4 text-terra text-sm" role="alert">{error}</Card>}
     {!loading && !initialLoading && agents.length === 0 && <Card className="p-8 text-brown text-sm">No agent wallets are registered for this account.</Card>}

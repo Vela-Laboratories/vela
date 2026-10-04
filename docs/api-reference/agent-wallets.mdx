@@ -14,6 +14,10 @@ mechanism. Do not use this beta delegation as a custody control for real funds.
 
 ## Inspect delegations
 
+The account page can register an existing agent wallet by public address. It
+never creates or stores the agent private key. The connected master wallet
+signs the registration payload.
+
 `GET /agents/{master}` returns the registered agent addresses, expiry,
 per-order cap in micro-USDC, nonce, full capability scope, and active/revoked
 flags. The account page at `/agents` shows the same list for the connected wallet.
