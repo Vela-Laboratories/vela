@@ -518,7 +518,19 @@ export async function getPortfolioCsv(
         window.dispatchEvent(new Event('vela:auth-expired'))
       }
     }
-    if (!res.ok) return { ok: false, error: res.statusText }
+    if (!res.ok) {
+      const body = await res.text()
+      let message = body
+      try {
+        const parsed: unknown = JSON.parse(body)
+        if (parsed && typeof parsed === 'object' && 'error' in parsed && typeof parsed.error === 'string') {
+          message = parsed.error
+        }
+      } catch {
+        // Preserve plain-text API errors.
+      }
+      return { ok: false, error: message || res.statusText || 'CSV export failed' }
+    }
     const csv = await res.text()
     return { ok: true, csv }
   } catch (e) {

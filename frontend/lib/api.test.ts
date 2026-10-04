@@ -86,4 +86,16 @@ describe('lib/api', () => {
     expect(expired).toHaveBeenCalledOnce()
     window.removeEventListener('vela:auth-expired', expired)
   })
+
+  it('shows the API reason when a fill CSV export fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: async () => JSON.stringify({ ok: false, error: 'Session belongs to another account' }),
+    }))
+    const { getPortfolioCsv } = await import('./api')
+    const response = await getPortfolioCsv('0x0000000000000000000000000000000000000001')
+    expect(response).toEqual({ ok: false, error: 'Session belongs to another account' })
+  })
 })
