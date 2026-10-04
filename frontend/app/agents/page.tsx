@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { getAgents, type AgentListResponse } from '@/lib/api'
+import { getAgents, revokeAgent, type AgentListResponse } from '@/lib/api'
+import { agentRevocationMessage } from '@/lib/signing'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 
@@ -18,6 +19,7 @@ export default function AgentsPage() {
   const [snapshot, setSnapshot] = useState<AgentListResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [revokingAgent, setRevokingAgent] = useState<string | null>(null)
   const agents = snapshot && snapshot.master.toLowerCase() === address?.toLowerCase() ? snapshot.agents : []
 
   const refresh = useCallback(async () => {
@@ -36,6 +38,27 @@ export default function AgentsPage() {
   }, [address, isAuthenticated])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  async function revoke(agent: AgentListResponse['agents'][number]) {
+    if (!address || !isAuthenticated) return
+    setError(null)
+    setRevokingAgent(agent.agent)
+    try {
+      if (!Number.isSafeInteger(agent.nonce)) throw new Error('Agent nonce cannot be signed safely in this browser')
+      if (!window.ethereum) throw new Error('No browser wallet detected')
+      const nonce = Math.max(Date.now(), agent.nonce + 1)
+      const message = agentRevocationMessage(agent.agent, nonce)
+      const signature = await window.ethereum.request({ method: 'personal_sign', params: [message, address] })
+      if (typeof signature !== 'string') throw new Error('Wallet did not return a signature')
+      const response = await revokeAgent({ master: address, agent: agent.agent, nonce, signature })
+      if (!response.ok || !response.data?.revoked) throw new Error(response.error ?? 'Agent was not revoked')
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Revocation failed')
+    } finally {
+      setRevokingAgent(null)
+    }
+  }
 
   if (!address || !isAuthenticated) {
     return <main className="max-w-3xl mx-auto px-6 py-16"><Card className="p-8 space-y-5">
@@ -69,6 +92,9 @@ export default function AgentsPage() {
           <p className="text-brown text-xs">{statusFor(agent)} · Expires {new Date(agent.expires_at_ms).toLocaleString()}</p>
           <p className="text-brown text-xs">Per-order cap: ${(agent.max_notional_per_order / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</p>
         </div>
+        {statusFor(agent) === 'Active' && <Button variant="danger" disabled={revokingAgent !== null} onClick={() => void revoke(agent)}>
+          {revokingAgent === agent.agent ? 'Revoking…' : 'Revoke'}
+        </Button>}
       </Card>)}
     </div>
     <Link href="/profile" className="inline-block text-brown text-sm underline">Back to profile</Link>
