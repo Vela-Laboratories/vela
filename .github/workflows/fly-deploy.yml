@@ -16,17 +16,10 @@ jobs:
       - run: flyctl deploy --remote-only --build-arg VELA_BUILD_ID="${GITHUB_SHA}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Verify machine and health after deploy
+      - name: Verify machine and public API after deploy
         run: |
           flyctl status --app vela-engine
           flyctl checks list --app vela-engine
-          for attempt in 1 2 3 4 5 6; do
-            if curl --fail --silent --show-error --max-time 10 https://vela-engine.fly.dev/health; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Fly deployment did not become healthy" >&2
-          exit 1
+          python3 scripts/post_deploy_smoke.py https://vela-engine.fly.dev
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
