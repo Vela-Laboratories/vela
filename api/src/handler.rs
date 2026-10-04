@@ -7406,17 +7406,32 @@ fn compute_market_pnl(
 /// Return the current mark price (best_bid+best_ask midpoint) per market
 /// as a `HashMap<market_id, mid_price_fp>`. Falls back to best_bid or
 /// best_ask if one side is empty. `None` in the map if both sides empty.
-async fn mark_prices(state: &AppState) -> std::collections::HashMap<String, Option<u64>> {
+#[derive(Clone, Copy)]
+struct BookMark {
+    price: u64,
+    source: &'static str,
+    observed_at_ms: u64,
+}
+
+async fn mark_prices(state: &AppState) -> std::collections::HashMap<String, Option<BookMark>> {
     let engine = state.engine.lock().await;
     let mut out = std::collections::HashMap::new();
+    let observed_at_ms = chrono::Utc::now().timestamp_millis() as u64;
     for (mid, book) in &engine.order_books {
-        let mid_price = match (book.best_bid(), book.best_ask()) {
-            (Some(b), Some(a)) => Some((b + a) / 2),
-            (Some(b), None) => Some(b),
-            (None, Some(a)) => Some(a),
+        let mark = match (book.best_bid(), book.best_ask()) {
+            (Some(b), Some(a)) => Some((((u128::from(b) + u128::from(a)) / 2) as u64, "midpoint")),
+            (Some(b), None) => Some((b, "best_bid")),
+            (None, Some(a)) => Some((a, "best_ask")),
             (None, None) => None,
         };
-        out.insert(mid.0.clone(), mid_price);
+        out.insert(
+            mid.0.clone(),
+            mark.map(|(price, source)| BookMark {
+                price,
+                source,
+                observed_at_ms,
+            }),
+        );
     }
     out
 }
@@ -7469,7 +7484,7 @@ async fn get_portfolio_handler(
         .into_iter()
         .map(|(mid, fs)| {
             let mark = marks.get(&mid).copied().flatten();
-            let p = compute_market_pnl(&addr, &mid, &fs, mark, method);
+            let p = compute_market_pnl(&addr, &mid, &fs, mark.map(|m| m.price), method);
             total_realized += p.realized_micro;
             total_unrealized += p.unrealized_micro.unwrap_or(0);
             tax_lots.extend(p.open_lots.iter().map(|lot| serde_json::json!({
@@ -7485,6 +7500,8 @@ async fn get_portfolio_handler(
                 "cost_basis_price_usdc": format_unsigned_micro(p.cost_basis_price_micro),
                 "open_cost_basis_usdc": format_unsigned_micro(p.open_cost_basis_micro),
                 "mark_price_usdc": p.mark_price_micro.map(|v| format_unsigned_micro(u128::from(v))),
+                "mark_source": mark.map(|m| m.source),
+                "mark_observed_at_ms": mark.map(|m| m.observed_at_ms),
                 "realized_pnl_usdc": format_signed_micro(p.realized_micro),
                 "unrealized_pnl_usdc": p.unrealized_micro.map(format_signed_micro),
                 "fill_count": p.fill_count,

@@ -2460,7 +2460,11 @@ export interface components {
             base_asset: string;
             cost_basis_price_usdc: string;
             fill_count: number;
+            /** @description Unix milliseconds when the order-book snapshot was read, not the age of the quote */
+            mark_observed_at_ms: number | null;
             mark_price_usdc: string | null;
+            /** @enum {string|null} */
+            mark_source: "midpoint" | "best_bid" | "best_ask" | null;
             market_id: string;
             open_cost_basis_usdc: string;
             pnl_complete: boolean;

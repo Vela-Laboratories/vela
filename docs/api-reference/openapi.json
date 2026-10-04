@@ -705,7 +705,26 @@
           "fill_count": {
             "type": "integer"
           },
+          "mark_observed_at_ms": {
+            "description": "Unix milliseconds when the order-book snapshot was read, not the age of the quote",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "mark_price_usdc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mark_source": {
+            "enum": [
+              "midpoint",
+              "best_bid",
+              "best_ask",
+              null
+            ],
             "type": [
               "string",
               "null"
@@ -744,6 +763,8 @@
           "cost_basis_price_usdc",
           "open_cost_basis_usdc",
           "mark_price_usdc",
+          "mark_source",
+          "mark_observed_at_ms",
           "realized_pnl_usdc",
           "unrealized_pnl_usdc",
           "fill_count",
