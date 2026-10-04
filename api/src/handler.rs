@@ -7485,6 +7485,16 @@ async fn get_portfolio_handler(
         .filter_map(|m| m["unrealized_pnl_usdc"].as_str())
         .filter_map(|s| s.parse::<f64>().ok())
         .sum();
+    let per_market: Vec<serde_json::Value> = markets
+        .iter()
+        .map(|market| {
+            serde_json::json!({
+                "market": market["market_id"],
+                "realized_usdc": market["realized_pnl_usdc"],
+                "unrealized_usdc": market["unrealized_pnl_usdc"],
+            })
+        })
+        .collect();
 
     (
         StatusCode::OK,
@@ -7494,6 +7504,9 @@ async fn get_portfolio_handler(
             "total_realized_pnl_usdc": format!("{:.6}", total_realized),
             "total_unrealized_pnl_usdc": format!("{:.6}", total_unrealized),
             "total_pnl_usdc": format!("{:.6}", total_realized + total_unrealized),
+            "realized_pnl_usdc": format!("{:.6}", total_realized),
+            "unrealized_pnl_usdc": format!("{:.6}", total_unrealized),
+            "per_market": per_market,
             "markets": markets,
             "tax_lots": tax_lots,
         }))),
