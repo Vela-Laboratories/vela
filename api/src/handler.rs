@@ -7231,9 +7231,7 @@ struct Lot {
     quantity: u64,
     /// Price per unit of base, fixed-point 1e6.
     price: u64,
-    /// Retained for future FIFO-with-holding-period reporting (tax
-    /// long-term vs short-term). Not consumed by the v1 matcher.
-    #[allow(dead_code)]
+    /// Acquisition time of the remaining lot, in milliseconds.
     timestamp: u64,
 }
 
@@ -7265,6 +7263,7 @@ struct MarketPnl {
     /// Unrealized PnL = current_value − open_cost_basis_usdc.
     unrealized_usdc: Option<f64>,
     fill_count: u64,
+    open_lots: Vec<Lot>,
 }
 
 /// Compute per-market PnL for `address` using the chosen cost-basis method.
@@ -7375,6 +7374,7 @@ fn compute_market_pnl(
         mark_price_usdc,
         unrealized_usdc,
         fill_count,
+        open_lots: lots.into_iter().collect(),
     }
 }
 
@@ -8715,6 +8715,8 @@ mod portfolio_tests {
         assert!((p.realized_usdc - 50.0).abs() < 1e-6);
         assert!((p.position_base - 1.0).abs() < 1e-9);
         assert!((p.cost_basis_price - 100.0).abs() < 1e-6);
+        assert_eq!(p.open_lots.len(), 1);
+        assert_eq!(p.open_lots[0].timestamp, 1);
     }
 
     #[test]
