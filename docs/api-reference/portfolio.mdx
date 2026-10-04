@@ -25,6 +25,8 @@ and sell fees reduce realized proceeds. The page hides PnL totals while any
 market is incomplete. The API's numeric fields remain provisional in that case.
 
 `GET /portfolio/{address}/csv` returns a CSV of the account's fills. Its
-columns are `timestamp_ms`, `market`, `side`, `price_usdc`, `quantity_base`,
-`notional_usdc`, `counterparty`, and `fill_id`. It is a fill-history export,
+columns are `timestamp_ms`, `market`, `side`, `role`, `price_usdc`,
+`quantity_base`, `notional_usdc`, `fee_usdc`, `counterparty`, and `fill_id`.
+`fee_usdc` is blank for older fills without retained fee evidence; a negative
+value is a rebate. It is a fill-history export,
 not a tax-lot or tax-filing export. It requires the same bearer session.

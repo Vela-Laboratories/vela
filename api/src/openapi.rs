@@ -439,7 +439,7 @@ pub fn openapi_spec() -> serde_json::Value {
             },
             "/portfolio/{address}/csv": {
                 "get": {
-                    "summary": "Full fill history as CSV (Koinly/CoinTracker)",
+                    "summary": "Account fill history as CSV, including signed fee amounts",
                     "security": [{ "BearerAuth": [] }],
                     "responses": { "200": { "description": "text/csv", "content": { "text/csv": {} } } }
                 }

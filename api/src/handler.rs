@@ -7615,7 +7615,7 @@ async fn get_portfolio_csv_handler(
     let fills = state.fills.lock().await;
 
     let mut out = String::from(
-        "timestamp_ms,market,side,price_usdc,quantity_base,notional_usdc,counterparty,fill_id\n",
+        "timestamp_ms,market,side,role,price_usdc,quantity_base,notional_usdc,fee_usdc,counterparty,fill_id\n",
     );
     // Sort user's fills by timestamp for stable, replayable CSV output.
     let mut user_fills: Vec<&StoredFill> = fills
@@ -7632,6 +7632,15 @@ async fn get_portfolio_csv_handler(
         let taker_was_bidding = f.side.eq_ignore_ascii_case("bid");
         let user_bought = (is_taker && taker_was_bidding) || (!is_taker && !taker_was_bidding);
         let side = if user_bought { "buy" } else { "sell" };
+        let role = if is_taker { "taker" } else { "maker" };
+        let fee = if is_taker {
+            f.taker_fee_micro
+        } else {
+            f.maker_fee_micro
+        };
+        let fee_usdc = fee
+            .map(|v| format_signed_micro(i128::from(v)))
+            .unwrap_or_default();
         let counterparty = if is_taker {
             &f.maker_address
         } else {
@@ -7641,8 +7650,17 @@ async fn get_portfolio_csv_handler(
         let qty_base = format_unsigned_micro(u128::from(f.quantity));
         let notional = format_unsigned_micro(notional_micro(f.price, f.quantity));
         out.push_str(&format!(
-            "{},{},{},{},{},{},{},{}\n",
-            f.timestamp, f.market_id, side, price_usdc, qty_base, notional, counterparty, f.id
+            "{},{},{},{},{},{},{},{},{},{}\n",
+            f.timestamp,
+            f.market_id,
+            side,
+            role,
+            price_usdc,
+            qty_base,
+            notional,
+            fee_usdc,
+            counterparty,
+            f.id
         ));
     }
 

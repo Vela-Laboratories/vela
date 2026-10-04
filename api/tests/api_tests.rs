@@ -753,6 +753,16 @@ async fn test_portfolio_response_matches_documented_empty_shape() {
         assert!(data["per_market"].as_array().unwrap().is_empty());
         assert!(data["tax_lots"].as_array().unwrap().is_empty());
     }
+
+    let csv = server
+        .get(&format!("/portfolio/{address}/csv"))
+        .add_header("Authorization", format!("Bearer {token}"))
+        .await;
+    csv.assert_status_ok();
+    assert_eq!(
+        csv.text(),
+        "timestamp_ms,market,side,role,price_usdc,quantity_base,notional_usdc,fee_usdc,counterparty,fill_id\n"
+    );
 }
 
 #[tokio::test]
@@ -876,6 +886,8 @@ async fn test_private_fill_history_is_account_scoped_and_redacted() {
             taker_address: other_address.clone(),
             timestamp: 20,
             side: "bid".to_owned(),
+            maker_fee_micro: Some(0),
+            taker_fee_micro: Some(0),
             synthetic: false,
             toxicity_score: 0.0,
         },
@@ -890,6 +902,8 @@ async fn test_private_fill_history_is_account_scoped_and_redacted() {
             taker_address: wallet(3).1,
             timestamp: 10,
             side: "ask".to_owned(),
+            maker_fee_micro: Some(0),
+            taker_fee_micro: Some(0),
             synthetic: false,
             toxicity_score: 0.0,
         },

@@ -2262,7 +2262,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Full fill history as CSV (Koinly/CoinTracker)"
+        "summary": "Account fill history as CSV, including signed fee amounts"
       }
     },
     "/proofs/stats": {
