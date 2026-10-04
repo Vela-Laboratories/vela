@@ -129,26 +129,24 @@ clients that do not create an HTTP session:
 
 ## Nonce Replay Prevention
 
-The `nonce` field in each order is a per-account monotonic integer. The engine tracks a **nonce high-water mark** per account and rejects any order with `nonce ≤ high_water_mark`.
+The engine keeps a 20-entry window of accepted order nonces per account. It
+rejects a duplicate. Once the window is full, it also rejects a nonce at or
+below the smallest nonce still in that window. This permits concurrent orders
+to arrive slightly out of order while preventing replay.
 
 This prevents replay attacks: a signed order cannot be re-submitted by a third party who intercepts it, because the nonce has already been consumed.
 
-**Nonce management best practices:**
+Use a unique, safe integer for every signed request. A millisecond timestamp
+can be a starting point for one browser session, but add a local counter when
+multiple orders are created in the same millisecond. Coordinate nonce issuance
+across processes that trade for the same wallet.
 
 ```javascript
-class NonceManager {
-  constructor(startNonce) {
-    this.nonce = startNonce;
-  }
-  
-  next() {
-    return this.nonce++;
-  }
+let lastNonce = 0;
+function nextNonce() {
+  lastNonce = Math.max(Date.now(), lastNonce + 1);
+  return lastNonce;
 }
-
-// Seed from server on startup
-const { nonce_high_water } = await fetchBalances(address);
-const nonces = new NonceManager(nonce_high_water + 1);
 ```
 
 ## Implementation: ethers.js
