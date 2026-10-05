@@ -35,3 +35,7 @@ PAPER_REVISION_INPUTS.md
 
 # Agent worktrees created by Claude sessions — never track.
 .claude/
+
+# Provider tooling installed locally by the integration CLI.
+frontend/.agents/
+frontend/skills-lock.json
