@@ -27,7 +27,7 @@
 //! - v1 does **not** run VWAP, scale orders, or stops. Those come in
 //!   later commits on this same substrate.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -87,6 +87,7 @@ pub struct TwapParent {
     pub price_limit: Option<u64>,
     pub duration_secs: u64,
     pub slices: u32,
+    pub next_slice: AtomicU32,
     pub quantity_tick: u64,
     pub started_at_ms: u64,
     pub status: std::sync::Mutex<AlgoStatus>,
@@ -105,6 +106,50 @@ pub struct TwapParent {
 }
 
 impl TwapParent {
+    pub fn from_durable(
+        parent: &crate::algos_store::DurableParent,
+    ) -> Result<Arc<Self>, crate::algos_store::AlgoStoreError> {
+        use crate::algos_store::AlgoStoreError;
+        parent
+            .request
+            .validate()
+            .map_err(AlgoStoreError::Conflict)?;
+        if parent.quantity_tick == 0 {
+            return Err(AlgoStoreError::Invalid);
+        }
+        Ok(Arc::new(Self {
+            parent_id: parent.id,
+            authorized_signer: types::UserId::from_hex(&parent.signer)
+                .map_err(|_| AlgoStoreError::Invalid)?,
+            user_address: parent.request.address.to_ascii_lowercase(),
+            market: parent.request.market.clone(),
+            side: parent.request.side,
+            total_quantity: parent.request.quantity,
+            filled_quantity: AtomicU64::new(parent.filled_quantity),
+            price_limit: parent.request.price_limit,
+            duration_secs: parent.request.duration_secs,
+            slices: parent.request.slice_count(),
+            next_slice: AtomicU32::new(parent.next_slice),
+            quantity_tick: parent.quantity_tick,
+            started_at_ms: parent.started_at_ms,
+            status: std::sync::Mutex::new(parent.status),
+            cancel_flag: AtomicBool::new(parent.cancel_requested),
+            cancel_notify: tokio::sync::Notify::new(),
+            child_nonce_base: parent.request.nonce + 1,
+            _phantom_signature: (),
+        }))
+    }
+
+    pub fn publish_durable(&self, parent: &crate::algos_store::DurableParent) {
+        self.filled_quantity
+            .store(parent.filled_quantity, Ordering::Release);
+        self.next_slice.store(parent.next_slice, Ordering::Release);
+        if parent.cancel_requested {
+            self.cancel_flag.store(true, Ordering::Release);
+        }
+        *self.status.lock().unwrap() = parent.status;
+    }
+
     pub fn request_cancel(&self) -> bool {
         let status = self.status.lock().unwrap();
         if *status != AlgoStatus::Running {

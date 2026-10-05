@@ -680,6 +680,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         price_limit,
         duration_secs,
         slices,
+        next_slice: std::sync::atomic::AtomicU32::new(0),
         quantity_tick,
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
