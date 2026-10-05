@@ -6697,41 +6697,9 @@ pub async fn run_listing_task(state: Arc<AppState>) {
 // Server-side execution algos (TWAP for now; more to follow).
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Deserialize)]
-struct TwapAlgoBody {
-    address: String,
-    market: String,
-    side: types::OrderSide,
-    /// Total base-asset quantity to work, fixed-point 1e6.
-    quantity: u64,
-    /// How long to spread execution over.
-    duration_secs: u64,
-    /// Optional worst-price bound (fixed-point 1e6). Slices execute IOC
-    /// against this bound; miss on any slice is left unfilled.
-    #[serde(default)]
-    price_limit: Option<u64>,
-    /// Number of equal slices. Defaults to 12. Capped at 240 to avoid
-    /// pathological configurations that saturate the child-order path.
-    #[serde(default)]
-    slices: Option<u32>,
-    /// Nonce for the delegation signature that authorizes this algo run.
-    /// The client signs `vela:algo:twap:{market}:{qty}:{duration}:{nonce}`
-    /// with their master or an authorized agent key.
-    nonce: u64,
-    signature: String,
-}
-
-fn twap_signing_message(market: &str, quantity: u64, duration_secs: u64, nonce: u64) -> Vec<u8> {
-    format!(
-        "vela:algo:twap:{}:{}:{}:{}",
-        market, quantity, duration_secs, nonce
-    )
-    .into_bytes()
-}
-
 async fn post_twap_algo(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<TwapAlgoBody>,
+    Json(body): Json<crate::algo_request::TwapRequest>,
 ) -> impl IntoResponse {
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
@@ -6752,7 +6720,7 @@ async fn post_twap_algo(
         )
             .into_response();
     }
-    let slices = body.slices.unwrap_or(12).clamp(1, 240);
+    let slices = body.slice_count();
     if body.quantity < slices as u64 {
         return (
             StatusCode::BAD_REQUEST,
@@ -6771,7 +6739,14 @@ async fn post_twap_algo(
         .price_limit
         .map(|price| crate::agents::order_notional_micro(price, body.quantity))
         .unwrap_or(u64::MAX);
-    let msg = twap_signing_message(&body.market, body.quantity, body.duration_secs, body.nonce);
+    if body.signature_version != 2 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("TWAP requires signature_version 2")),
+        )
+            .into_response();
+    }
+    let msg = body.signing_message();
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
