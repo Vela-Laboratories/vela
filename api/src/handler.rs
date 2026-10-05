@@ -6720,6 +6720,12 @@ async fn post_twap_algo(
     }
     let slices = body.slice_count();
 
+    let quantity_tick = match body.market_tick(&state).await {
+        Ok(tick) => tick,
+        Err(error) => {
+            return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(error))).into_response()
+        }
+    };
     // Authorize via master-or-agent signature. TWAP counts as a single
     // authorization event; individual child orders bypass sig verify
     // (they're synthesized internally and inherit this authorization).
@@ -6777,6 +6783,7 @@ async fn post_twap_algo(
         price_limit: body.price_limit,
         duration_secs: body.duration_secs,
         slices,
+        quantity_tick,
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
         cancel_flag: std::sync::atomic::AtomicBool::new(false),

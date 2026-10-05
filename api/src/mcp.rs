@@ -647,6 +647,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         signature_version: 2,
     };
     request.validate().map_err(str::to_owned)?;
+    let quantity_tick = request.market_tick(state).await.map_err(str::to_owned)?;
     let msg = request.signing_message();
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -678,6 +679,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         price_limit,
         duration_secs,
         slices,
+        quantity_tick,
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
         cancel_flag: std::sync::atomic::AtomicBool::new(false),

@@ -84,6 +84,7 @@ pub struct TwapParent {
     pub price_limit: Option<u64>,
     pub duration_secs: u64,
     pub slices: u32,
+    pub quantity_tick: u64,
     pub started_at_ms: u64,
     pub status: std::sync::Mutex<AlgoStatus>,
     /// Set by `cancel_algo` to signal the slicer to exit before its next
@@ -226,8 +227,9 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
     let slice_interval = Duration::from_secs_f64(
         (parent.duration_secs.max(1) as f64) / (parent.slices.max(1) as f64),
     );
-    let base_slice_qty = parent.total_quantity / parent.slices.max(1) as u64;
-    let mut remainder = parent.total_quantity % parent.slices.max(1) as u64;
+    let units = parent.total_quantity / parent.quantity_tick;
+    let base_slice_qty = units / u64::from(parent.slices) * parent.quantity_tick;
+    let mut remainder = units % u64::from(parent.slices);
 
     for slice_ix in 0..parent.slices {
         if parent.cancel_flag.load(Ordering::Relaxed) {
@@ -238,7 +240,7 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
         // Front-load the remainder so we don't leave a big final slice.
         let mut slice_qty = base_slice_qty;
         if remainder > 0 {
-            slice_qty += 1;
+            slice_qty += parent.quantity_tick;
             remainder -= 1;
         }
         if slice_qty == 0 {

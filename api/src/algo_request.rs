@@ -41,6 +41,26 @@ impl TwapRequest {
             .ok_or("child nonce range overflows")?;
         Ok(())
     }
+    pub async fn market_tick(&self, state: &crate::AppState) -> Result<u64, &'static str> {
+        let engine = state.engine.lock().await;
+        let market = engine
+            .markets
+            .get(&types::MarketId(self.market.clone()))
+            .ok_or("unknown market")?;
+        let tick = market.quantity_tick.max(1);
+        let price_tick = market.price_tick.max(1);
+        if !self.quantity.is_multiple_of(tick) {
+            return Err("quantity must align to market lot size");
+        }
+        if !self.price_limit.unwrap_or(0).is_multiple_of(price_tick) {
+            return Err("price_limit must align to market tick size");
+        }
+        let smallest_slice = self.quantity / tick / u64::from(self.slice_count()) * tick;
+        if smallest_slice < market.min_order_size.max(tick) {
+            return Err("every slice must meet minimum order size");
+        }
+        Ok(tick)
+    }
     pub fn signing_message(&self) -> Vec<u8> {
         serde_json::to_vec(&(
             "vela:algo:twap:v2",
