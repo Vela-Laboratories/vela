@@ -57,6 +57,8 @@ export class VelaClient {
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? 'https://vela-engine.fly.dev').replace(/\/$/, '')
+    const parsed = new URL(this.baseUrl)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new TypeError('baseUrl must use HTTP without credentials, query or fragment')
     this.bearerToken = options.bearerToken
     this.transport = options.fetch ?? fetch
     this.timeoutMs = options.timeoutMs ?? 10_000
