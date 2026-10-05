@@ -312,6 +312,40 @@ impl AgentRegistry {
             .map(|d| d.clone())
     }
 
+    /// Revalidate a running parent's signer without charging its reserved notional again.
+    pub async fn authorize_continuation(
+        &self,
+        master: &UserId,
+        signer: &UserId,
+        now_ms: u64,
+        market: &MarketId,
+        side: OrderSide,
+    ) -> Result<(), &'static str> {
+        if master == signer {
+            return Ok(());
+        }
+        let order = OrderScopeCheck {
+            market,
+            side,
+            order_type: OrderType::ImmediateOrCancel,
+        };
+        if let Some(store) = &self.store {
+            return store
+                .authorize(master, signer, 0, now_ms, Some(&order))
+                .await
+                .map_err(|_| "delegation no longer active");
+        }
+        let delegation = self
+            .get_active(signer, now_ms)
+            .ok_or("delegation no longer active")?;
+        if delegation.master != *master {
+            return Err("delegation owner changed");
+        }
+        delegation
+            .scope
+            .check_order_static(market, side, OrderType::ImmediateOrCancel)
+    }
+
     pub fn agents_for(&self, master: &UserId) -> Vec<AgentDelegation> {
         self.inner
             .iter()

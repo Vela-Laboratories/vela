@@ -653,7 +653,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    crate::agents::verify_master_or_agent_scoped_async(
+    let authorized_signer = crate::agents::verify_master_or_agent_scoped_async(
         msg,
         signature,
         address.clone(),
@@ -671,6 +671,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     let parent_id = crate::algos::next_parent_id();
     let parent = std::sync::Arc::new(crate::algos::TwapParent {
         parent_id,
+        authorized_signer,
         user_address: address.to_lowercase(),
         market,
         side,

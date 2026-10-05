@@ -6748,7 +6748,7 @@ async fn post_twap_algo(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if crate::agents::verify_master_or_agent_scoped_async(
+    let authorized_signer = match crate::agents::verify_master_or_agent_scoped_async(
         msg,
         body.signature.clone(),
         body.address.clone(),
@@ -6760,14 +6760,16 @@ async fn post_twap_algo(
         types::OrderType::ImmediateOrCancel,
     )
     .await
-    .is_err()
     {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ApiResponse::<()>::err("invalid signature")),
-        )
-            .into_response();
-    }
+        Ok(signer) => signer,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<()>::err("invalid signature")),
+            )
+                .into_response();
+        }
+    };
 
     // Reserve a nonce block for child orders — starts one above the
     // client's supplied nonce so master↔child nonces don't collide.
@@ -6777,6 +6779,7 @@ async fn post_twap_algo(
     let parent_id = crate::algos::next_parent_id();
     let parent = std::sync::Arc::new(crate::algos::TwapParent {
         parent_id,
+        authorized_signer,
         user_address: body.address.to_lowercase(),
         market: body.market.clone(),
         side: body.side,

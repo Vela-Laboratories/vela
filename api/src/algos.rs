@@ -74,6 +74,7 @@ pub enum AlgoStatus {
 #[derive(Debug)]
 pub struct TwapParent {
     pub parent_id: u64,
+    pub authorized_signer: types::UserId,
     pub user_address: String,
     pub market: String,
     pub side: OrderSide,
@@ -268,6 +269,25 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             return;
         }
 
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if state
+            .agents
+            .authorize_continuation(
+                &user_id,
+                &parent.authorized_signer,
+                now_ms,
+                &market,
+                parent.side,
+            )
+            .await
+            .is_err()
+        {
+            *parent.status.lock().unwrap() = AlgoStatus::Canceled;
+            return;
+        }
         // Front-load the remainder so we don't leave a big final slice.
         let mut slice_qty = base_slice_qty;
         if remainder > 0 {
