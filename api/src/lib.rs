@@ -154,6 +154,7 @@ pub struct AppState {
     pub agents: Arc<crate::agents::AgentRegistry>,
     /// Active server-side algo parents (TWAP, etc). Keyed by parent_id.
     pub algos: crate::algos::AlgoRegistry,
+    pub algo_nonces: dashmap::DashMap<(String, u64), ()>,
     /// Pending / accepted / rejected permissionless market listings.
     pub listings: crate::listings::ListingRegistry,
     /// MM credit vaults + per-LP share positions.
@@ -491,6 +492,7 @@ impl AppState {
             batch_metrics: Arc::clone(&batch_metrics),
             agents,
             algos: std::sync::Arc::new(dashmap::DashMap::new()),
+            algo_nonces: dashmap::DashMap::new(),
             listings: std::sync::Arc::new(dashmap::DashMap::new()),
             vaults: crate::vaults::VaultRegistry::new(),
             subaccounts: crate::subaccounts::SubaccountRegistry::new(),

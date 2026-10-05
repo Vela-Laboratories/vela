@@ -6763,6 +6763,9 @@ async fn post_twap_algo(
 
     // Reserve a nonce block for child orders — starts one above the
     // client's supplied nonce so master↔child nonces don't collide.
+    if let Err(error) = crate::algos::reserve_parent_nonce(&state, &body.address, body.nonce) {
+        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(error))).into_response();
+    }
     let parent_id = crate::algos::next_parent_id();
     let parent = std::sync::Arc::new(crate::algos::TwapParent {
         parent_id,

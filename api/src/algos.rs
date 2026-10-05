@@ -37,6 +37,24 @@ use types::{OrderSide, OrderType, PostOrderRequest};
 
 use crate::AppState;
 
+/// Reserve a signed parent nonce atomically. Entries live for the process lifetime.
+pub fn reserve_parent_nonce(
+    state: &AppState,
+    address: &str,
+    nonce: u64,
+) -> Result<(), &'static str> {
+    match state
+        .algo_nonces
+        .entry((address.to_ascii_lowercase(), nonce))
+    {
+        dashmap::mapref::entry::Entry::Occupied(_) => Err("TWAP parent nonce already used"),
+        dashmap::mapref::entry::Entry::Vacant(entry) => {
+            entry.insert(());
+            Ok(())
+        }
+    }
+}
+
 /// Monotonic parent-id source. Cheap and lock-free.
 pub static NEXT_PARENT_ID: AtomicU64 = AtomicU64::new(1);
 

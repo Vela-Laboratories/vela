@@ -666,6 +666,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     .await
     .map_err(|_| "invalid signature".to_string())?;
 
+    crate::algos::reserve_parent_nonce(state, &address, nonce).map_err(str::to_owned)?;
     let parent_id = crate::algos::next_parent_id();
     let parent = std::sync::Arc::new(crate::algos::TwapParent {
         parent_id,
