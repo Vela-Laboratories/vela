@@ -6820,12 +6820,19 @@ async fn cancel_algo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CancelAlgoBody>,
 ) -> impl IntoResponse {
-    let parent = match state.algos.get(&body.parent_id) {
-        Some(p) => Arc::clone(&*p),
-        None => {
+    let parent = match crate::algos::load_parent(&state, body.parent_id).await {
+        Ok(Some(parent)) => parent,
+        Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(ApiResponse::<()>::err("parent_id not found")),
+            )
+                .into_response()
+        }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("algorithm storage unavailable")),
             )
                 .into_response()
         }
@@ -6863,7 +6870,26 @@ async fn cancel_algo(
             .into_response();
     }
 
-    let canceled = parent.request_cancel();
+    let canceled = if let Some(store) = &state.algo_store {
+        let proof = serde_json::json!({"message":format!("vela:algo:cancel:{}:{}",body.parent_id,body.nonce),"signature":body.signature});
+        match store.cancel(body.parent_id, &body.address, proof).await {
+            Ok(changed) => {
+                if let Some(cached) = state.algos.get(&body.parent_id) {
+                    cached.request_cancel();
+                }
+                changed
+            }
+            Err(_) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err("algorithm cancellation unavailable")),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        parent.request_cancel()
+    };
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
@@ -6893,12 +6919,32 @@ async fn list_account_algos(
         return response;
     }
     let owner = user.to_hex().to_ascii_lowercase();
-    let mut parents: Vec<_> = state
-        .algos
-        .iter()
-        .filter(|p| p.user_address == owner)
-        .map(|p| crate::algos::TwapParentSnapshot::from(&p))
-        .collect();
+    let mut parents = if let Some(store) = &state.algo_store {
+        match store.list(Some(&owner)).await.and_then(|rows| {
+            rows.iter()
+                .map(crate::algos::TwapParent::from_durable)
+                .collect::<Result<Vec<_>, _>>()
+        }) {
+            Ok(rows) => rows
+                .iter()
+                .map(|p| crate::algos::TwapParentSnapshot::from(p))
+                .collect::<Vec<_>>(),
+            Err(_) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err("algorithm storage unavailable")),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        state
+            .algos
+            .iter()
+            .filter(|p| p.user_address == owner)
+            .map(|p| crate::algos::TwapParentSnapshot::from(&p))
+            .collect::<Vec<_>>()
+    };
     parents.sort_by_key(|p| std::cmp::Reverse(p.parent_id));
     (StatusCode::OK, Json(ApiResponse::ok(parents))).into_response()
 }
@@ -6908,30 +6954,43 @@ async fn get_algo_status(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    match state.algos.get(&parent_id) {
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::err("parent_id not found")),
-        )
-            .into_response(),
-        Some(p) => {
-            let owner = match UserId::from_hex(&p.user_address) {
-                Ok(owner) => owner,
-                Err(_) => {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ApiResponse::<()>::err("invalid stored owner")),
-                    )
-                        .into_response()
-                }
-            };
-            if let Some(response) = require_account_auth(&headers, &state, &owner) {
-                return response;
-            }
-            let snap = crate::algos::TwapParentSnapshot::from(&p);
-            (StatusCode::OK, Json(ApiResponse::ok(snap))).into_response()
+    let parent = match crate::algos::load_parent(&state, parent_id).await {
+        Ok(Some(parent)) => parent,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::<()>::err("parent_id not found")),
+            )
+                .into_response()
         }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("algorithm storage unavailable")),
+            )
+                .into_response()
+        }
+    };
+    let owner = match UserId::from_hex(&parent.user_address) {
+        Ok(owner) => owner,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<()>::err("invalid stored owner")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &owner) {
+        return response;
     }
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(crate::algos::TwapParentSnapshot::from(
+            &parent,
+        ))),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
