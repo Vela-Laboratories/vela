@@ -30,6 +30,17 @@ export interface AgentStatus {
 type MarketsPath = paths['/v1/markets']['get']
 type MarketsData = NonNullable<MarketsPath['responses'][200]['content']['application/json']['data']>
 
+export class VelaApiError extends Error {
+  readonly status: number | undefined
+  readonly retryAfterSeconds: number | undefined
+  constructor(message: string, status?: number, retryAfterSeconds?: number) {
+    super(message)
+    this.name = 'VelaApiError'
+    this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
 export interface ClientOptions {
   baseUrl?: string
   bearerToken?: string
@@ -57,10 +68,16 @@ export class VelaClient {
       },
       body: body ? JSON.stringify(body) : undefined,
     })
-    if (!response.ok) throw new Error(`Vela API returned HTTP ${response.status}`)
-    const envelope: unknown = await response.json()
+    const retryHeader = response.headers.get('Retry-After')
+    const retryAfter = retryHeader !== null && /^\d+$/.test(retryHeader) ? Number(retryHeader) : undefined
+    let envelope: unknown
+    try { envelope = await response.json() } catch {
+      throw new VelaApiError('Vela API returned an invalid JSON response', response.status, retryAfter)
+    }
+    const errorText = envelope && typeof envelope === 'object' && 'error' in envelope && typeof envelope.error === 'string' ? envelope.error.slice(0, 512) : undefined
+    if (!response.ok) throw new VelaApiError(errorText || `Vela API returned HTTP ${response.status}`, response.status, retryAfter)
     if (!envelope || typeof envelope !== 'object' || !('ok' in envelope) || envelope.ok !== true || !('data' in envelope)) {
-      throw new Error('Vela API returned an unsuccessful or malformed response')
+      throw new VelaApiError(errorText || 'Vela API returned an unsuccessful or malformed response', response.status, retryAfter)
     }
     return envelope.data as T
   }
