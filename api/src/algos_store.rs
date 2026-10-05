@@ -322,3 +322,63 @@ impl AlgoStore {
         Ok(())
     }
 }
+
+impl AlgoStore {
+    /// Resolve only outcomes bound to immutable financial receipt evidence.
+    /// A missing receipt never authorizes repeating a dispatched child.
+    pub async fn recover(&self) -> Result<Vec<DurableParent>, AlgoStoreError> {
+        use sha2::{Digest, Sha256};
+        for parent in self.list(None).await? {
+            if !matches!(
+                parent.status,
+                AlgoStatus::Running | AlgoStatus::RecoveryRequired
+            ) {
+                continue;
+            }
+            let pending: Vec<(i32,String)> = sqlx::query_as("SELECT slice_index,client_order_id FROM api_algo_children WHERE parent_id=$1 AND state<>'complete' ORDER BY slice_index")
+                .bind(parent.id as i64).fetch_all(&self.pool).await?;
+            for (index, client_id) in pending {
+                let receipts: Vec<serde_json::Value> = sqlx::query_scalar("SELECT metadata FROM ledger_journal_transactions WHERE jsonb_path_exists(metadata, '$.effect_set.response_commitments[*].OrderPosted ? (@.client_order_id == $client_id)', jsonb_build_object('client_id',$1::text))")
+                    .bind(&client_id).fetch_all(&self.pool).await?;
+                if receipts.len() != 1 {
+                    self.mark_uncertain(parent.id, index as u32).await?;
+                    continue;
+                }
+                let effects: engine::FinancialEffectSet =
+                    serde_json::from_value(receipts[0]["effect_set"].clone())
+                        .map_err(|_| AlgoStoreError::Invalid)?;
+                let ids: Vec<_> = effects
+                    .response_commitments
+                    .iter()
+                    .filter_map(|response| match response {
+                        types::Response::OrderPosted(order)
+                            if order.client_order_id.as_deref() == Some(&client_id) =>
+                        {
+                            Some(order.order_id)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if ids.len() != 1 {
+                    return Err(AlgoStoreError::Invalid);
+                }
+                let filled = effects
+                    .fills
+                    .iter()
+                    .filter(|fill| fill.taker_order_id == ids[0])
+                    .try_fold(0u64, |total, fill| {
+                        total
+                            .checked_add(fill.quantity)
+                            .ok_or(AlgoStoreError::Invalid)
+                    })?;
+                let hash: [u8; 32] = Sha256::digest(
+                    serde_json::to_vec(&receipts[0]).map_err(|_| AlgoStoreError::Invalid)?,
+                )
+                .into();
+                self.complete_child(parent.id, index as u32, filled, &hash)
+                    .await?;
+            }
+        }
+        self.list(None).await
+    }
+}
