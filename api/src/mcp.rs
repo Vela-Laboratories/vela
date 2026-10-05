@@ -601,6 +601,11 @@ async fn mcp_cancel_order(state: &Arc<AppState>, args: &Value) -> Result<Value, 
 }
 
 async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, String> {
+    if state.ledger.is_some() {
+        return Err(
+            "TWAP parents require durable recovery before authoritative ledger execution".into(),
+        );
+    }
     let address = arg_string(args, "address")?;
     let market = arg_string(args, "market")?;
     let side_str = arg_string(args, "side")?;

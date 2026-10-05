@@ -6701,6 +6701,10 @@ async fn post_twap_algo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<crate::algo_request::TwapRequest>,
 ) -> impl IntoResponse {
+    if let Some(response) = reject_unjournaled_financial_route(&state, "TWAP parent execution") {
+        return response;
+    }
+
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => {
