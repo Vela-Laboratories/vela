@@ -49,7 +49,7 @@ COPY . .
 RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src withdrawal-worker/src reconciliation-worker/src \
       -type f -exec touch {} + \
     && cargo build --release --bin api --bin engine-recovery --bin ledger-migrate --bin ledger-bootstrap --bin ledger-daily-report \
-      --bin deposit-indexer --bin deposit-indexer-register
+      --bin deposit-indexer --bin deposit-indexer-register --bin withdrawal-worker --bin reconciliation-worker
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -72,6 +72,9 @@ COPY --from=builder /app/target/release/ledger-bootstrap /usr/local/bin/ledger-b
 COPY --from=builder /app/target/release/ledger-daily-report /usr/local/bin/ledger-daily-report
 COPY --from=builder /app/target/release/deposit-indexer /usr/local/bin/deposit-indexer
 COPY --from=builder /app/target/release/deposit-indexer-register /usr/local/bin/deposit-indexer-register
+
+COPY --from=builder /app/target/release/withdrawal-worker /usr/local/bin/withdrawal-worker
+COPY --from=builder /app/target/release/reconciliation-worker /usr/local/bin/reconciliation-worker
 
 USER vela
 WORKDIR /app
