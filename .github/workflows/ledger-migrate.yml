@@ -17,7 +17,7 @@ permissions:
 jobs:
   migrate:
     name: Migrate ${{ inputs.environment }} ledger
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     concurrency: ledger-migrate-${{ inputs.environment }}
     steps:
