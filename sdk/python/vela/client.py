@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Literal, NotRequired, TypedDict, cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -114,6 +115,11 @@ class VelaClient:
         bearer_token: str | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
+        parsed = urlsplit(base_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+            raise ValueError("base_url must be an HTTP origin without credentials, query or fragment")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be finite and positive")
         self.base_url = base_url.rstrip("/")
         self.bearer_token = bearer_token
         self.timeout_seconds = timeout_seconds
