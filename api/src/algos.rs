@@ -235,14 +235,20 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
     };
     let market = types::MarketId(parent.market.clone());
 
-    let slice_interval = Duration::from_secs_f64(
-        (parent.duration_secs.max(1) as f64) / (parent.slices.max(1) as f64),
-    );
+    let started = tokio::time::Instant::now();
+    let deadline = started + Duration::from_secs(parent.duration_secs);
     let units = parent.total_quantity / parent.quantity_tick;
     let base_slice_qty = units / u64::from(parent.slices) * parent.quantity_tick;
     let mut remainder = units % u64::from(parent.slices);
 
     for slice_ix in 0..parent.slices {
+        let offset_ms =
+            parent.duration_secs * 1_000 * u64::from(slice_ix) / u64::from(parent.slices);
+        tokio::time::sleep_until(started + Duration::from_millis(offset_ms)).await;
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+
         if parent.cancel_flag.load(Ordering::Relaxed) {
             *parent.status.lock().unwrap() = AlgoStatus::Canceled;
             return;
@@ -284,10 +290,6 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             }
         };
         parent.filled_quantity.fetch_add(filled, Ordering::Relaxed);
-
-        if slice_ix + 1 < parent.slices {
-            tokio::time::sleep(slice_interval).await;
-        }
     }
 
     *parent.status.lock().unwrap() =
