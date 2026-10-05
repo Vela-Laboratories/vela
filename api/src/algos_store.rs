@@ -197,6 +197,60 @@ impl AlgoStore {
         tx.commit().await?;
         Ok(true)
     }
+    pub async fn complete_child(
+        &self,
+        id: u64,
+        index: u32,
+        filled: u64,
+        response_hash: &[u8; 32],
+    ) -> Result<DurableParent, AlgoStoreError> {
+        let mut tx = self.transaction().await?;
+        let row = sqlx::query_as::<_, ParentRow>(&format!(
+            "{SELECT} WHERE namespace=$1 AND id=$2 FOR UPDATE"
+        ))
+        .bind(&self.namespace)
+        .bind(id as i64)
+        .fetch_one(&mut *tx)
+        .await?;
+        let parent = DurableParent::try_from(row)?;
+        let (state, previous, hash): (String,Option<String>,Option<Vec<u8>>) = sqlx::query_as("SELECT state,filled_quantity::text,response_hash FROM api_algo_children WHERE parent_id=$1 AND slice_index=$2 FOR UPDATE")
+            .bind(id as i64).bind(index as i32).fetch_one(&mut *tx).await?;
+        if state == "complete" {
+            if previous.as_deref() != Some(filled.to_string().as_str())
+                || hash.as_deref() != Some(response_hash.as_slice())
+            {
+                return Err(AlgoStoreError::Conflict("completed child outcome differs"));
+            }
+            return Ok(parent);
+        }
+        if parent.next_slice != index {
+            return Err(AlgoStoreError::Conflict(
+                "child progress is out of sequence",
+            ));
+        }
+        let total = parent
+            .filled_quantity
+            .checked_add(filled)
+            .filter(|v| *v <= parent.request.quantity)
+            .ok_or(AlgoStoreError::Invalid)?;
+        sqlx::query("UPDATE api_algo_children SET state='complete',filled_quantity=$3::text::numeric,response_hash=$4,updated_at=now() WHERE parent_id=$1 AND slice_index=$2")
+            .bind(id as i64).bind(index as i32).bind(filled.to_string()).bind(response_hash.as_slice()).execute(&mut *tx).await?;
+        let next = index + 1;
+        let status = if parent.cancel_requested {
+            "Canceled"
+        } else if total == parent.request.quantity {
+            "Completed"
+        } else if next >= parent.request.slice_count() {
+            "Incomplete"
+        } else {
+            "Running"
+        };
+        sqlx::query("UPDATE api_algo_parents SET filled_quantity=$2::text::numeric,next_slice=$3,status=$4,updated_at=now() WHERE id=$1")
+            .bind(id as i64).bind(total.to_string()).bind(next as i32).bind(status).execute(&mut *tx).await?;
+        Self::event(&mut tx,id as i64,"child_complete",serde_json::json!({"index":index,"filled_quantity":filled,"response_hash":hex::encode(response_hash)})).await?;
+        tx.commit().await?;
+        self.get(id).await?.ok_or(AlgoStoreError::Invalid)
+    }
 }
 
 /// Valid engine client IDs bind each persisted intent to one child request.
