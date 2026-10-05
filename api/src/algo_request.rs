@@ -113,3 +113,42 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn invalid_schedules_are_rejected() {
+        let valid = TwapRequest {
+            address: String::new(),
+            market: String::new(),
+            side: OrderSide::Bid,
+            quantity: 240,
+            duration_secs: 60,
+            price_limit: Some(1),
+            slices: Some(12),
+            nonce: 1,
+            signature: String::new(),
+            signature_version: 2,
+        };
+        assert!(valid.validate().is_ok());
+        for slices in [0, 241, u32::MAX] {
+            let mut r = valid.clone();
+            r.slices = Some(slices);
+            assert!(r.validate().is_err());
+        }
+        for duration in [0, 86_401, u64::MAX] {
+            let mut r = valid.clone();
+            r.duration_secs = duration;
+            assert!(r.validate().is_err());
+        }
+        for price in [None, Some(0)] {
+            let mut r = valid.clone();
+            r.price_limit = price;
+            assert!(r.validate().is_err());
+        }
+        let mut r = valid;
+        r.nonce = u64::MAX - 11;
+        assert!(r.validate().is_err());
+    }
+}

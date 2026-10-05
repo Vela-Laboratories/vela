@@ -1410,3 +1410,104 @@ mod ws_tests {
         ws.close().await;
     }
 }
+
+fn twap_request() -> api::algo_request::TwapRequest {
+    let (key, address) = wallet(1);
+    let mut request = api::algo_request::TwapRequest {
+        address,
+        market: "BTC-USDC".into(),
+        side: OrderSide::Bid,
+        quantity: QUANTITY_SCALE,
+        duration_secs: 60,
+        price_limit: Some(60_000 * PRICE_SCALE),
+        slices: Some(2),
+        nonce: 100,
+        signature: String::new(),
+        signature_version: 2,
+    };
+    request.signature = sign_personal(&key, &request.signing_message());
+    request
+}
+
+#[tokio::test]
+async fn twap_rejects_changed_execution_fields_and_legacy_signatures() {
+    let server = test_server(funded_engine());
+    for field in ["side", "price_limit", "slices", "signature_version"] {
+        let mut body = serde_json::to_value(twap_request()).unwrap();
+        body[field] = match field {
+            "side" => json!("Ask"),
+            "price_limit" => json!(60_001 * PRICE_SCALE),
+            "slices" => json!(3),
+            _ => json!(1),
+        };
+        let response = server.post("/v1/orders/algo/twap").json(&body).await;
+        response.assert_status(if field == "signature_version" {
+            axum::http::StatusCode::BAD_REQUEST
+        } else {
+            axum::http::StatusCode::UNAUTHORIZED
+        });
+    }
+}
+
+#[tokio::test]
+async fn twap_replay_private_progress_and_prompt_cancel() {
+    let server = test_server(funded_engine());
+    let request = twap_request();
+    let created = server.post("/v1/orders/algo/twap").json(&request).await;
+    created.assert_status_ok();
+    let parent_id = created.json::<Value>()["data"]["parent_id"]
+        .as_u64()
+        .unwrap();
+    server
+        .post("/v1/orders/algo/twap")
+        .json(&request)
+        .await
+        .assert_status(axum::http::StatusCode::CONFLICT);
+    let path = format!("/v1/orders/algo/{parent_id}");
+    server
+        .get(&path)
+        .await
+        .assert_status(axum::http::StatusCode::UNAUTHORIZED);
+    let (other_key, other) = wallet(2);
+    let token = auth_token_for(&server, &other_key, &other).await;
+    server
+        .get(&path)
+        .add_header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+        .await
+        .assert_status(axum::http::StatusCode::FORBIDDEN);
+    let owner_token = user_auth_token(&server).await;
+    let listing = server
+        .get(&format!("/v1/account/{}/algos", user_addr()))
+        .add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {owner_token}"),
+        )
+        .await;
+    listing.assert_status_ok();
+    assert_eq!(listing.json::<Value>()["data"][0]["parent_id"], parent_id);
+    let (key, address) = wallet(1);
+    let nonce = 1000;
+    let signature = sign_personal(
+        &key,
+        format!("vela:algo:cancel:{parent_id}:{nonce}").as_bytes(),
+    );
+    server
+        .post("/v1/orders/algo/cancel")
+        .json(&json!({"parent_id":parent_id,"address":address,"nonce":nonce,"signature":signature}))
+        .await
+        .assert_status_ok();
+    for _ in 0..200 {
+        let status = server
+            .get(&path)
+            .add_header(
+                axum::http::header::AUTHORIZATION,
+                format!("Bearer {owner_token}"),
+            )
+            .await;
+        if status.json::<Value>()["data"]["status"] == "Canceled" {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("cancellation did not wake the parent before its 30-second next slice");
+}
