@@ -66,6 +66,7 @@ pub fn next_parent_id() -> u64 {
 pub enum AlgoStatus {
     Running,
     Completed,
+    Incomplete,
     Canceled,
     Failed,
 }
@@ -115,6 +116,7 @@ pub struct TwapParentSnapshot {
     pub side: String,
     pub total_quantity: u64,
     pub filled_quantity: u64,
+    pub remaining_quantity: u64,
     pub price_limit: Option<u64>,
     pub duration_secs: u64,
     pub slices: u32,
@@ -131,6 +133,9 @@ impl TwapParentSnapshot {
             side: format!("{:?}", p.side).to_lowercase(),
             total_quantity: p.total_quantity,
             filled_quantity: p.filled_quantity.load(Ordering::Relaxed),
+            remaining_quantity: p
+                .total_quantity
+                .saturating_sub(p.filled_quantity.load(Ordering::Relaxed)),
             price_limit: p.price_limit,
             duration_secs: p.duration_secs,
             slices: p.slices,
@@ -272,5 +277,10 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
         }
     }
 
-    *parent.status.lock().unwrap() = AlgoStatus::Completed;
+    *parent.status.lock().unwrap() =
+        if parent.filled_quantity.load(Ordering::Relaxed) == parent.total_quantity {
+            AlgoStatus::Completed
+        } else {
+            AlgoStatus::Incomplete
+        };
 }
