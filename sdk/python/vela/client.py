@@ -12,6 +12,11 @@ from urllib.request import Request, urlopen
 class VelaClientError(RuntimeError):
     """The API or network could not satisfy a read request."""
 
+    def __init__(self, message: str, status: int | None = None, retry_after_seconds: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retry_after_seconds = retry_after_seconds
+
 
 class Market(TypedDict):
     id: str
@@ -121,8 +126,21 @@ class VelaClient:
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 payload: ApiEnvelope = json.load(response)
-        except (HTTPError, URLError, OSError, ValueError) as error:
-            raise VelaClientError(f"Vela read failed: {error}") from error
+        except HTTPError as error:
+            retry_header = error.headers.get("Retry-After", "") if error.headers else ""
+            retry_after = int(retry_header) if retry_header.isascii() and retry_header.isdigit() else None
+            message = f"Vela API returned HTTP {error.code}"
+            try:
+                envelope = json.loads(error.read(16_384))
+                if isinstance(envelope, dict) and isinstance(envelope.get("error"), str):
+                    message = envelope["error"][:512]
+            except (ValueError, OSError):
+                pass
+            finally:
+                error.close()
+            raise VelaClientError(message, error.code, retry_after) from error
+        except (URLError, OSError, ValueError) as error:
+            raise VelaClientError("Vela read failed: network or invalid JSON response") from error
         if not isinstance(payload, dict) or payload.get("ok") is not True or "data" not in payload:
             raise VelaClientError("Vela returned an unsuccessful or malformed response")
         return payload["data"]
