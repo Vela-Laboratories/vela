@@ -207,7 +207,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm audit
       - run: npm run lint
       - run: npm run type-check
       - run: npm run build
@@ -222,6 +221,22 @@ jobs:
           python-version: '3.13'
       - name: Read-only Python SDK tests
         run: PYTHONPATH=../sdk/python python -m unittest discover -s ../sdk/python/tests
+
+  frontend-audit:
+    name: Frontend — full dependency audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit
 
   bench:
     name: Benchmarks (dry run)
