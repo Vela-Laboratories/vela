@@ -85,6 +85,12 @@ export class VelaClient {
     return this.request(`/agents/${encodeURIComponent(master)}`)
   }
 
+  /** Sign twapSigningMessage(input) externally, then submit its signature. */
+  placeTwap(input: TwapInput, signature: string): Promise<{ parent_id: number; status: AlgoStatus; slice_count: number }> {
+    twapSigningMessage(input)
+    return this.request('/orders/algo/twap', { ...input, slices: input.slices ?? 12, signature, signature_version: 2 })
+  }
+
   /** Supply an EIP-191 signature from the master wallet; this client never handles private keys. */
   registerAgent(body: {
     master: string
@@ -126,4 +132,20 @@ export function twapSigningMessage(input: TwapInput): string {
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(input.address) || !input.market || !['Bid', 'Ask'].includes(input.side)) throw new TypeError('Invalid TWAP address, market or side')
   return JSON.stringify(['vela:algo:twap:v2', input.address.toLowerCase(), input.market, input.side, input.quantity, input.duration_secs, input.price_limit, slices, input.nonce])
+}
+
+export type AlgoStatus = 'Running' | 'Completed' | 'Incomplete' | 'Canceled' | 'Failed'
+export interface AlgoSnapshot {
+  parent_id: number
+  user: string
+  market: string
+  side: string
+  total_quantity: number
+  filled_quantity: number
+  remaining_quantity: number
+  price_limit: number | null
+  duration_secs: number
+  slices: number
+  started_at_ms: number
+  status: AlgoStatus
 }
