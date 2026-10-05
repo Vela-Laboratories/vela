@@ -85,6 +85,20 @@ export class VelaClient {
     return this.request(`/agents/${encodeURIComponent(master)}`)
   }
 
+  algo(parentId: number): Promise<AlgoSnapshot> {
+    assertSafeId(parentId)
+    return this.request(`/orders/algo/${parentId}`)
+  }
+
+  algos(address: string): Promise<AlgoSnapshot[]> {
+    return this.request(`/account/${encodeURIComponent(address)}/algos`)
+  }
+
+  cancelAlgo(body: { parent_id: number; address: string; nonce: number; signature: string }): Promise<{ parent_id: number; canceled: boolean }> {
+    algoCancelSigningMessage(body.parent_id, body.nonce)
+    return this.request('/orders/algo/cancel', body)
+  }
+
   /** Sign twapSigningMessage(input) externally, then submit its signature. */
   placeTwap(input: TwapInput, signature: string): Promise<{ parent_id: number; status: AlgoStatus; slice_count: number }> {
     twapSigningMessage(input)
@@ -148,4 +162,14 @@ export interface AlgoSnapshot {
   slices: number
   started_at_ms: number
   status: AlgoStatus
+}
+
+function assertSafeId(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('IDs and nonces must be nonnegative safe integers')
+}
+
+export function algoCancelSigningMessage(parentId: number, nonce: number): string {
+  assertSafeId(parentId)
+  assertSafeId(nonce)
+  return `vela:algo:cancel:${parentId}:${nonce}`
 }
