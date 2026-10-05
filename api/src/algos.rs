@@ -37,6 +37,36 @@ use types::{OrderSide, OrderType, PostOrderRequest};
 
 use crate::AppState;
 
+/// Tracks schedulers through shutdown without canceling their durable parents.
+#[derive(Default)]
+pub struct AlgoTasks {
+    stopped: std::sync::Mutex<bool>,
+    cancellation: tokio_util::sync::CancellationToken,
+    tracker: tokio_util::task::TaskTracker,
+}
+impl AlgoTasks {
+    pub fn spawn(&self, state: Arc<AppState>, parent: Arc<TwapParent>) {
+        let stopped = self.stopped.lock().unwrap();
+        if !*stopped {
+            self.tracker.spawn(run_twap_task(state, parent));
+        }
+    }
+    pub fn is_stopping(&self) -> bool {
+        self.cancellation.is_cancelled()
+    }
+    pub async fn drain(&self, timeout: Duration) -> bool {
+        {
+            let mut stopped = self.stopped.lock().unwrap();
+            *stopped = true;
+            self.cancellation.cancel();
+            self.tracker.close();
+        }
+        tokio::time::timeout(timeout, self.tracker.wait())
+            .await
+            .is_ok()
+    }
+}
+
 /// Reserve a signed parent nonce atomically. Entries live for the process lifetime.
 pub fn reserve_parent_nonce(
     state: &AppState,
@@ -329,12 +359,17 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
     let count = u64::from(parent.slices);
     let first = parent.next_slice.load(Ordering::Acquire);
     for index in first..parent.slices {
+        if state.algo_tasks.is_stopping() {
+            return;
+        }
         let offset = parent.duration_secs * 1_000 * u64::from(index) / count;
         tokio::select! {
+            biased;
+            _ = state.algo_tasks.cancellation.cancelled() => return,
             _ = tokio::time::sleep_until(started+Duration::from_millis(offset)) => {},
             _ = parent.cancel_notify.notified() => {},
         }
-        if !state.storage_health.is_healthy() {
+        if state.algo_tasks.is_stopping() || !state.storage_health.is_healthy() {
             return;
         }
         if let Some(store) = &state.algo_store {
@@ -375,6 +410,9 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
                 "delegated authority unavailable",
             )
             .await;
+            return;
+        }
+        if state.algo_tasks.is_stopping() {
             return;
         }
         let quantity =
@@ -490,6 +528,9 @@ pub async fn admit_parent(
     now_ms: u64,
 ) -> Result<Arc<TwapParent>, crate::algos_store::AlgoStoreError> {
     use crate::algos_store::AlgoStoreError;
+    if state.algo_tasks.is_stopping() {
+        return Err(AlgoStoreError::Conflict("execution is shutting down"));
+    }
     if let Some(store) = &state.algo_store {
         return TwapParent::from_durable(&store.admit(request, &signer, tick, now_ms).await?);
     }
@@ -550,7 +591,39 @@ pub async fn recover_durable(
         .collect::<Result<Vec<_>, _>>()?;
     for parent in parents {
         state.algos.insert(parent.parent_id, Arc::clone(&parent));
-        tokio::spawn(run_twap_task(Arc::clone(&state), parent));
+        state.algo_tasks.spawn(Arc::clone(&state), parent);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shutdown_wakes_waiting_schedules_and_waits_for_inflight_completion() {
+        let tasks = AlgoTasks::default();
+        let cancellation = tasks.cancellation.clone();
+        let completed = Arc::new(AtomicBool::new(false));
+        let observed = Arc::clone(&completed);
+        tasks.tracker.spawn(async move {
+            cancellation.cancelled().await;
+            // Model a child already submitted: its result must publish before drain finishes.
+            tokio::task::yield_now().await;
+            observed.store(true, Ordering::Release);
+        });
+        assert!(tasks.drain(Duration::from_secs(1)).await);
+        assert!(completed.load(Ordering::Acquire));
+        assert!(tasks.is_stopping());
+        assert!(*tasks.stopped.lock().unwrap());
+    }
+
+    #[tokio::test]
+    async fn undrained_child_prevents_clean_shutdown() {
+        let tasks = AlgoTasks::default();
+        let handle = tasks.tracker.spawn(std::future::pending::<()>());
+        assert!(!tasks.drain(Duration::from_millis(10)).await);
+        handle.abort();
+        assert!(tasks.drain(Duration::from_secs(1)).await);
+    }
 }

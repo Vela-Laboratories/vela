@@ -156,6 +156,7 @@ pub struct AppState {
     /// Active server-side algo parents (TWAP, etc). Keyed by parent_id.
     pub algos: crate::algos::AlgoRegistry,
     pub algo_store: Option<crate::algos_store::AlgoStore>,
+    pub algo_tasks: crate::algos::AlgoTasks,
     pub algo_nonces: dashmap::DashMap<(String, u64), ()>,
     /// Pending / accepted / rejected permissionless market listings.
     pub listings: crate::listings::ListingRegistry,
@@ -519,6 +520,7 @@ impl AppState {
             agents,
             algos: std::sync::Arc::new(dashmap::DashMap::new()),
             algo_store,
+            algo_tasks: crate::algos::AlgoTasks::default(),
             algo_nonces: dashmap::DashMap::new(),
             listings: std::sync::Arc::new(dashmap::DashMap::new()),
             vaults: crate::vaults::VaultRegistry::new(),

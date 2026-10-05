@@ -6786,10 +6786,9 @@ async fn post_twap_algo(
     state
         .algos
         .insert(parent_id, std::sync::Arc::clone(&parent));
-    tokio::spawn(crate::algos::run_twap_task(
-        Arc::clone(&state),
-        std::sync::Arc::clone(&parent),
-    ));
+    state
+        .algo_tasks
+        .spawn(Arc::clone(&state), std::sync::Arc::clone(&parent));
 
     let snapshot = crate::algos::TwapParentSnapshot::from(&parent);
     let user_hex = user.to_hex();

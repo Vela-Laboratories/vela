@@ -670,10 +670,9 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     state
         .algos
         .insert(parent_id, std::sync::Arc::clone(&parent));
-    tokio::spawn(crate::algos::run_twap_task(
-        Arc::clone(state),
-        std::sync::Arc::clone(&parent),
-    ));
+    state
+        .algo_tasks
+        .spawn(Arc::clone(state), std::sync::Arc::clone(&parent));
 
     Ok(json!({
         "parent_id": parent_id,

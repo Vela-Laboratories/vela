@@ -522,6 +522,18 @@ async fn main() {
         }
     }
 
+    // Finish in-flight children before the final snapshot. Sleeping schedules
+    // keep their durable Running state for the next leader to resume.
+    if !shutdown_state
+        .algo_tasks
+        .drain(std::time::Duration::from_secs(30))
+        .await
+    {
+        shutdown_state
+            .storage_health
+            .fence("algorithm_shutdown", "algorithm tasks did not drain");
+    }
+
     // Stop the periodic publisher before creating the one final recovery
     // boundary. Otherwise it could interleave an unclean snapshot between the
     // final checkpoint and ENGINE_STOP.
