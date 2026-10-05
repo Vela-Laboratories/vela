@@ -257,3 +257,62 @@ impl AlgoStore {
 pub fn child_client_id(parent: u64, index: u32) -> String {
     format!("twap-{parent}-{index}")
 }
+
+impl AlgoStore {
+    pub async fn cancel(
+        &self,
+        id: u64,
+        owner: &str,
+        proof: serde_json::Value,
+    ) -> Result<bool, AlgoStoreError> {
+        let mut tx = self.transaction().await?;
+        let changed = sqlx::query("UPDATE api_algo_parents SET cancel_requested=TRUE,updated_at=now() WHERE namespace=$1 AND id=$2 AND owner=$3 AND status IN ('Running','RecoveryRequired') AND NOT cancel_requested")
+            .bind(&self.namespace).bind(id as i64).bind(owner.to_ascii_lowercase()).execute(&mut *tx).await?.rows_affected() == 1;
+        if changed {
+            Self::event(&mut tx, id as i64, "cancel", proof).await?;
+        }
+        tx.commit().await?;
+        Ok(changed)
+    }
+    pub async fn finish(
+        &self,
+        id: u64,
+        status: AlgoStatus,
+        reason: &str,
+    ) -> Result<(), AlgoStoreError> {
+        if status == AlgoStatus::Running {
+            return Err(AlgoStoreError::Conflict("terminal status required"));
+        }
+        let mut tx = self.transaction().await?;
+        let status = serde_json::to_value(status).map_err(|_| AlgoStoreError::Invalid)?;
+        let changed = sqlx::query("UPDATE api_algo_parents SET status=$3,updated_at=now() WHERE namespace=$1 AND id=$2 AND status IN ('Running','RecoveryRequired')")
+            .bind(&self.namespace).bind(id as i64).bind(status.as_str().ok_or(AlgoStoreError::Invalid)?).execute(&mut *tx).await?.rows_affected();
+        if changed == 1 {
+            Self::event(
+                &mut tx,
+                id as i64,
+                "terminal",
+                serde_json::json!({"status":status,"reason":reason}),
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+    pub async fn mark_uncertain(&self, id: u64, index: u32) -> Result<(), AlgoStoreError> {
+        let mut tx = self.transaction().await?;
+        sqlx::query("UPDATE api_algo_children SET state='indeterminate',updated_at=now() WHERE parent_id=$1 AND slice_index=$2 AND state='started'")
+            .bind(id as i64).bind(index as i32).execute(&mut *tx).await?;
+        sqlx::query("UPDATE api_algo_parents SET status='RecoveryRequired',updated_at=now() WHERE namespace=$1 AND id=$2 AND status='Running'")
+            .bind(&self.namespace).bind(id as i64).execute(&mut *tx).await?;
+        Self::event(
+            &mut tx,
+            id as i64,
+            "child_indeterminate",
+            serde_json::json!({"index":index}),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+}
