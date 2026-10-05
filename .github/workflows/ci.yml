@@ -16,7 +16,7 @@ env:
 jobs:
   managed-postgres-readiness:
     name: Managed PostgreSQL readiness preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Test provider-neutral fail-closed attestation validation
@@ -24,7 +24,7 @@ jobs:
 
   postgres-pitr:
     name: PostgreSQL 16 - PITR rehearsal
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Restore physical backup to named WAL point
@@ -32,7 +32,7 @@ jobs:
 
   rust:
     name: Rust — build, test, clippy, fmt
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
@@ -88,7 +88,7 @@ jobs:
 
   rust-security:
     name: Rust — cargo-audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # rustsec/audit-check posts a check-run via the API; without this
       # it fails with "Resource not accessible by integration".
@@ -106,7 +106,7 @@ jobs:
 
   secret-scan:
     name: Secrets — gitleaks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,7 +126,7 @@ jobs:
 
   contracts:
     name: Contracts — forge fmt, build, test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: contracts
@@ -170,7 +170,7 @@ jobs:
 
   contracts-coverage:
     name: Contracts — forge coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     defaults:
       run:
@@ -195,7 +195,7 @@ jobs:
 
   frontend:
     name: Frontend — build, lint, type-check, test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -224,7 +224,7 @@ jobs:
 
   frontend-audit:
     name: Frontend — full dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -240,7 +240,7 @@ jobs:
 
   bench:
     name: Benchmarks (dry run)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.99.0

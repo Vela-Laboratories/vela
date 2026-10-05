@@ -11,7 +11,7 @@ permissions:
 jobs:
   report:
     if: vars.VELA_DAILY_REPORT_ENABLED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: staging
     steps:
       - uses: actions/checkout@v4
