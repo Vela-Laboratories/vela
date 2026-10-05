@@ -212,6 +212,14 @@ pub type AlgoRegistry = Arc<DashMap<u64, Arc<TwapParent>>>;
 ///
 /// Returns the filled quantity from the response so the parent can
 /// accumulate `filled_quantity`.
+#[derive(Debug)]
+struct ChildOutcome {
+    filled: u64,
+    hash: [u8; 32],
+    rejected: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn submit_child_order(
     state: &AppState,
     user: types::UserId,
@@ -220,7 +228,8 @@ async fn submit_child_order(
     price: u64,
     quantity: u64,
     nonce: u64,
-) -> Result<u64, &'static str> {
+    client_order_id: Option<String>,
+) -> Result<ChildOutcome, &'static str> {
     let req = PostOrderRequest {
         user,
         market,
@@ -231,7 +240,7 @@ async fn submit_child_order(
         price,
         quantity,
         nonce,
-        client_order_id: None,
+        client_order_id,
         signature: vec![],
         stp: Default::default(),
         min_quantity: None,
@@ -260,20 +269,34 @@ async fn submit_child_order(
         .await
         .map_err(|_| "child outcome indeterminate")?
         .map_err(|_| "child response dropped")?;
-    if responses
+    summarize_child(&responses)
+}
+
+fn summarize_child(responses: &[types::Response]) -> Result<ChildOutcome, &'static str> {
+    use sha2::{Digest, Sha256};
+    let rejected = responses
         .iter()
-        .any(|r| matches!(r, types::Response::Error(_)))
-    {
-        return Err("child order rejected");
+        .any(|r| matches!(r, types::Response::Error(_)));
+    if responses.iter().any(|r| matches!(r,types::Response::Error(error) if error.code == types::ErrorCode::InternalError)) {
+        return Err("child outcome indeterminate");
     }
-    responses
+    let filled = responses
         .iter()
         .try_fold(0u64, |total, response| match response {
             types::Response::OrderFilled(fill) => total
                 .checked_add(fill.quantity)
                 .ok_or("child fill quantity overflow"),
             _ => Ok(total),
-        })
+        })?;
+    if rejected && filled > 0 {
+        return Err("child outcome indeterminate");
+    }
+    let encoded = serde_json::to_vec(responses).map_err(|_| "invalid child response")?;
+    Ok(ChildOutcome {
+        filled,
+        hash: Sha256::digest(encoded).into(),
+        rejected,
+    })
 }
 
 /// Long-running task: slices the parent's total quantity into `slices`
@@ -285,98 +308,176 @@ async fn submit_child_order(
 /// flips to `Failed` and the task exits.
 pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
     let user_id = match types::UserId::from_hex(&parent.user_address) {
-        Ok(u) => u,
+        Ok(user) => user,
         Err(_) => {
-            *parent.status.lock().unwrap() = AlgoStatus::Failed;
+            finish_parent(&state, &parent, AlgoStatus::Failed, "invalid owner").await;
             return;
         }
     };
     let market = types::MarketId(parent.market.clone());
-
-    let started = tokio::time::Instant::now();
+    let now_ms = wall_time_ms();
+    let instant = tokio::time::Instant::now();
+    let started = if now_ms >= parent.started_at_ms {
+        instant
+            .checked_sub(Duration::from_millis(now_ms - parent.started_at_ms))
+            .unwrap_or(instant)
+    } else {
+        instant + Duration::from_millis(parent.started_at_ms - now_ms)
+    };
     let deadline = started + Duration::from_secs(parent.duration_secs);
     let units = parent.total_quantity / parent.quantity_tick;
-    let base_slice_qty = units / u64::from(parent.slices) * parent.quantity_tick;
-    let mut remainder = units % u64::from(parent.slices);
-
-    for slice_ix in 0..parent.slices {
-        let offset_ms =
-            parent.duration_secs * 1_000 * u64::from(slice_ix) / u64::from(parent.slices);
+    let count = u64::from(parent.slices);
+    let first = parent.next_slice.load(Ordering::Acquire);
+    for index in first..parent.slices {
+        let offset = parent.duration_secs * 1_000 * u64::from(index) / count;
         tokio::select! {
-            _ = tokio::time::sleep_until(started + Duration::from_millis(offset_ms)) => {},
+            _ = tokio::time::sleep_until(started+Duration::from_millis(offset)) => {},
             _ = parent.cancel_notify.notified() => {},
+        }
+        if !state.storage_health.is_healthy() {
+            return;
+        }
+        if let Some(store) = &state.algo_store {
+            match store.get(parent.parent_id).await {
+                Ok(Some(row)) => parent.publish_durable(&row),
+                _ => {
+                    fence_parent(&state, &parent, "algorithm read failed");
+                    return;
+                }
+            }
+            if parent.snapshot_status() != AlgoStatus::Running {
+                return;
+            }
+        }
+        if parent.cancel_flag.load(Ordering::Acquire) {
+            finish_parent(&state, &parent, AlgoStatus::Canceled, "owner canceled").await;
+            return;
         }
         if tokio::time::Instant::now() >= deadline {
             break;
         }
-
-        if parent.cancel_flag.load(Ordering::Relaxed) {
-            *parent.status.lock().unwrap() = AlgoStatus::Canceled;
-            return;
-        }
-
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
         if state
             .agents
             .authorize_continuation(
                 &user_id,
                 &parent.authorized_signer,
-                now_ms,
+                wall_time_ms(),
                 &market,
                 parent.side,
             )
             .await
             .is_err()
         {
-            *parent.status.lock().unwrap() = AlgoStatus::Canceled;
+            finish_parent(
+                &state,
+                &parent,
+                AlgoStatus::Canceled,
+                "delegated authority unavailable",
+            )
+            .await;
             return;
         }
-        // Front-load the remainder so we don't leave a big final slice.
-        let mut slice_qty = base_slice_qty;
-        if remainder > 0 {
-            slice_qty += parent.quantity_tick;
-            remainder -= 1;
+        let quantity =
+            (units / count + u64::from(u64::from(index) < units % count)) * parent.quantity_tick;
+        if let Some(store) = &state.algo_store {
+            match store.start_child(parent.parent_id, index, quantity).await {
+                Ok(true) => {}
+                Ok(false) => return,
+                Err(_) => {
+                    fence_parent(&state, &parent, "child intent could not be recorded");
+                    return;
+                }
+            }
         }
-        if slice_qty == 0 {
-            continue;
-        }
-
-        // Price for the child slice: use the parent's price_limit if set,
-        // otherwise walk the far side up to a wide bound (fills won't
-        // happen past the actual touch on IOC).
-        let child_price = parent.price_limit.unwrap_or(match parent.side {
+        let price = parent.price_limit.unwrap_or(match parent.side {
             OrderSide::Bid => u64::MAX / 2,
             OrderSide::Ask => 1,
         });
-
         let outcome = submit_child_order(
             &state,
             user_id.clone(),
             market.clone(),
             parent.side,
-            child_price,
-            slice_qty,
-            parent.child_nonce_base + slice_ix as u64,
+            price,
+            quantity,
+            parent.child_nonce_base + u64::from(index),
+            Some(crate::algos_store::child_client_id(parent.parent_id, index)),
         )
         .await;
-        let filled = match outcome {
-            Ok(filled) if filled <= slice_qty => filled,
+        let outcome = match outcome {
+            Ok(outcome) if outcome.filled <= quantity => outcome,
             _ => {
-                *parent.status.lock().unwrap() = AlgoStatus::Failed;
+                if let Some(store) = &state.algo_store {
+                    if store.mark_uncertain(parent.parent_id, index).await.is_err() {
+                        fence_parent(&state, &parent, "uncertain child could not be persisted");
+                    }
+                    *parent.status.lock().unwrap() = AlgoStatus::RecoveryRequired;
+                } else {
+                    *parent.status.lock().unwrap() = AlgoStatus::Failed;
+                }
                 return;
             }
         };
-        parent.filled_quantity.fetch_add(filled, Ordering::Relaxed);
+        if let Some(store) = &state.algo_store {
+            match store
+                .complete_child(
+                    parent.parent_id,
+                    index,
+                    outcome.filled,
+                    &outcome.hash,
+                    outcome.rejected,
+                )
+                .await
+            {
+                Ok(row) => parent.publish_durable(&row),
+                Err(_) => {
+                    fence_parent(&state, &parent, "child result could not be persisted");
+                    return;
+                }
+            }
+            if parent.snapshot_status() != AlgoStatus::Running {
+                return;
+            }
+        } else {
+            parent
+                .filled_quantity
+                .fetch_add(outcome.filled, Ordering::Relaxed);
+            parent.next_slice.store(index + 1, Ordering::Release);
+            if outcome.rejected {
+                *parent.status.lock().unwrap() = AlgoStatus::Failed;
+                return;
+            }
+        }
     }
-
-    *parent.status.lock().unwrap() = if parent.cancel_flag.load(Ordering::Acquire) {
+    let status = if parent.cancel_flag.load(Ordering::Acquire) {
         AlgoStatus::Canceled
-    } else if parent.filled_quantity.load(Ordering::Relaxed) == parent.total_quantity {
+    } else if parent.filled_quantity.load(Ordering::Acquire) == parent.total_quantity {
         AlgoStatus::Completed
     } else {
         AlgoStatus::Incomplete
     };
+    finish_parent(&state, &parent, status, "schedule ended").await;
+}
+fn wall_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+fn fence_parent(state: &AppState, parent: &TwapParent, reason: &str) {
+    state.storage_health.fence("algorithm_storage", reason);
+    *parent.status.lock().unwrap() = AlgoStatus::RecoveryRequired;
+}
+async fn finish_parent(state: &AppState, parent: &TwapParent, status: AlgoStatus, reason: &str) {
+    if let Some(store) = &state.algo_store {
+        if store
+            .finish(parent.parent_id, status, reason)
+            .await
+            .is_err()
+        {
+            fence_parent(state, parent, "terminal outcome could not be persisted");
+            return;
+        }
+    }
+    *parent.status.lock().unwrap() = status;
 }

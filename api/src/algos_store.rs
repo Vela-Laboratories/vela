@@ -209,6 +209,7 @@ impl AlgoStore {
         index: u32,
         filled: u64,
         response_hash: &[u8; 32],
+        rejected: bool,
     ) -> Result<DurableParent, AlgoStoreError> {
         let mut tx = self.transaction().await?;
         let row = sqlx::query_as::<_, ParentRow>(&format!(
@@ -242,7 +243,9 @@ impl AlgoStore {
         sqlx::query("UPDATE api_algo_children SET state='complete',filled_quantity=$3::text::numeric,response_hash=$4,updated_at=now() WHERE parent_id=$1 AND slice_index=$2")
             .bind(id as i64).bind(index as i32).bind(filled.to_string()).bind(response_hash.as_slice()).execute(&mut *tx).await?;
         let next = index + 1;
-        let status = if parent.cancel_requested {
+        let status = if rejected {
+            "Failed"
+        } else if parent.cancel_requested {
             "Canceled"
         } else if total == parent.request.quantity {
             "Completed"
@@ -375,7 +378,7 @@ impl AlgoStore {
                     serde_json::to_vec(&receipts[0]).map_err(|_| AlgoStoreError::Invalid)?,
                 )
                 .into();
-                self.complete_child(parent.id, index as u32, filled, &hash)
+                self.complete_child(parent.id, index as u32, filled, &hash, false)
                     .await?;
             }
         }
