@@ -69,6 +69,7 @@ pub enum AlgoStatus {
     Incomplete,
     Canceled,
     Failed,
+    RecoveryRequired,
 }
 
 #[derive(Debug)]

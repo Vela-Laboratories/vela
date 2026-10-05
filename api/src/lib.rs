@@ -25,6 +25,7 @@ pub mod agents;
 pub mod agents_store;
 pub mod algo_request;
 pub mod algos;
+pub mod algos_store;
 pub mod anchor;
 pub mod auth;
 pub mod backtest_attest;
