@@ -6883,6 +6883,7 @@ async fn cancel_algo(
 
 async fn get_algo_status(
     Path(parent_id): Path<u64>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     match state.algos.get(&parent_id) {
@@ -6892,6 +6893,19 @@ async fn get_algo_status(
         )
             .into_response(),
         Some(p) => {
+            let owner = match UserId::from_hex(&p.user_address) {
+                Ok(owner) => owner,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ApiResponse::<()>::err("invalid stored owner")),
+                    )
+                        .into_response()
+                }
+            };
+            if let Some(response) = require_account_auth(&headers, &state, &owner) {
+                return response;
+            }
             let snap = crate::algos::TwapParentSnapshot::from(&p);
             (StatusCode::OK, Json(ApiResponse::ok(snap))).into_response()
         }
