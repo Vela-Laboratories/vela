@@ -675,7 +675,7 @@ impl IndexerStore {
 fn validate_new_deployment(input: &NewDeployment) -> Result<(), IndexerError> {
     let network_matches_chain = matches!(
         (input.chain_id, input.network.trim()),
-        (8453, "base") | (84532, "base-sepolia")
+        (8453, "base") | (84532, "base-sepolia") | (11155111, "ethereum-sepolia")
     );
     if !network_matches_chain
         || input.network.trim().is_empty()
@@ -687,7 +687,7 @@ fn validate_new_deployment(input: &NewDeployment) -> Result<(), IndexerError> {
         || !is_hex_bytes(&input.runtime_code_hash, 32)
     {
         return Err(IndexerError::Config(
-            "deployment registry values are malformed or not a supported Base network".to_owned(),
+            "deployment registry values are malformed or not a supported network".to_owned(),
         ));
     }
     Ok(())
@@ -2009,6 +2009,25 @@ fn stored_ledger_halt(deposit: &AuditableDeposit, error: LedgerError) -> Indexer
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deployment_network_must_match_supported_chain() {
+        let mut input = NewDeployment {
+            id: Uuid::new_v4(),
+            chain_id: 11155111,
+            network: "ethereum-sepolia".to_owned(),
+            vault_address: format!("0x{}", "11".repeat(20)),
+            deployment_version: "v3".to_owned(),
+            runtime_code_hash: format!("0x{}", "22".repeat(32)),
+            start_block: 0,
+        };
+        assert!(validate_new_deployment(&input).is_ok());
+        input.network = "base-sepolia".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.chain_id = 1;
+        input.network = "ethereum".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+    }
 
     fn config() -> Config {
         Config {
