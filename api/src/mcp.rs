@@ -601,11 +601,6 @@ async fn mcp_cancel_order(state: &Arc<AppState>, args: &Value) -> Result<Value, 
 }
 
 async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, String> {
-    if state.ledger.is_some() {
-        return Err(
-            "TWAP parents require durable recovery before authoritative ledger execution".into(),
-        );
-    }
     let address = arg_string(args, "address")?;
     let market = arg_string(args, "market")?;
     let side_str = arg_string(args, "side")?;
@@ -667,28 +662,11 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     .await
     .map_err(|_| "invalid signature".to_string())?;
 
-    crate::algos::reserve_parent_nonce(state, &address, nonce).map_err(str::to_owned)?;
-    let parent_id = crate::algos::next_parent_id();
-    let parent = std::sync::Arc::new(crate::algos::TwapParent {
-        parent_id,
-        authorized_signer,
-        user_address: address.to_lowercase(),
-        market,
-        side,
-        total_quantity: quantity,
-        filled_quantity: std::sync::atomic::AtomicU64::new(0),
-        price_limit,
-        duration_secs,
-        slices,
-        next_slice: std::sync::atomic::AtomicU32::new(0),
-        quantity_tick,
-        started_at_ms: now_ms,
-        status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
-        cancel_flag: std::sync::atomic::AtomicBool::new(false),
-        cancel_notify: tokio::sync::Notify::new(),
-        child_nonce_base: nonce + 1,
-        _phantom_signature: (),
-    });
+    let parent =
+        crate::algos::admit_parent(state, &request, authorized_signer, quantity_tick, now_ms)
+            .await
+            .map_err(|e| e.to_string())?;
+    let parent_id = parent.parent_id;
     state
         .algos
         .insert(parent_id, std::sync::Arc::clone(&parent));

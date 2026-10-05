@@ -6706,10 +6706,6 @@ async fn post_twap_algo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<crate::algo_request::TwapRequest>,
 ) -> impl IntoResponse {
-    if let Some(response) = reject_unjournaled_financial_route(&state, "TWAP parent execution") {
-        return response;
-    }
-
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => {
@@ -6723,8 +6719,6 @@ async fn post_twap_algo(
     if let Err(error) = body.validate() {
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(error))).into_response();
     }
-    let slices = body.slice_count();
-
     let quantity_tick = match body.market_tick(&state).await {
         Ok(tick) => tick,
         Err(error) => {
@@ -6774,33 +6768,21 @@ async fn post_twap_algo(
         }
     };
 
-    // Reserve a nonce block for child orders — starts one above the
-    // client's supplied nonce so master↔child nonces don't collide.
-    if let Err(error) = crate::algos::reserve_parent_nonce(&state, &body.address, body.nonce) {
-        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(error))).into_response();
-    }
-    let parent_id = crate::algos::next_parent_id();
-    let parent = std::sync::Arc::new(crate::algos::TwapParent {
-        parent_id,
-        authorized_signer,
-        user_address: body.address.to_lowercase(),
-        market: body.market.clone(),
-        side: body.side,
-        total_quantity: body.quantity,
-        filled_quantity: std::sync::atomic::AtomicU64::new(0),
-        price_limit: body.price_limit,
-        duration_secs: body.duration_secs,
-        slices,
-        next_slice: std::sync::atomic::AtomicU32::new(0),
-        quantity_tick,
-        started_at_ms: now_ms,
-        status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
-        cancel_flag: std::sync::atomic::AtomicBool::new(false),
-        cancel_notify: tokio::sync::Notify::new(),
-        child_nonce_base: body.nonce + 1,
-        _phantom_signature: (),
-    });
-
+    let parent =
+        match crate::algos::admit_parent(&state, &body, authorized_signer, quantity_tick, now_ms)
+            .await
+        {
+            Ok(parent) => parent,
+            Err(error) => {
+                let status = if matches!(error, crate::algos_store::AlgoStoreError::Conflict(_)) {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                };
+                return (status, Json(ApiResponse::<()>::err(error.to_string()))).into_response();
+            }
+        };
+    let parent_id = parent.parent_id;
     state
         .algos
         .insert(parent_id, std::sync::Arc::clone(&parent));

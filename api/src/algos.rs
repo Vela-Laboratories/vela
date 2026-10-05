@@ -481,3 +481,55 @@ async fn finish_parent(state: &AppState, parent: &TwapParent, status: AlgoStatus
     }
     *parent.status.lock().unwrap() = status;
 }
+
+pub async fn admit_parent(
+    state: &AppState,
+    request: &crate::algo_request::TwapRequest,
+    signer: types::UserId,
+    tick: u64,
+    now_ms: u64,
+) -> Result<Arc<TwapParent>, crate::algos_store::AlgoStoreError> {
+    use crate::algos_store::AlgoStoreError;
+    if let Some(store) = &state.algo_store {
+        return TwapParent::from_durable(&store.admit(request, &signer, tick, now_ms).await?);
+    }
+    if state.ledger.is_some() {
+        return Err(AlgoStoreError::Conflict("durable execution unavailable"));
+    }
+    reserve_parent_nonce(state, &request.address, request.nonce)
+        .map_err(AlgoStoreError::Conflict)?;
+    Ok(Arc::new(TwapParent {
+        parent_id: next_parent_id(),
+        authorized_signer: signer,
+        user_address: request.address.to_ascii_lowercase(),
+        market: request.market.clone(),
+        side: request.side,
+        total_quantity: request.quantity,
+        filled_quantity: AtomicU64::new(0),
+        price_limit: request.price_limit,
+        duration_secs: request.duration_secs,
+        slices: request.slice_count(),
+        next_slice: AtomicU32::new(0),
+        quantity_tick: tick,
+        started_at_ms: now_ms,
+        status: std::sync::Mutex::new(AlgoStatus::Running),
+        cancel_flag: AtomicBool::new(false),
+        cancel_notify: tokio::sync::Notify::new(),
+        child_nonce_base: request.nonce + 1,
+        _phantom_signature: (),
+    }))
+}
+
+pub async fn load_parent(
+    state: &AppState,
+    id: u64,
+) -> Result<Option<Arc<TwapParent>>, crate::algos_store::AlgoStoreError> {
+    if let Some(store) = &state.algo_store {
+        return store
+            .get(id)
+            .await?
+            .map(|row| TwapParent::from_durable(&row))
+            .transpose();
+    }
+    Ok(state.algos.get(&id).map(|p| Arc::clone(&p)))
+}
