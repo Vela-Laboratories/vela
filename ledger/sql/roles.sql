@@ -20,7 +20,9 @@ $$;
 -- Explicit SET membership permits ownership transfer on PostgreSQL 16+.
 DO $$
 BEGIN
-    EXECUTE format('GRANT vela_ledger_migrator TO %I WITH SET TRUE',current_user);
+    IF NOT pg_has_role(current_user,'vela_ledger_migrator','SET') THEN
+        EXECUTE format('GRANT vela_ledger_migrator TO %I WITH SET TRUE',current_user);
+    END IF;
 END
 $$;
 
