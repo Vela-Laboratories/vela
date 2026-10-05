@@ -216,6 +216,7 @@ jobs:
         run: |
           cmp lib/api-types.gen.ts ../sdk/typescript/src/schema.ts
           ./node_modules/.bin/tsc -p ../sdk/typescript/tsconfig.json
+          node --experimental-strip-types --test ../sdk/typescript/tests/client.test.ts
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
