@@ -341,15 +341,23 @@ impl AlgoStore {
             let pending: Vec<(i32,String)> = sqlx::query_as("SELECT slice_index,client_order_id FROM api_algo_children WHERE parent_id=$1 AND state<>'complete' ORDER BY slice_index")
                 .bind(parent.id as i64).fetch_all(&self.pool).await?;
             for (index, client_id) in pending {
-                let receipts: Vec<serde_json::Value> = sqlx::query_scalar("SELECT metadata FROM ledger_journal_transactions WHERE jsonb_path_exists(metadata, '$.effect_set.response_commitments[*].OrderPosted ? (@.client_order_id == $client_id)', jsonb_build_object('client_id',$1::text))")
+                let receipts: Vec<(serde_json::Value,Vec<u8>,String)> = sqlx::query_as("SELECT metadata,request_hash,idempotency_key FROM ledger_journal_transactions WHERE operation_type='trade' AND metadata->>'source'='matcher' AND jsonb_path_exists(metadata, '$.effect_set.response_commitments[*].OrderPosted ? (@.client_order_id == $client_id)', jsonb_build_object('client_id',$1::text))")
                     .bind(&client_id).fetch_all(&self.pool).await?;
                 if receipts.len() != 1 {
                     self.mark_uncertain(parent.id, index as u32).await?;
                     continue;
                 }
                 let effects: engine::FinancialEffectSet =
-                    serde_json::from_value(receipts[0]["effect_set"].clone())
+                    serde_json::from_value(receipts[0].0["effect_set"].clone())
                         .map_err(|_| AlgoStoreError::Invalid)?;
+                let encoded = serde_json::to_vec(&effects).map_err(|_| AlgoStoreError::Invalid)?;
+                let effect_hash: [u8; 32] = Sha256::digest(&encoded).into();
+                if effects.operation_type != "trade"
+                    || receipts[0].1.as_slice() != effect_hash
+                    || receipts[0].2 != format!("matcher-effect:{}", hex::encode(effect_hash))
+                {
+                    return Err(AlgoStoreError::Invalid);
+                }
                 let ids: Vec<_> = effects
                     .response_commitments
                     .iter()
@@ -370,12 +378,19 @@ impl AlgoStore {
                     .iter()
                     .filter(|fill| fill.taker_order_id == ids[0])
                     .try_fold(0u64, |total, fill| {
+                        if fill.taker.to_hex().to_ascii_lowercase()
+                            != parent.request.address.to_ascii_lowercase()
+                            || fill.market.0 != parent.request.market
+                            || fill.side != parent.request.side
+                        {
+                            return Err(AlgoStoreError::Invalid);
+                        }
                         total
                             .checked_add(fill.quantity)
                             .ok_or(AlgoStoreError::Invalid)
                     })?;
                 let hash: [u8; 32] = Sha256::digest(
-                    serde_json::to_vec(&receipts[0]).map_err(|_| AlgoStoreError::Invalid)?,
+                    serde_json::to_vec(&receipts[0].0).map_err(|_| AlgoStoreError::Invalid)?,
                 )
                 .into();
                 self.complete_child(parent.id, index as u32, filled, &hash, false)
