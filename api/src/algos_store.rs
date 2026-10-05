@@ -152,4 +152,54 @@ impl AlgoStore {
         .await?;
         rows.into_iter().map(DurableParent::try_from).collect()
     }
+    pub async fn start_child(
+        &self,
+        id: u64,
+        index: u32,
+        quantity: u64,
+    ) -> Result<bool, AlgoStoreError> {
+        let mut tx = self.transaction().await?;
+        let row = sqlx::query_as::<_, ParentRow>(&format!(
+            "{SELECT} WHERE namespace=$1 AND id=$2 FOR UPDATE"
+        ))
+        .bind(&self.namespace)
+        .bind(id as i64)
+        .fetch_one(&mut *tx)
+        .await?;
+        let parent = DurableParent::try_from(row)?;
+        if parent.status != AlgoStatus::Running || parent.cancel_requested {
+            return Ok(false);
+        }
+        if parent.next_slice != index || index >= parent.request.slice_count() {
+            return Err(AlgoStoreError::Conflict("unexpected child index"));
+        }
+        let units = parent.request.quantity / parent.quantity_tick;
+        let expected = (units / u64::from(parent.request.slice_count())
+            + u64::from(u64::from(index) < units % u64::from(parent.request.slice_count())))
+            * parent.quantity_tick;
+        if quantity != expected || quantity == 0 {
+            return Err(AlgoStoreError::Conflict(
+                "child quantity differs from signed schedule",
+            ));
+        }
+        let result = sqlx::query("INSERT INTO api_algo_children(parent_id,slice_index,client_order_id,quantity,state) VALUES ($1,$2,$3,$4::text::numeric,'started') ON CONFLICT (parent_id,slice_index) DO NOTHING")
+            .bind(id as i64).bind(index as i32).bind(child_client_id(id,index)).bind(quantity.to_string()).execute(&mut *tx).await?;
+        if result.rows_affected() != 1 {
+            return Err(AlgoStoreError::Conflict("child intent already dispatched"));
+        }
+        Self::event(
+            &mut tx,
+            id as i64,
+            "child_started",
+            serde_json::json!({"index":index,"quantity":quantity}),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+}
+
+/// Valid engine client IDs bind each persisted intent to one child request.
+pub fn child_client_id(parent: u64, index: u32) -> String {
+    format!("twap-{parent}-{index}")
 }
