@@ -1,0 +1,72 @@
+---
+title: "Execution algorithms"
+description: "Signed TWAP parents, execution limits and private progress."
+---
+
+## Availability
+
+TWAP parents currently live in memory. They are available in development and
+in the testnet demo when no authoritative PostgreSQL ledger is configured.
+An authoritative-ledger instance returns `501` for parent creation until
+durable parent recovery is implemented. A process restart loses parents and
+parent nonce history; unattended cross-restart execution is not supported.
+
+## Create a parent
+
+`POST /v1/orders/algo/twap` takes `address`, `market`, `side` (`Bid` or `Ask`),
+`quantity`, `duration_secs`, `price_limit`, optional `slices`, `nonce`,
+`signature`, and `signature_version: 2`.
+
+Quantity and price use fixed-point 1e6 units. The price limit is required and
+positive; for buys it is the maximum price, and for sells the minimum price.
+Market tick/lot sizes and minimum order size apply to every child slice.
+There are 1 to 240 slices, defaulting to 12, over 1 to 86400 seconds. Remainder
+lots go to the earliest slices. Execution uses IOC orders and does not retry
+unfilled portions.
+
+Sign this compact UTF-8 JSON array with EIP-191 `personal_sign`:
+
+```text
+["vela:algo:twap:v2",lowercaseAddress,market,side,quantity,durationSecs,priceLimit,effectiveSlices,nonce]
+```
+
+Every execution field is bound to the signature. Legacy v1 signatures are
+rejected. The parent reserves child nonces `nonce + 1` through `nonce + slices`;
+choose non-overlapping ranges for independent requests. Reusing a parent nonce
+for the same address within the process lifetime returns `409`.
+
+Delegated submissions must permit the market, side and IOC type. Notional
+checks use the signed limit price times total quantity in quote units. Scope,
+revocation and expiry are checked again before each child dispatch. A child
+already submitted when revocation or cancellation occurs may still execute.
+
+## Read progress
+
+`GET /v1/orders/algo/{parent_id}` and `GET /v1/account/{address}/algos` require
+the owning master account's bearer session. Other accounts receive `403`.
+The account list is ordered by newest parent first.
+
+Snapshots include `filled_quantity`, `remaining_quantity`, and status:
+
+| Status | Meaning |
+|---|---|
+| Running | Scheduled execution is active |
+| Completed | The entire requested quantity filled |
+| Incomplete | The schedule ended with some quantity unfilled |
+| Canceled | Cancellation or withdrawn agent authority stopped future slices |
+| Failed | A child was rejected or its result could not be confirmed |
+
+Failures and timeouts stop further child dispatch. An indeterminate child
+outcome can still settle after the parent stops; consult account fills and
+balances before attempting another parent.
+
+## Cancel
+
+`POST /v1/orders/algo/cancel` takes `parent_id`, `address`, `nonce` and an
+EIP-191 signature over `vela:algo:cancel:{parent_id}:{nonce}`. The owner or
+an active delegated signer can cancel. Waiting schedules wake immediately.
+The response's `canceled` field is false for a parent that is already terminal.
+
+MCP `place_twap` accepts the same signed v2 fields and uses the same validation.
+The TypeScript SDK supplies canonical signing helpers and lifecycle methods;
+the Python SDK offers read-only progress and history access.

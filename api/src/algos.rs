@@ -11,15 +11,15 @@
 //! Design
 //! ------
 //! - The client submits a **parent** with total quantity, direction,
-//!   duration, and an optional price limit. The parent has a stable
+//!   duration, and a required price limit. The parent has a stable
 //!   `parent_id` (u64) the client can query and cancel by.
 //! - A tokio task is spawned per parent. It divides `total_quantity`
 //!   into `slices` equal chunks (default 12; overridable via param)
-//!   and sleeps `duration_secs / slices` between each. Each slice
-//!   submits an **IOC** child order at the current market touch bounded
+//!   and schedules absolute monotonic deadlines for each slice. Each slice
+//!   submits an **IOC** child order bounded
 //!   by `price_limit`, and records the fill quantity into the parent.
 //! - Cancel: `POST /orders/algo/cancel { parent_id }` flips an atomic
-//!   flag; the running task observes it before the next slice and
+//!   flag and wakes the scheduler; the task observes it before the next slice and
 //!   exits.
 //! - v1 does **not** randomize slice timing. That's a follow-up. Any
 //!   randomization must be documented and deterministic (seed-based)
