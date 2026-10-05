@@ -155,6 +155,7 @@ pub struct AppState {
     pub agents: Arc<crate::agents::AgentRegistry>,
     /// Active server-side algo parents (TWAP, etc). Keyed by parent_id.
     pub algos: crate::algos::AlgoRegistry,
+    pub algo_store: Option<crate::algos_store::AlgoStore>,
     pub algo_nonces: dashmap::DashMap<(String, u64), ()>,
     /// Pending / accepted / rejected permissionless market listings.
     pub listings: crate::listings::ListingRegistry,
@@ -439,6 +440,20 @@ impl AppState {
             }
             None => crate::agents::AgentRegistry::new(),
         };
+        let algo_store = ledger
+            .as_ref()
+            .zip(leadership.as_ref())
+            .map(|(ledger, leader)| {
+                crate::algos_store::AlgoStore::new(
+                    ledger.pool().clone(),
+                    format!(
+                        "{}:{}",
+                        runtime_mode.as_str(),
+                        std::env::var("VELA_CHAIN_ID").unwrap_or_else(|_| "11155111".into())
+                    ),
+                    leader.token(),
+                )
+            });
         let state = Arc::new(AppState {
             runtime_mode,
             ledger,
@@ -493,6 +508,7 @@ impl AppState {
             batch_metrics: Arc::clone(&batch_metrics),
             agents,
             algos: std::sync::Arc::new(dashmap::DashMap::new()),
+            algo_store,
             algo_nonces: dashmap::DashMap::new(),
             listings: std::sync::Arc::new(dashmap::DashMap::new()),
             vaults: crate::vaults::VaultRegistry::new(),
