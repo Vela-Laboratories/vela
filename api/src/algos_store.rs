@@ -111,6 +111,12 @@ impl AlgoStore {
         now_ms: u64,
     ) -> Result<DurableParent, AlgoStoreError> {
         request.validate().map_err(AlgoStoreError::Conflict)?;
+        if tick == 0 || !request.quantity.is_multiple_of(tick) {
+            return Err(AlgoStoreError::Conflict("invalid lot size"));
+        }
+        if request.quantity / tick < u64::from(request.slice_count()) {
+            return Err(AlgoStoreError::Conflict("not enough lots for schedule"));
+        }
         let mut tx = self.transaction().await?;
         let owner = request.address.to_ascii_lowercase();
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")

@@ -49,6 +49,12 @@ BEGIN
     IF NEW.next_slice < OLD.next_slice OR NEW.filled_quantity < OLD.filled_quantity OR (OLD.cancel_requested AND NOT NEW.cancel_requested) THEN
         RAISE EXCEPTION 'algorithm progress cannot regress';
     END IF;
+    IF OLD.status IN ('Completed','Incomplete','Canceled','Failed') AND NEW.status <> OLD.status THEN
+        RAISE EXCEPTION 'terminal algorithm cannot resume';
+    END IF;
+    IF NEW.filled_quantity > (NEW.request->>'quantity')::numeric OR NEW.next_slice > COALESCE((NEW.request->>'slices')::integer,12) THEN
+        RAISE EXCEPTION 'algorithm progress exceeds signed request';
+    END IF;
     RETURN NEW;
 END $$;
 CREATE TRIGGER api_algo_parent_guard BEFORE UPDATE ON api_algo_parents
