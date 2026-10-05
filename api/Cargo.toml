@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "engine-recovery"
 path = "src/bin/engine_recovery.rs"
 
+[[bin]]
+name = "testnet-custody-sign"
+path = "src/bin/testnet_custody_sign.rs"
+
 [dependencies]
 types = { workspace = true }
 engine = { workspace = true }
