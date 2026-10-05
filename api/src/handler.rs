@@ -251,6 +251,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/account/:address/balances", get(get_balances))
         .route("/account/:address/orders", get(get_open_orders))
         .route("/account/:address/fills", get(get_account_fills))
+        .route("/account/:address/algos", get(list_account_algos))
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
         .route("/orders/:order_id", get(get_order_by_id))
@@ -290,6 +291,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/account/:address/withdrawals", get(get_withdrawals))
         .route("/account/:address/orders", get(get_open_orders))
         .route("/account/:address/fills", get(get_account_fills))
+        .route("/account/:address/algos", get(list_account_algos))
         .route(
             "/account/:address/orders/by-client-id/:client_id",
             get(get_order_by_client_id),
@@ -6879,6 +6881,35 @@ async fn cancel_algo(
         }))),
     )
         .into_response()
+}
+
+async fn list_account_algos(
+    Path(address): Path<String>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let user = match UserId::from_hex(&address) {
+        Ok(user) => user,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("invalid address")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &user) {
+        return response;
+    }
+    let owner = user.to_hex().to_ascii_lowercase();
+    let mut parents: Vec<_> = state
+        .algos
+        .iter()
+        .filter(|p| p.user_address == owner)
+        .map(|p| crate::algos::TwapParentSnapshot::from(&p))
+        .collect();
+    parents.sort_by_key(|p| std::cmp::Reverse(p.parent_id));
+    (StatusCode::OK, Json(ApiResponse::ok(parents))).into_response()
 }
 
 async fn get_algo_status(
