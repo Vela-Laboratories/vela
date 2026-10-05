@@ -64,7 +64,7 @@ balances before attempting another parent.
 
 `POST /v1/orders/algo/cancel` takes `parent_id`, `address`, `nonce` and an
 EIP-191 signature over `vela:algo:cancel:{parent_id}:{nonce}`. The owner or
-an active delegated signer can cancel. Waiting schedules wake immediately.
+an active delegated signer permitted for the parent market, side and IOC type can cancel. Waiting schedules wake immediately.
 The response's `canceled` field is false for a parent that is already terminal.
 
 MCP `place_twap` accepts the same signed v2 fields and uses the same validation.

@@ -1,7 +1,8 @@
 # Execution and SDK batch
 
-Released 2026-10-05. This batch follows `a723afe` and contains 35 implementation,
-test and documentation commits plus this release checklist.
+Released 2026-10-05. This batch follows `a723afe` and contains 35 initial implementation,
+test and documentation commits plus this release checklist. A subsequent fix
+also applies parent market/side/IOC scope to delegated cancellation.
 
 ## Delivered
 

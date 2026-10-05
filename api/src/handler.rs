@@ -6859,13 +6859,16 @@ async fn cancel_algo(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if crate::agents::verify_master_or_agent_async(
+    if crate::agents::verify_master_or_agent_scoped_async(
         msg.into_bytes(),
         body.signature.clone(),
         body.address.clone(),
         0,
         now_ms,
         Arc::clone(&state.agents),
+        MarketId(parent.market.clone()),
+        parent.side,
+        types::OrderType::ImmediateOrCancel,
     )
     .await
     .is_err()

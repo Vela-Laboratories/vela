@@ -1585,3 +1585,46 @@ async fn twap_continuation_fails_after_agent_expiry_revocation_and_scope_change(
         .await
         .is_ok());
 }
+
+#[tokio::test]
+async fn scoped_agent_cannot_cancel_parent_in_another_market() {
+    use api::agents::{AgentDelegation, CapabilityScope};
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let state =
+        AppState::new_with_runtime(funded_engine(), make_wal(), types::RuntimeMode::Development);
+    let (agent_key, agent_address) = wallet(2);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    state
+        .agents
+        .register_signed(AgentDelegation {
+            master: types::UserId::from_hex(&user_addr()).unwrap(),
+            agent: types::UserId::from_hex(&agent_address).unwrap(),
+            expires_at_ms: now_ms + 60_000,
+            max_notional_per_order: u64::MAX,
+            revoked: false,
+            nonce: 1,
+            scope: CapabilityScope {
+                allowed_markets: Some(vec![MarketId::new("ETH", "USDC")]),
+                ..Default::default()
+            },
+        })
+        .unwrap();
+    let server = TestServer::new(api::build_router(state)).unwrap();
+    let created = server
+        .post("/v1/orders/algo/twap")
+        .json(&twap_request())
+        .await;
+    created.assert_status_ok();
+    let parent_id = created.json::<Value>()["data"]["parent_id"]
+        .as_u64()
+        .unwrap();
+    let nonce = 1000;
+    let message = format!("vela:algo:cancel:{parent_id}:{nonce}");
+    server.post("/v1/orders/algo/cancel").json(&json!({"address":user_addr(),"parent_id":parent_id,"nonce":nonce,"signature":sign_personal(&agent_key,message.as_bytes())})).await.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+    server.post("/v1/orders/algo/cancel").json(&json!({"address":user_addr(),"parent_id":parent_id,"nonce":nonce,"signature":sign_personal(&wallet(1).0,message.as_bytes())})).await.assert_status_ok();
+}
