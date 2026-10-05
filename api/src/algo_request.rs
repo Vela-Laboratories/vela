@@ -36,6 +36,9 @@ impl TwapRequest {
         if !matches!(self.price_limit, Some(1..)) {
             return Err("a positive price_limit is required");
         }
+        self.nonce
+            .checked_add(u64::from(self.slice_count()))
+            .ok_or("child nonce range overflows")?;
         Ok(())
     }
     pub fn signing_message(&self) -> Vec<u8> {

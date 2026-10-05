@@ -6773,7 +6773,7 @@ async fn post_twap_algo(
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
         cancel_flag: std::sync::atomic::AtomicBool::new(false),
-        child_nonce_base: body.nonce.saturating_add(1),
+        child_nonce_base: body.nonce + 1,
         _phantom_signature: (),
     });
 
