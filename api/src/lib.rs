@@ -23,6 +23,7 @@ pub mod agent_schema;
 pub mod agent_tox;
 pub mod agents;
 pub mod agents_store;
+pub mod algo_request;
 pub mod algos;
 pub mod anchor;
 pub mod auth;
