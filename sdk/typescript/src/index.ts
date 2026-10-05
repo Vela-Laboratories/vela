@@ -106,6 +106,14 @@ export class VelaClient {
     return this.request(`/account/${encodeURIComponent(address)}/balances`)
   }
 
+  orders(address: string): Promise<OpenOrder[]> {
+    return this.request(`/account/${encodeURIComponent(address)}/orders`)
+  }
+
+  fills(address: string): Promise<AccountFill[]> {
+    return this.request(`/account/${encodeURIComponent(address)}/fills`)
+  }
+
   portfolio(address: string, method: 'fifo' | 'hifo' = 'fifo'): Promise<Portfolio> {
     return this.request(`/portfolio/${encodeURIComponent(address)}?method=${method}`)
   }
@@ -201,4 +209,18 @@ export function algoCancelSigningMessage(parentId: number, nonce: number): strin
   assertSafeId(parentId)
   assertSafeId(nonce)
   return `vela:algo:cancel:${parentId}:${nonce}`
+}
+
+export type AccountFill = components['schemas']['AccountFillResponse']
+export interface OpenOrder {
+  id: number
+  market: string
+  side: string
+  order_type: string
+  price: string
+  quantity: string
+  filled_quantity: string
+  display_quantity: string | null
+  min_quantity: string | null
+  stp: string
 }
