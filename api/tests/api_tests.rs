@@ -1511,3 +1511,77 @@ async fn twap_replay_private_progress_and_prompt_cancel() {
     }
     panic!("cancellation did not wake the parent before its 30-second next slice");
 }
+
+#[tokio::test]
+async fn twap_empty_book_finishes_incomplete_with_exact_remaining_quantity() {
+    let server = test_server(funded_engine());
+    let mut request = twap_request();
+    request.slices = Some(1);
+    request.duration_secs = 1;
+    request.signature = sign_personal(&wallet(1).0, &request.signing_message());
+    let created = server.post("/v1/orders/algo/twap").json(&request).await;
+    created.assert_status_ok();
+    let parent_id = created.json::<Value>()["data"]["parent_id"]
+        .as_u64()
+        .unwrap();
+    let token = user_auth_token(&server).await;
+    for _ in 0..300 {
+        let status = server
+            .get(&format!("/v1/orders/algo/{parent_id}"))
+            .add_header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+            .await;
+        let body = status.json::<Value>();
+        if body["data"]["status"] != "Running" {
+            assert_eq!(body["data"]["status"], "Incomplete");
+            assert_eq!(body["data"]["filled_quantity"], 0);
+            assert_eq!(body["data"]["remaining_quantity"], QUANTITY_SCALE);
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("single-slice parent never reached a terminal state");
+}
+
+#[tokio::test]
+async fn twap_continuation_fails_after_agent_expiry_revocation_and_scope_change() {
+    use api::agents::{AgentDelegation, AgentRegistry, CapabilityScope};
+    let registry = AgentRegistry::new();
+    let master = types::UserId::from_hex(&wallet(1).1).unwrap();
+    let agent = types::UserId::from_hex(&wallet(2).1).unwrap();
+    let market = MarketId::new("BTC", "USDC");
+    let delegation = AgentDelegation {
+        master: master.clone(),
+        agent: agent.clone(),
+        expires_at_ms: 100,
+        max_notional_per_order: 1_000_000,
+        revoked: false,
+        nonce: 1,
+        scope: CapabilityScope::default(),
+    };
+    registry.register_signed(delegation.clone()).unwrap();
+    assert!(registry
+        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .await
+        .is_ok());
+    assert!(registry
+        .authorize_continuation(&master, &agent, 100, &market, OrderSide::Bid)
+        .await
+        .is_err());
+    assert!(registry.revoke(&master, &agent, 2));
+    assert!(registry
+        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .await
+        .is_err());
+    let mut changed = delegation;
+    changed.nonce = 3;
+    changed.scope.allowed_sides = Some(vec![OrderSide::Ask]);
+    registry.register_signed(changed).unwrap();
+    assert!(registry
+        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .await
+        .is_err());
+    assert!(registry
+        .authorize_continuation(&master, &master, 100, &market, OrderSide::Bid)
+        .await
+        .is_ok());
+}
