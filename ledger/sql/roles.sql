@@ -16,6 +16,14 @@ BEGIN
 END
 $$;
 
+-- Managed Postgres administrators may have CREATEROLE without superuser.
+-- Explicit SET membership permits ownership transfer on PostgreSQL 16+.
+DO $$
+BEGIN
+    EXECUTE format('GRANT vela_ledger_migrator TO %I WITH SET TRUE',current_user);
+END
+$$;
+
 ALTER SCHEMA public OWNER TO vela_ledger_migrator;
 
 DO $$
