@@ -4,6 +4,61 @@
  */
 
 export interface paths {
+    "/account/{address}/algos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List execution parents for an authenticated account */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Parents, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AlgoSnapshot"][];
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Missing or unauthorized wallet session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or unauthorized wallet session */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account/{address}/balances": {
         parameters: {
             query?: never;
@@ -1178,7 +1233,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelAlgoBody"];
+                };
+            };
             responses: {
                 /** @description Canceled */
                 200: {
@@ -1225,6 +1284,34 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -1252,8 +1339,27 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description TWAP parent status */
+                /** @description Owner-authenticated parent progress */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AlgoSnapshot"];
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Missing or unauthorized wallet session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or unauthorized wallet session */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1891,6 +1997,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/account/{address}/algos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List execution parents for an authenticated account */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Parents, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AlgoSnapshot"][];
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Missing or unauthorized wallet session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or unauthorized wallet session */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account/{address}/balances": {
         parameters: {
             query?: never;
@@ -2248,6 +2409,165 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orders/algo/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a running algo by parent_id */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelAlgoBody"];
+                };
+            };
+            responses: {
+                /** @description Canceled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orders/algo/twap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a server-side TWAP */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwapAlgoBody"];
+                };
+            };
+            responses: {
+                /** @description parent_id + status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid request, signature, replay, or unavailable durable parent execution */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orders/algo/{parent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Algo snapshot */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    parent_id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Owner-authenticated parent progress */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AlgoSnapshot"];
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Missing or unauthorized wallet session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or unauthorized wallet session */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2864,6 +3184,22 @@ export interface components {
             /** Format: int64 */
             timestamp: number;
         };
+        AlgoSnapshot: {
+            duration_secs: number;
+            filled_quantity: number;
+            market: string;
+            parent_id: number;
+            price_limit: number | null;
+            remaining_quantity: number;
+            /** @enum {string} */
+            side: "bid" | "ask";
+            slices: number;
+            started_at_ms: number;
+            /** @enum {string} */
+            status: "Running" | "Completed" | "Incomplete" | "Canceled" | "Failed";
+            total_quantity: number;
+            user: string;
+        };
         ApiResponse: {
             data?: unknown;
             error?: string;
@@ -2899,6 +3235,12 @@ export interface components {
             borrow_value_micro_usdc: string;
             supply_native: string;
             supply_value_micro_usdc: string;
+        };
+        CancelAlgoBody: {
+            address: string;
+            nonce: number;
+            parent_id: number;
+            signature: string;
         };
         CancelOrderBody: {
             address: string;
@@ -3144,11 +3486,13 @@ export interface components {
             duration_secs: number;
             market: string;
             nonce: number;
-            price_limit?: number;
+            price_limit: number;
             quantity: number;
             /** @enum {string} */
             side: "Bid" | "Ask";
             signature: string;
+            /** @enum {integer} */
+            signature_version: 2;
             /** @default 12 */
             slices: number;
         };

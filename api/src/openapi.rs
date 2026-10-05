@@ -663,17 +663,18 @@ pub fn openapi_spec() -> serde_json::Value {
                 },
                 "TwapAlgoBody": {
                     "type": "object",
-                    "required": ["address", "market", "side", "quantity", "duration_secs", "nonce", "signature"],
+                    "required": ["address", "market", "side", "quantity", "duration_secs", "nonce", "signature", "signature_version", "price_limit"],
                     "properties": {
                         "address": { "type": "string" },
                         "market": { "type": "string" },
                         "side": { "type": "string", "enum": ["Bid", "Ask"] },
                         "quantity": { "type": "integer" },
-                        "duration_secs": { "type": "integer" },
-                        "price_limit": { "type": "integer" },
-                        "slices": { "type": "integer", "default": 12 },
+                        "duration_secs": { "type": "integer", "minimum": 1, "maximum": 86400 },
+                        "price_limit": { "type": "integer", "minimum": 1 },
+                        "slices": { "type": "integer", "default": 12, "minimum": 1, "maximum": 240 },
                         "nonce": { "type": "integer" },
-                        "signature": { "type": "string" }
+                        "signature": { "type": "string" },
+                        "signature_version": { "type": "integer", "enum": [2] }
                     }
                 },
                 "MarketResponse": {
@@ -1074,9 +1075,47 @@ pub fn openapi_spec() -> serde_json::Value {
             "auth": "Send { type: 'auth', address, signature, timestamp } after connect. `signature` covers `vela:ws:{address}:{timestamp}` via personal_sign."
         }
     });
+    spec["components"]["schemas"]["AlgoSnapshot"] = serde_json::json!({
+        "type": "object",
+        "required": ["parent_id","user","market","side","total_quantity","filled_quantity","remaining_quantity","price_limit","duration_secs","slices","started_at_ms","status"],
+        "properties": {
+            "parent_id": {"type":"integer"}, "user":{"type":"string"}, "market":{"type":"string"},
+            "side":{"type":"string","enum":["bid","ask"]}, "total_quantity":{"type":"integer"},
+            "filled_quantity":{"type":"integer"}, "remaining_quantity":{"type":"integer"},
+            "price_limit":{"type":"integer","nullable":true}, "duration_secs":{"type":"integer"},
+            "slices":{"type":"integer"}, "started_at_ms":{"type":"integer"},
+            "status":{"type":"string","enum":["Running","Completed","Incomplete","Canceled","Failed"]}
+        }
+    });
+    spec["components"]["schemas"]["CancelAlgoBody"] = serde_json::json!({
+        "type":"object", "required":["parent_id","address","nonce","signature"],
+        "properties":{"parent_id":{"type":"integer"},"address":{"type":"string"},"nonce":{"type":"integer"},"signature":{"type":"string"}}
+    });
+    spec["paths"]["/orders/algo/cancel"]["post"]["requestBody"] = serde_json::json!({"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CancelAlgoBody"}}}});
+    spec["paths"]["/orders/algo/{parent_id}"]["get"]["security"] =
+        serde_json::json!([{"BearerAuth":[]}]);
+    spec["paths"]["/orders/algo/{parent_id}"]["get"]["responses"]["200"] = serde_json::json!({"description":"Owner-authenticated parent progress","content":{"application/json":{"schema":{"type":"object","required":["ok","data"],"properties":{"ok":{"type":"boolean"},"data":{"$ref":"#/components/schemas/AlgoSnapshot"}}}}}});
+    spec["paths"]["/account/{address}/algos"] = serde_json::json!({"get":{
+        "summary":"List execution parents for an authenticated account", "security":[{"BearerAuth":[]}],
+        "parameters":[{"name":"address","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"Parents, newest first","content":{"application/json":{"schema":{"type":"object","required":["ok","data"],"properties":{"ok":{"type":"boolean"},"data":{"type":"array","items":{"$ref":"#/components/schemas/AlgoSnapshot"}}}}}}}}
+    }});
+    for path in ["/orders/algo/{parent_id}", "/account/{address}/algos"] {
+        for status in ["401", "403"] {
+            spec["paths"][path]["get"]["responses"][status] =
+                serde_json::json!({"description":"Missing or unauthorized wallet session"});
+        }
+    }
+    for status in ["400", "401", "409", "501"] {
+        spec["paths"]["/orders/algo/twap"]["post"]["responses"][status] = serde_json::json!({"description":"Invalid request, signature, replay, or unavailable durable parent execution"});
+    }
     // Expose the versioned router using the same operation contracts as the
     // legacy paths. Both route sets are exercised by API contract tests.
     for path in [
+        "/orders/algo/twap",
+        "/orders/algo/cancel",
+        "/orders/algo/{parent_id}",
+        "/account/{address}/algos",
         "/markets",
         "/markets/{market}/book",
         "/account/{address}/balances",

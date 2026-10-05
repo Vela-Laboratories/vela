@@ -55,6 +55,73 @@
         ],
         "type": "object"
       },
+      "AlgoSnapshot": {
+        "properties": {
+          "duration_secs": {
+            "type": "integer"
+          },
+          "filled_quantity": {
+            "type": "integer"
+          },
+          "market": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "integer"
+          },
+          "price_limit": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "remaining_quantity": {
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "bid",
+              "ask"
+            ],
+            "type": "string"
+          },
+          "slices": {
+            "type": "integer"
+          },
+          "started_at_ms": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "Running",
+              "Completed",
+              "Incomplete",
+              "Canceled",
+              "Failed"
+            ],
+            "type": "string"
+          },
+          "total_quantity": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent_id",
+          "user",
+          "market",
+          "side",
+          "total_quantity",
+          "filled_quantity",
+          "remaining_quantity",
+          "price_limit",
+          "duration_secs",
+          "slices",
+          "started_at_ms",
+          "status"
+        ],
+        "type": "object"
+      },
       "ApiResponse": {
         "properties": {
           "data": {},
@@ -190,6 +257,29 @@
           "borrow_native",
           "supply_value_micro_usdc",
           "borrow_value_micro_usdc"
+        ],
+        "type": "object"
+      },
+      "CancelAlgoBody": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "integer"
+          },
+          "parent_id": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent_id",
+          "address",
+          "nonce",
+          "signature"
         ],
         "type": "object"
       },
@@ -1033,6 +1123,8 @@
             "type": "string"
           },
           "duration_secs": {
+            "maximum": 86400,
+            "minimum": 1,
             "type": "integer"
           },
           "market": {
@@ -1042,6 +1134,7 @@
             "type": "integer"
           },
           "price_limit": {
+            "minimum": 1,
             "type": "integer"
           },
           "quantity": {
@@ -1057,8 +1150,16 @@
           "signature": {
             "type": "string"
           },
+          "signature_version": {
+            "enum": [
+              2
+            ],
+            "type": "integer"
+          },
           "slices": {
             "default": 12,
+            "maximum": 240,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -1069,7 +1170,9 @@
           "quantity",
           "duration_secs",
           "nonce",
-          "signature"
+          "signature",
+          "signature_version",
+          "price_limit"
         ],
         "type": "object"
       },
@@ -1290,6 +1393,59 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/account/{address}/algos": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/AlgoSnapshot"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Parents, newest first"
+          },
+          "401": {
+            "description": "Missing or unauthorized wallet session"
+          },
+          "403": {
+            "description": "Missing or unauthorized wallet session"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List execution parents for an authenticated account"
+      }
+    },
     "/account/{address}/balances": {
       "get": {
         "parameters": [
@@ -1977,6 +2133,16 @@
     },
     "/orders/algo/cancel": {
       "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelAlgoBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Canceled"
@@ -2000,6 +2166,18 @@
         "responses": {
           "200": {
             "description": "parent_id + status"
+          },
+          "400": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "401": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "409": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "501": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
           }
         },
         "summary": "Start a server-side TWAP"
@@ -2019,9 +2197,39 @@
         ],
         "responses": {
           "200": {
-            "description": "TWAP parent status"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AlgoSnapshot"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Owner-authenticated parent progress"
+          },
+          "401": {
+            "description": "Missing or unauthorized wallet session"
+          },
+          "403": {
+            "description": "Missing or unauthorized wallet session"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Algo snapshot"
       }
     },
@@ -2378,6 +2586,59 @@
         "summary": "Recent fills for one market"
       }
     },
+    "/v1/account/{address}/algos": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/AlgoSnapshot"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Parents, newest first"
+          },
+          "401": {
+            "description": "Missing or unauthorized wallet session"
+          },
+          "403": {
+            "description": "Missing or unauthorized wallet session"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List execution parents for an authenticated account"
+      }
+    },
     "/v1/account/{address}/balances": {
       "get": {
         "parameters": [
@@ -2607,6 +2868,108 @@
           }
         },
         "summary": "Place a signed order (master or agent-wallet)"
+      }
+    },
+    "/v1/orders/algo/cancel": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelAlgoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Canceled"
+          }
+        },
+        "summary": "Cancel a running algo by parent_id"
+      }
+    },
+    "/v1/orders/algo/twap": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwapAlgoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "parent_id + status"
+          },
+          "400": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "401": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "409": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          },
+          "501": {
+            "description": "Invalid request, signature, replay, or unavailable durable parent execution"
+          }
+        },
+        "summary": "Start a server-side TWAP"
+      }
+    },
+    "/v1/orders/algo/{parent_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AlgoSnapshot"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Owner-authenticated parent progress"
+          },
+          "401": {
+            "description": "Missing or unauthorized wallet session"
+          },
+          "403": {
+            "description": "Missing or unauthorized wallet session"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Algo snapshot"
       }
     },
     "/v1/orders/cancel": {
