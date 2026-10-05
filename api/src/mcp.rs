@@ -199,7 +199,7 @@ fn tool_catalog() -> Value {
             "description": "Start a server-side TWAP execution algo. Returns parent_id.",
             "inputSchema": {
                 "type": "object",
-                "required": ["address", "market", "side", "quantity", "duration_secs", "nonce", "signature"],
+                "required": ["address", "market", "side", "quantity", "duration_secs", "nonce", "signature", "signature_version"],
                 "properties": {
                     "address": { "type": "string" },
                     "market": { "type": "string" },
@@ -209,7 +209,8 @@ fn tool_catalog() -> Value {
                     "price_limit": { "type": "integer" },
                     "slices": { "type": "integer", "default": 12 },
                     "nonce": { "type": "integer" },
-                    "signature": { "type": "string" }
+                    "signature": { "type": "string" },
+                    "signature_version": { "type": "integer", "enum": [2] }
                 }
             }
         }
@@ -608,8 +609,13 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     let nonce = arg_u64(args, "nonce")?;
     let signature = arg_string(args, "signature")?;
     let price_limit = args.get("price_limit").and_then(|v| v.as_u64());
-    let slices = args.get("slices").and_then(|v| v.as_u64()).unwrap_or(12) as u32;
-    let slices = slices.clamp(1, 240);
+    let slices = match args.get("slices") {
+        None | Some(Value::Null) => 12,
+        Some(value) => value
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or("invalid slices")?,
+    };
 
     let side = match side_str.as_str() {
         "Bid" | "bid" => types::OrderSide::Bid,
@@ -627,11 +633,22 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
     let notional_micro = price_limit
         .map(|price| crate::agents::order_notional_micro(price, quantity))
         .unwrap_or(u64::MAX);
-    let msg = format!(
-        "vela:algo:twap:{}:{}:{}:{}",
-        market, quantity, duration_secs, nonce
-    )
-    .into_bytes();
+    if arg_u64(args, "signature_version")? != 2 {
+        return Err("TWAP requires signature_version 2".into());
+    }
+    let request = crate::algo_request::TwapRequest {
+        address: address.clone(),
+        market: market.clone(),
+        side,
+        quantity,
+        duration_secs,
+        price_limit,
+        slices: Some(slices),
+        nonce,
+        signature: signature.clone(),
+        signature_version: 2,
+    };
+    let msg = request.signing_message();
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
