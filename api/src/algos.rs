@@ -58,7 +58,7 @@ pub fn reserve_parent_nonce(
 /// Monotonic parent-id source. Cheap and lock-free.
 pub static NEXT_PARENT_ID: AtomicU64 = AtomicU64::new(1);
 
-pub fn next_parent_id() -> u64 {
+pub fn next_parent_id() -> Result<u64, &'static str> {
     NEXT_PARENT_ID.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -191,25 +191,31 @@ async fn submit_child_order(
         responder,
         decryption_proof: None,
     };
-    if state.order_tx.send(channel_item).await.is_err() {
-        return 0;
+    tokio::time::timeout(
+        Duration::from_millis(500),
+        state.order_tx.send(channel_item),
+    )
+    .await
+    .map_err(|_| "child queue timeout")?
+    .map_err(|_| "child dispatcher closed")?;
+    let responses = tokio::time::timeout(Duration::from_secs(5), resp_rx)
+        .await
+        .map_err(|_| "child outcome indeterminate")?
+        .map_err(|_| "child response dropped")?;
+    if responses
+        .iter()
+        .any(|r| matches!(r, types::Response::Error(_)))
+    {
+        return Err("child order rejected");
     }
-    let responses = match tokio::time::timeout(Duration::from_millis(500), resp_rx).await {
-        Ok(Ok(r)) => r,
-        _ => return 0,
-    };
-
-    // Sum the child's fills (multiple fills possible per IOC).
     responses
         .iter()
-        .filter_map(|r| {
-            if let types::Response::OrderFilled(f) = r {
-                Some(f.quantity)
-            } else {
-                None
-            }
+        .try_fold(0u64, |total, response| match response {
+            types::Response::OrderFilled(fill) => total
+                .checked_add(fill.quantity)
+                .ok_or("child fill quantity overflow"),
+            _ => Ok(total),
         })
-        .sum()
 }
 
 /// Long-running task: slices the parent's total quantity into `slices`
@@ -260,7 +266,7 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             OrderSide::Ask => 1,
         });
 
-        let filled = submit_child_order(
+        let outcome = submit_child_order(
             &state,
             user_id.clone(),
             market.clone(),
@@ -270,6 +276,13 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             parent.child_nonce_base + slice_ix as u64,
         )
         .await;
+        let filled = match outcome {
+            Ok(filled) if filled <= slice_qty => filled,
+            _ => {
+                *parent.status.lock().unwrap() = AlgoStatus::Failed;
+                return;
+            }
+        };
         parent.filled_quantity.fetch_add(filled, Ordering::Relaxed);
 
         if slice_ix + 1 < parent.slices {
