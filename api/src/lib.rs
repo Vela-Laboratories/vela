@@ -290,7 +290,7 @@ impl AppState {
                 "restored matching-engine financial cache from authoritative journal"
             );
         }
-        Ok(Self::new_inner(
+        let state = Self::new_inner(
             engine,
             wal,
             runtime_mode,
@@ -298,7 +298,17 @@ impl AppState {
             storage_health,
             leadership,
             recovery_replica,
-        ))
+        );
+        if let Err(error) = crate::algos::recover_durable(Arc::clone(&state)).await {
+            if let Some(leader) = &state.engine_leadership {
+                let _ = leader.release().await;
+            }
+            state
+                .storage_health
+                .fence("algorithm_recovery", "durable algorithm recovery failed");
+            return Err(format!("algorithm recovery failed: {error}"));
+        }
+        Ok(state)
     }
 
     fn new_inner(

@@ -533,3 +533,21 @@ pub async fn load_parent(
     }
     Ok(state.algos.get(&id).map(|p| Arc::clone(&p)))
 }
+
+/// Called before serving traffic, after ledger and engine recovery admission.
+pub async fn recover_durable(
+    state: Arc<AppState>,
+) -> Result<(), crate::algos_store::AlgoStoreError> {
+    let Some(store) = &state.algo_store else {
+        return Ok(());
+    };
+    for row in store.recover().await? {
+        if row.status != AlgoStatus::Running {
+            continue;
+        }
+        let parent = TwapParent::from_durable(&row)?;
+        state.algos.insert(parent.parent_id, Arc::clone(&parent));
+        tokio::spawn(run_twap_task(Arc::clone(&state), parent));
+    }
+    Ok(())
+}
