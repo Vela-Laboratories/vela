@@ -45,6 +45,7 @@ export interface ClientOptions {
   baseUrl?: string
   bearerToken?: string
   fetch?: typeof fetch
+  timeoutMs?: number
 }
 
 /** Read-only and signed-write client for the stable Vela HTTP v1 surface. */
@@ -52,16 +53,23 @@ export class VelaClient {
   private readonly baseUrl: string
   private readonly bearerToken?: string
   private readonly transport: typeof fetch
+  private readonly timeoutMs: number
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? 'https://vela-engine.fly.dev').replace(/\/$/, '')
     this.bearerToken = options.bearerToken
     this.transport = options.fetch ?? fetch
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0 || this.timeoutMs > 2_147_483_647) throw new RangeError('timeoutMs must be positive and at most 2147483647')
   }
 
   private async request<T>(path: string, body?: object): Promise<T> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
     const response = await this.transport(`${this.baseUrl}/v1${path}`, {
       method: body ? 'POST' : 'GET',
+      signal: controller.signal,
       headers: {
         ...(this.bearerToken ? { Authorization: `Bearer ${this.bearerToken}` } : {}),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -80,6 +88,10 @@ export class VelaClient {
       throw new VelaApiError(errorText || 'Vela API returned an unsuccessful or malformed response', response.status, retryAfter)
     }
     return envelope.data as T
+    } catch (error) {
+      if (error instanceof VelaApiError) throw error
+      throw new VelaApiError(controller.signal.aborted ? 'Vela request timed out; write outcome may be indeterminate' : 'Vela network request failed')
+    } finally { clearTimeout(timer) }
   }
 
   markets(): Promise<MarketsData> {
