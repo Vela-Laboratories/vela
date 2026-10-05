@@ -584,6 +584,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ledger_backed_testnet_has_no_synthetic_balances_or_orders() {
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        initialize_fresh_engine(&mut engine, RuntimeMode::TestnetDemo, true);
+        assert!(!engine.markets.is_empty());
+        assert!(engine.balances.is_empty());
+        assert!(engine
+            .order_books
+            .values()
+            .all(|book| book.depth_bids(50).is_empty() && book.depth_asks(50).is_empty()));
+    }
+
+    #[test]
     fn production_fresh_start_has_no_seeded_state() {
         let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
         initialize_fresh_engine(&mut engine, RuntimeMode::Production, false);
