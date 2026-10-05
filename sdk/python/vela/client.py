@@ -66,6 +66,33 @@ class AgentList(TypedDict):
     agents: list[Agent]
 
 
+class AccountFill(TypedDict):
+    id: str
+    market: str
+    price: str
+    quantity: str
+    order_id: int
+    counterparty_order_id: int
+    role: Literal["maker", "taker"]
+    side: Literal["buy", "sell"]
+    timestamp: int
+
+
+class AlgoSnapshot(TypedDict):
+    parent_id: int
+    user: str
+    market: str
+    side: str
+    total_quantity: int
+    filled_quantity: int
+    remaining_quantity: int
+    price_limit: int | None
+    duration_secs: int
+    slices: int
+    started_at_ms: int
+    status: Literal["Running", "Completed", "Incomplete", "Canceled", "Failed"]
+
+
 class ApiEnvelope(TypedDict):
     ok: bool
     data: NotRequired[object]
@@ -115,3 +142,17 @@ class VelaClient:
 
     def balances(self, address: str) -> list[dict[str, object]]:
         return cast(list[dict[str, object]], self._get(f"/account/{quote(address, safe='')}/balances"))
+
+    def orders(self, address: str) -> list[dict[str, object]]:
+        return cast(list[dict[str, object]], self._get(f"/account/{quote(address, safe='')}/orders"))
+
+    def fills(self, address: str) -> list[AccountFill]:
+        return cast(list[AccountFill], self._get(f"/account/{quote(address, safe='')}/fills"))
+
+    def algos(self, address: str) -> list[AlgoSnapshot]:
+        return cast(list[AlgoSnapshot], self._get(f"/account/{quote(address, safe='')}/algos"))
+
+    def algo(self, parent_id: int) -> AlgoSnapshot:
+        if type(parent_id) is not int or not 0 <= parent_id <= 2**64 - 1:
+            raise ValueError("parent_id must be an unsigned 64-bit integer")
+        return cast(AlgoSnapshot, self._get(f"/orders/algo/{parent_id}"))
