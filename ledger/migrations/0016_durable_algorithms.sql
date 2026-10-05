@@ -53,3 +53,15 @@ BEGIN
 END $$;
 CREATE TRIGGER api_algo_parent_guard BEFORE UPDATE ON api_algo_parents
 FOR EACH ROW EXECUTE FUNCTION api_algo_parent_identity_guard();
+CREATE FUNCTION api_algo_child_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.parent_id,NEW.slice_index,NEW.client_order_id,NEW.quantity) IS DISTINCT FROM (OLD.parent_id,OLD.slice_index,OLD.client_order_id,OLD.quantity) THEN
+        RAISE EXCEPTION 'algorithm child intent is immutable';
+    END IF;
+    IF OLD.state = 'complete' AND (NEW.state,NEW.filled_quantity,NEW.response_hash) IS DISTINCT FROM (OLD.state,OLD.filled_quantity,OLD.response_hash) THEN
+        RAISE EXCEPTION 'completed algorithm child cannot change';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER api_algo_child_identity_guard BEFORE UPDATE ON api_algo_children
+FOR EACH ROW EXECUTE FUNCTION api_algo_child_guard();
