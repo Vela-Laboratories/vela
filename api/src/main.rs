@@ -32,14 +32,14 @@ fn seed_markets(engine: &mut MatchingEngine) {
     }
 }
 
-fn initialize_fresh_engine(engine: &mut MatchingEngine, mode: RuntimeMode) {
+fn initialize_fresh_engine(engine: &mut MatchingEngine, mode: RuntimeMode, ledger_backed: bool) {
     if mode.is_production() {
         tracing::warn!("production started with empty engine state; no demo markets were seeded");
         return;
     }
 
     seed_markets(engine);
-    if mode.allows_demo_state() {
+    if mode.allows_demo_state() && !ledger_backed {
         seed_order_books(engine);
         tracing::info!("fresh testnet demo state seeded");
     } else {
@@ -307,7 +307,7 @@ async fn main() {
         }
         Ok(None) => {
             snapshot_wal_sequence = 0;
-            initialize_fresh_engine(&mut engine, runtime.mode);
+            initialize_fresh_engine(&mut engine, runtime.mode, ledger.is_some());
         }
         Err(e) => {
             panic!("snapshot recovery validation failed: {e}");
@@ -459,7 +459,7 @@ async fn main() {
         tracing::warn!("OPERATOR_PRIVATE_KEY not set — anchor task disabled");
     }
 
-    if runtime.internal_mm_enabled() {
+    if runtime.internal_mm_enabled() && state.ledger.is_none() {
         let mm_order_tx = state.order_tx.clone();
         tokio::spawn(async move {
             api::mm::run_mm_bot(mm_order_tx).await;
@@ -586,7 +586,7 @@ mod tests {
     #[test]
     fn production_fresh_start_has_no_seeded_state() {
         let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-        initialize_fresh_engine(&mut engine, RuntimeMode::Production);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Production, false);
 
         assert!(engine.balances.is_empty());
         assert!(engine.order_books.is_empty());
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn development_has_markets_but_no_synthetic_financial_state() {
         let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-        initialize_fresh_engine(&mut engine, RuntimeMode::Development);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Development, false);
 
         assert!(!engine.markets.is_empty());
         assert!(engine.balances.is_empty());
