@@ -103,3 +103,27 @@ export class VelaClient {
     return this.request('/agents/revoke', body)
   }
 }
+
+export interface TwapInput {
+  address: string
+  market: string
+  side: 'Bid' | 'Ask'
+  quantity: number
+  duration_secs: number
+  price_limit: number
+  slices?: number
+  nonce: number
+}
+
+/** EIP-191 message bytes must be signed as this exact UTF-8 string. */
+export function twapSigningMessage(input: TwapInput): string {
+  const slices = input.slices ?? 12
+  for (const value of [input.quantity, input.duration_secs, input.price_limit, slices, input.nonce]) {
+    if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('TWAP numbers must be nonnegative safe integers')
+  }
+  if (slices < 1 || slices > 240 || input.quantity < slices || input.duration_secs < 1 || input.duration_secs > 86400 || input.price_limit < 1 || !Number.isSafeInteger(input.nonce + slices)) {
+    throw new RangeError('Invalid TWAP schedule or nonce range')
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(input.address) || !input.market || !['Bid', 'Ask'].includes(input.side)) throw new TypeError('Invalid TWAP address, market or side')
+  return JSON.stringify(['vela:algo:twap:v2', input.address.toLowerCase(), input.market, input.side, input.quantity, input.duration_secs, input.price_limit, slices, input.nonce])
+}
