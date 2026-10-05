@@ -1084,7 +1084,7 @@ pub fn openapi_spec() -> serde_json::Value {
             "filled_quantity":{"type":"integer"}, "remaining_quantity":{"type":"integer"},
             "price_limit":{"type":"integer","nullable":true}, "duration_secs":{"type":"integer"},
             "slices":{"type":"integer"}, "started_at_ms":{"type":"integer"},
-            "status":{"type":"string","enum":["Running","Completed","Incomplete","Canceled","Failed"]}
+            "status":{"type":"string","enum":["Running","Completed","Incomplete","Canceled","Failed","RecoveryRequired"]}
         }
     });
     spec["components"]["schemas"]["CancelAlgoBody"] = serde_json::json!({
