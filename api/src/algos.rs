@@ -541,11 +541,14 @@ pub async fn recover_durable(
     let Some(store) = &state.algo_store else {
         return Ok(());
     };
-    for row in store.recover().await? {
-        if row.status != AlgoStatus::Running {
-            continue;
-        }
-        let parent = TwapParent::from_durable(&row)?;
+    let parents = store
+        .recover()
+        .await?
+        .iter()
+        .filter(|row| row.status == AlgoStatus::Running)
+        .map(TwapParent::from_durable)
+        .collect::<Result<Vec<_>, _>>()?;
+    for parent in parents {
         state.algos.insert(parent.parent_id, Arc::clone(&parent));
         tokio::spawn(run_twap_task(Arc::clone(&state), parent));
     }
