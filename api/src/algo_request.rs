@@ -23,6 +23,21 @@ impl TwapRequest {
     pub fn slice_count(&self) -> u32 {
         self.slices.unwrap_or(12)
     }
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !(1..=240).contains(&self.slice_count()) {
+            return Err("slices must be between 1 and 240");
+        }
+        if self.quantity < u64::from(self.slice_count()) {
+            return Err("quantity must cover every slice");
+        }
+        if !(1..=86_400).contains(&self.duration_secs) {
+            return Err("duration_secs must be between 1 and 86400");
+        }
+        if !matches!(self.price_limit, Some(1..)) {
+            return Err("a positive price_limit is required");
+        }
+        Ok(())
+    }
     pub fn signing_message(&self) -> Vec<u8> {
         serde_json::to_vec(&(
             "vela:algo:twap:v2",

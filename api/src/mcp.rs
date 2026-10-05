@@ -623,13 +623,6 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         _ => return Err(format!("invalid side: {}", side_str)),
     };
 
-    if quantity == 0 || duration_secs == 0 {
-        return Err("quantity and duration_secs must be > 0".to_string());
-    }
-    if quantity < slices as u64 {
-        return Err("quantity must be >= slices (need at least 1 unit per slice)".to_string());
-    }
-
     let notional_micro = price_limit
         .map(|price| crate::agents::order_notional_micro(price, quantity))
         .unwrap_or(u64::MAX);
@@ -648,6 +641,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         signature: signature.clone(),
         signature_version: 2,
     };
+    request.validate().map_err(str::to_owned)?;
     let msg = request.signing_message();
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

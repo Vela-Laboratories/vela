@@ -6711,25 +6711,10 @@ async fn post_twap_algo(
                 .into_response()
         }
     };
-    if body.quantity == 0 || body.duration_secs == 0 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<()>::err(
-                "quantity and duration_secs must be > 0",
-            )),
-        )
-            .into_response();
+    if let Err(error) = body.validate() {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(error))).into_response();
     }
     let slices = body.slice_count();
-    if body.quantity < slices as u64 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<()>::err(
-                "quantity must be >= slices (need at least 1 unit per slice)",
-            )),
-        )
-            .into_response();
-    }
 
     // Authorize via master-or-agent signature. TWAP counts as a single
     // authorization event; individual child orders bypass sig verify
