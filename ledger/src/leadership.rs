@@ -122,7 +122,7 @@ impl Ledger {
     }
 }
 
-pub(crate) async fn assert_engine_leadership_in_transaction(
+pub async fn assert_engine_leadership_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     token: EngineLeaderToken,
 ) -> Result<(), LedgerError> {
