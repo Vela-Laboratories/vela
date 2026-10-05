@@ -47,6 +47,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # Bound runner contention so 2s leadership operations are exercised reliably.
+      RUST_TEST_THREADS: 2
     steps:
       - uses: actions/checkout@v4
 
