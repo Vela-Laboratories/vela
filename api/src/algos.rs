@@ -58,7 +58,7 @@ pub fn reserve_parent_nonce(
 /// Monotonic parent-id source. Cheap and lock-free.
 pub static NEXT_PARENT_ID: AtomicU64 = AtomicU64::new(1);
 
-pub fn next_parent_id() -> Result<u64, &'static str> {
+pub fn next_parent_id() -> u64 {
     NEXT_PARENT_ID.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -173,7 +173,7 @@ async fn submit_child_order(
     price: u64,
     quantity: u64,
     nonce: u64,
-) -> u64 {
+) -> Result<u64, &'static str> {
     let req = PostOrderRequest {
         user,
         market,
