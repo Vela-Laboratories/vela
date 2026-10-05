@@ -91,6 +91,7 @@ pub struct TwapParent {
     /// Set by `cancel_algo` to signal the slicer to exit before its next
     /// slice.
     pub cancel_flag: AtomicBool,
+    pub cancel_notify: tokio::sync::Notify,
     /// Base nonce for the child order sequence. Slice N uses
     /// `child_nonce_base + N` so all children carry unique nonces.
     pub child_nonce_base: u64,
@@ -102,6 +103,16 @@ pub struct TwapParent {
 }
 
 impl TwapParent {
+    pub fn request_cancel(&self) -> bool {
+        let status = self.status.lock().unwrap();
+        if *status != AlgoStatus::Running {
+            return false;
+        }
+        self.cancel_flag.store(true, Ordering::Release);
+        self.cancel_notify.notify_one();
+        true
+    }
+
     pub fn snapshot_status(&self) -> AlgoStatus {
         *self.status.lock().unwrap()
     }
@@ -244,7 +255,10 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
     for slice_ix in 0..parent.slices {
         let offset_ms =
             parent.duration_secs * 1_000 * u64::from(slice_ix) / u64::from(parent.slices);
-        tokio::time::sleep_until(started + Duration::from_millis(offset_ms)).await;
+        tokio::select! {
+            _ = tokio::time::sleep_until(started + Duration::from_millis(offset_ms)) => {},
+            _ = parent.cancel_notify.notified() => {},
+        }
         if tokio::time::Instant::now() >= deadline {
             break;
         }
@@ -292,10 +306,11 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
         parent.filled_quantity.fetch_add(filled, Ordering::Relaxed);
     }
 
-    *parent.status.lock().unwrap() =
-        if parent.filled_quantity.load(Ordering::Relaxed) == parent.total_quantity {
-            AlgoStatus::Completed
-        } else {
-            AlgoStatus::Incomplete
-        };
+    *parent.status.lock().unwrap() = if parent.cancel_flag.load(Ordering::Acquire) {
+        AlgoStatus::Canceled
+    } else if parent.filled_quantity.load(Ordering::Relaxed) == parent.total_quantity {
+        AlgoStatus::Completed
+    } else {
+        AlgoStatus::Incomplete
+    };
 }

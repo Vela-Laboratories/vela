@@ -6789,6 +6789,7 @@ async fn post_twap_algo(
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
         cancel_flag: std::sync::atomic::AtomicBool::new(false),
+        cancel_notify: tokio::sync::Notify::new(),
         child_nonce_base: body.nonce + 1,
         _phantom_signature: (),
     });
@@ -6870,14 +6871,12 @@ async fn cancel_algo(
             .into_response();
     }
 
-    parent
-        .cancel_flag
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+    let canceled = parent.request_cancel();
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
             "parent_id": body.parent_id,
-            "canceled": true,
+            "canceled": canceled,
         }))),
     )
         .into_response()

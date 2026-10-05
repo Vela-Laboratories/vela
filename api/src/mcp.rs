@@ -683,6 +683,7 @@ async fn mcp_place_twap(state: &Arc<AppState>, args: &Value) -> Result<Value, St
         started_at_ms: now_ms,
         status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
         cancel_flag: std::sync::atomic::AtomicBool::new(false),
+        cancel_notify: tokio::sync::Notify::new(),
         child_nonce_base: nonce + 1,
         _phantom_signature: (),
     });
