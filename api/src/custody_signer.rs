@@ -163,6 +163,11 @@ fn validate_provider_signature(
     let compact = k256::ecdsa::Signature::try_from(&signature.signature[..64]).map_err(|_| {
         CustodySignerError::InvalidEvidence("signature scalars are malformed".to_owned())
     })?;
+    if compact.normalize_s().is_some() || signature.signature[64] > 1 {
+        return Err(CustodySignerError::InvalidEvidence(
+            "signature must use low-S scalars and recovery ID 0 or 1".to_owned(),
+        ));
+    }
     let recovery_id = k256::ecdsa::RecoveryId::try_from(signature.signature[64]).map_err(|_| {
         CustodySignerError::InvalidEvidence("recovery ID must be 0 or 1".to_owned())
     })?;
@@ -225,6 +230,26 @@ mod tests {
             digest: [7; 32],
             expires_at: Utc::now() + chrono::Duration::minutes(5),
         }
+    }
+
+    #[tokio::test]
+    async fn rejects_malleable_high_s_and_unsupported_recovery_ids() {
+        let signer = DeterministicTestSigner(SigningKey::from_slice(&[9; 32]).unwrap());
+        let request = request();
+        let identity = signer.identity().unwrap();
+        let signed = signer.sign(&request).await.unwrap();
+        let mut wrong_recovery = signed.clone();
+        wrong_recovery.signature[64] = 2;
+        assert!(validate_provider_signature(&identity, &wrong_recovery, &request.digest).is_err());
+        let compact = k256::ecdsa::Signature::try_from(&signed.signature[..64]).unwrap();
+        let high_s =
+            k256::ecdsa::Signature::from_scalars(compact.r().to_bytes(), (-compact.s()).to_bytes())
+                .unwrap();
+        assert!(high_s.normalize_s().is_some());
+        let mut malleable = signed;
+        malleable.signature[..64].copy_from_slice(&high_s.to_bytes());
+        malleable.signature[64] ^= 1;
+        assert!(validate_provider_signature(&identity, &malleable, &request.digest).is_err());
     }
 
     #[tokio::test]
