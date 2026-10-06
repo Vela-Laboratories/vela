@@ -308,6 +308,31 @@ async fn concurrent_rfq_accepts_settle_only_once() {
 }
 
 #[tokio::test]
+async fn rfq_request_rejects_unlisted_market() {
+    let server = test_server(engine_with_market());
+    let (key, requester) = wallet(43);
+    let expires_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 60_000;
+    let message = format!("vela:rfq:request:FAKE-USDC:Bid:1000000:{expires_at_ms}:1");
+    server
+        .post("/rfq/request")
+        .json(&json!({
+            "requester": requester,
+            "market": "FAKE-USDC",
+            "side": "Bid",
+            "quantity": 1_000_000,
+            "expires_at_ms": expires_at_ms,
+            "nonce": 1,
+            "signature": sign_personal(&key, message.as_bytes()),
+        }))
+        .await
+        .assert_status(axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_health() {
     let server = test_server(engine_with_market());
     let resp = server.get("/health").await;

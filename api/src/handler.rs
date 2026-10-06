@@ -5133,6 +5133,20 @@ async fn rfq_request(
         )
             .into_response();
     }
+    let listed_usdc_market = {
+        let engine = state.engine.lock().await;
+        engine
+            .markets
+            .get(&MarketId(body.market.clone()))
+            .is_some_and(|market| market.quote == AssetId::from_str("USDC"))
+    };
+    if !listed_usdc_market {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("rfq requires a listed USDC market")),
+        )
+            .into_response();
+    }
 
     let request = loop {
         let rfq_id = crate::rfq::next_rfq_id();
