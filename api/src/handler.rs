@@ -5241,6 +5241,15 @@ async fn rfq_quote(
         )
             .into_response();
     }
+    if crate::rfq::quote_notional_micro(body.price, body.quantity).is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "quote notional is zero or exceeds account limits",
+            )),
+        )
+            .into_response();
+    }
 
     let msg = rfq_quote_signing_message(
         body.rfq_id,
@@ -5420,7 +5429,15 @@ async fn rfq_accept(
     let quote_asset = AssetId::from_str(quote_str);
 
     // Notional in USDC micro = price × quantity / 1_000_000.
-    let notional_micro = (quote.price as u128 * quote.quantity as u128 / 1_000_000u128) as u64;
+    let Some(notional_micro) = crate::rfq::quote_notional_micro(quote.price, quote.quantity) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "quote notional is zero or exceeds account limits",
+            )),
+        )
+            .into_response();
+    };
 
     // Direction: request.side is the requester's side. Bid = requester
     // buys base, pays quote. Ask = requester sells base, receives quote.

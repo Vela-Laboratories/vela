@@ -48,6 +48,13 @@ use types::OrderSide;
 pub static NEXT_RFQ_ID: AtomicU64 = AtomicU64::new(1);
 pub static NEXT_QUOTE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Convert fixed-point price and base quantity to quote micro-units.
+/// Reject dust and values that cannot fit in an account balance.
+pub fn quote_notional_micro(price: u64, quantity: u64) -> Option<u64> {
+    let amount = u128::from(price) * u128::from(quantity) / 1_000_000;
+    u64::try_from(amount).ok().filter(|amount| *amount > 0)
+}
+
 pub fn min_notional_micro() -> u64 {
     std::env::var("VELA_RFQ_MIN_NOTIONAL_MICRO")
         .ok()
@@ -186,5 +193,12 @@ mod tests {
         assert!(j.contains("Reputation"));
         let d: MakerProvenance = serde_json::from_str(&j).unwrap();
         assert_eq!(d, p);
+    }
+
+    #[test]
+    fn quote_notional_rejects_dust_and_balance_overflow() {
+        assert_eq!(quote_notional_micro(2_000_000, 3_000_000), Some(6_000_000));
+        assert_eq!(quote_notional_micro(1, 1), None);
+        assert_eq!(quote_notional_micro(u64::MAX, u64::MAX), None);
     }
 }
