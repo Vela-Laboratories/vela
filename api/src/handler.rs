@@ -5452,6 +5452,15 @@ async fn rfq_accept(
         types::OrderSide::Bid => (requester_id.clone(), maker_id.clone()),
         types::OrderSide::Ask => (maker_id.clone(), requester_id.clone()),
     };
+    if buyer_id == seller_id || base_asset == quote_asset {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "rfq parties and assets must be distinct",
+            )),
+        )
+            .into_response();
+    }
 
     {
         let mut us = state.shards.user_state.write().await;
@@ -5491,40 +5500,29 @@ async fn rfq_accept(
         // Buyer needs `notional_micro` of quote; seller needs `quantity` of base.
         let buyer_quote_key = (buyer_id.clone(), quote_asset);
         let seller_base_key = (seller_id.clone(), base_asset);
-
-        let buyer_bal = us
+        let seller_quote_key = (seller_id.clone(), quote_asset);
+        let buyer_base_key = (buyer_id.clone(), base_asset);
+        let buyer_available = us
             .balances
-            .entry(buyer_quote_key)
-            .or_insert_with(|| types::Balance {
-                user: buyer_id.clone(),
-                asset: quote_asset,
-                available: 0,
-                locked: 0,
-            });
-        if buyer_bal.available < notional_micro {
+            .get(&buyer_quote_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        if buyer_available < notional_micro {
             return (
                 StatusCode::PAYMENT_REQUIRED,
                 Json(ApiResponse::<()>::err(format!(
                     "buyer needs {} quote micro; has {}",
-                    notional_micro, buyer_bal.available
+                    notional_micro, buyer_available
                 ))),
             )
                 .into_response();
         }
-        buyer_bal.available -= notional_micro;
-
-        // Check seller balance without holding the entry borrow across
-        // the rollback path.
         let seller_available = us
             .balances
             .get(&seller_base_key)
             .map(|b| b.available)
             .unwrap_or(0);
         if seller_available < quote.quantity {
-            // Rollback the buyer's debit.
-            if let Some(b) = us.balances.get_mut(&(buyer_id.clone(), quote_asset)) {
-                b.available += notional_micro;
-            }
             return (
                 StatusCode::PAYMENT_REQUIRED,
                 Json(ApiResponse::<()>::err(format!(
@@ -5534,6 +5532,29 @@ async fn rfq_accept(
             )
                 .into_response();
         }
+        let seller_quote_available = us
+            .balances
+            .get(&seller_quote_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        let buyer_base_available = us
+            .balances
+            .get(&buyer_base_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        if seller_quote_available.checked_add(notional_micro).is_none()
+            || buyer_base_available.checked_add(quote.quantity).is_none()
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err(
+                    "rfq settlement exceeds account limits",
+                )),
+            )
+                .into_response();
+        }
+
+        us.balances.get_mut(&buyer_quote_key).unwrap().available -= notional_micro;
         let seller_bal = us
             .balances
             .entry(seller_base_key)
@@ -5547,7 +5568,7 @@ async fn rfq_accept(
 
         // Credit the other side.
         us.balances
-            .entry((seller_id.clone(), quote_asset))
+            .entry(seller_quote_key)
             .or_insert_with(|| types::Balance {
                 user: seller_id.clone(),
                 asset: quote_asset,
@@ -5556,7 +5577,7 @@ async fn rfq_accept(
             })
             .available += notional_micro;
         us.balances
-            .entry((buyer_id.clone(), base_asset))
+            .entry(buyer_base_key)
             .or_insert_with(|| types::Balance {
                 user: buyer_id.clone(),
                 asset: base_asset,

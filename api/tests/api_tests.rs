@@ -231,12 +231,79 @@ async fn concurrent_rfq_accepts_settle_only_once() {
         2_000_000
     );
     assert_eq!(
-        users.balances[&(requester_id, AssetId::from_str("BTC"))].available,
+        users.balances[&(requester_id.clone(), AssetId::from_str("BTC"))].available,
         1_000_000
     );
     assert_eq!(
         state.rfq.requests.get(&rfq_id).unwrap().status,
         RfqStatus::Filled
+    );
+    drop(users);
+
+    // A credit overflow must leave every balance and the request untouched.
+    let next_rfq_id = api::rfq::next_rfq_id();
+    let next_quote_id = api::rfq::next_quote_id();
+    state.rfq.requests.insert(
+        next_rfq_id,
+        RfqRequest {
+            rfq_id: next_rfq_id,
+            requester: requester.clone(),
+            market: "BTC-USDC".to_owned(),
+            side: OrderSide::Bid,
+            quantity: 1_000_000,
+            expires_at_ms,
+            created_at_ms: expires_at_ms - 60_000,
+            status: RfqStatus::Open,
+            filled_by_quote_id: None,
+        },
+    );
+    state.rfq.quotes.insert(
+        (next_rfq_id, next_quote_id),
+        RfqQuote {
+            quote_id: next_quote_id,
+            rfq_id: next_rfq_id,
+            maker: maker.clone(),
+            price: 2_000_000,
+            quantity: 1_000_000,
+            expires_at_ms,
+            created_at_ms: expires_at_ms - 60_000,
+            provenance: MakerProvenance::Allowlist,
+        },
+    );
+    {
+        let mut users = state.shards.user_state.write().await;
+        users
+            .balances
+            .get_mut(&(maker_id.clone(), AssetId::from_str("USDC")))
+            .unwrap()
+            .available = u64::MAX;
+    }
+    let overflow_accept = server
+        .post("/rfq/accept")
+        .json(&json!({
+            "rfq_id": next_rfq_id,
+            "quote_id": next_quote_id,
+            "requester": requester,
+            "nonce": 2,
+            "signature": sign_personal(
+                &requester_key,
+                format!("vela:rfq:accept:{next_rfq_id}:{next_quote_id}:2").as_bytes(),
+            ),
+        }))
+        .await;
+    overflow_accept.assert_status(axum::http::StatusCode::CONFLICT);
+    let users = state.shards.user_state.read().await;
+    assert_eq!(
+        users.balances[&(maker_id, AssetId::from_str("USDC"))].available,
+        u64::MAX
+    );
+    assert_eq!(
+        users.balances[&(requester_id, AssetId::from_str("USDC"))].available,
+        2_000_000
+    );
+    assert_eq!(
+        state.rfq.requests.get(&next_rfq_id).unwrap().status,
+        RfqStatus::Open
     );
 }
 
