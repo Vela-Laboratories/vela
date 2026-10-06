@@ -5232,6 +5232,13 @@ async fn rfq_quote(
         )
             .into_response();
     }
+    if !crate::rfq::quote_window_valid(req.expires_at_ms, body.expires_at_ms, now_ms) {
+        return (
+            StatusCode::GONE,
+            Json(ApiResponse::<()>::err("rfq or quote has expired")),
+        )
+            .into_response();
+    }
     if body.quantity != req.quantity {
         return (
             StatusCode::BAD_REQUEST,
@@ -5376,7 +5383,7 @@ async fn rfq_accept(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if quote.expires_at_ms <= now_ms {
+    if !crate::rfq::quote_window_valid(request.expires_at_ms, quote.expires_at_ms, now_ms) {
         return (
             StatusCode::GONE,
             Json(ApiResponse::<()>::err("quote has expired")),

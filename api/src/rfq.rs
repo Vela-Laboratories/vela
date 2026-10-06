@@ -55,6 +55,16 @@ pub fn quote_notional_micro(price: u64, quantity: u64) -> Option<u64> {
     u64::try_from(amount).ok().filter(|amount| *amount > 0)
 }
 
+pub fn quote_window_valid(
+    request_expires_at_ms: u64,
+    quote_expires_at_ms: u64,
+    now_ms: u64,
+) -> bool {
+    now_ms < request_expires_at_ms
+        && now_ms < quote_expires_at_ms
+        && quote_expires_at_ms <= request_expires_at_ms
+}
+
 pub fn min_notional_micro() -> u64 {
     std::env::var("VELA_RFQ_MIN_NOTIONAL_MICRO")
         .ok()
@@ -200,5 +210,13 @@ mod tests {
         assert_eq!(quote_notional_micro(2_000_000, 3_000_000), Some(6_000_000));
         assert_eq!(quote_notional_micro(1, 1), None);
         assert_eq!(quote_notional_micro(u64::MAX, u64::MAX), None);
+    }
+
+    #[test]
+    fn quote_cannot_outlive_its_request() {
+        assert!(quote_window_valid(100, 90, 89));
+        assert!(!quote_window_valid(100, 90, 90));
+        assert!(!quote_window_valid(100, 101, 50));
+        assert!(!quote_window_valid(100, 100, 100));
     }
 }
