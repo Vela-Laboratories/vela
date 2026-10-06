@@ -316,6 +316,22 @@ async fn test_health() {
 }
 
 #[tokio::test]
+async fn status_reports_the_process_build_identity() {
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let state = AppState::new_with_runtime(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Development,
+    );
+    let expected = state.build_id.clone();
+    let server = TestServer::new(api::build_router(state)).unwrap();
+    let status: Value = server.get("/status").await.json();
+    assert_eq!(status["data"]["build_id"], json!(expected));
+}
+
+#[tokio::test]
 async fn versioned_v1_routes_match_legacy_contracts() {
     let server = test_server(engine_with_market());
     let legacy: Value = server.get("/markets").await.json();

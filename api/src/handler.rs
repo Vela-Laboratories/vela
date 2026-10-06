@@ -4720,6 +4720,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "status": status,
         "engine_uptime_seconds": uptime_secs,
         "engine_version": state.engine_version,
+        "build_id": state.build_id.as_deref(),
         "last_snapshot_timestamp": last_snapshot_ts,
         "last_state_root": last_state_root,
         "orders_processed_today": orders_today,

@@ -113,6 +113,7 @@ pub struct AppState {
     pub ws_tx: Arc<tokio::sync::broadcast::Sender<WsEnvelope>>,
     pub ws_seqs: Arc<dashmap::DashMap<String, AtomicU64>>,
     pub engine_version: &'static str,
+    pub build_id: Option<String>,
     pub ws_client_count: Arc<AtomicUsize>,
     pub orders_today: Arc<AtomicU64>,
     pub fills_today: Arc<AtomicU64>,
@@ -457,6 +458,9 @@ impl AppState {
             ws_tx: Arc::new(ws_bcast_tx),
             ws_seqs: Arc::new(dashmap::DashMap::new()),
             engine_version: "0.2.0",
+            build_id: std::env::var("VELA_BUILD_ID")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
             ws_client_count: Arc::new(AtomicUsize::new(0)),
             orders_today: Arc::new(AtomicU64::new(0)),
             fills_today: Arc::new(AtomicU64::new(0)),
