@@ -5134,19 +5134,24 @@ async fn rfq_request(
             .into_response();
     }
 
-    let rfq_id = crate::rfq::next_rfq_id();
-    let request = crate::rfq::RfqRequest {
-        rfq_id,
-        requester: body.requester.to_lowercase(),
-        market: body.market,
-        side: body.side,
-        quantity: body.quantity,
-        expires_at_ms: body.expires_at_ms,
-        created_at_ms: now_ms,
-        status: crate::rfq::RfqStatus::Open,
-        filled_by_quote_id: None,
+    let request = loop {
+        let rfq_id = crate::rfq::next_rfq_id();
+        let request = crate::rfq::RfqRequest {
+            rfq_id,
+            requester: body.requester.to_lowercase(),
+            market: body.market.clone(),
+            side: body.side,
+            quantity: body.quantity,
+            expires_at_ms: body.expires_at_ms,
+            created_at_ms: now_ms,
+            status: crate::rfq::RfqStatus::Open,
+            filled_by_quote_id: None,
+        };
+        if let dashmap::mapref::entry::Entry::Vacant(entry) = state.rfq.requests.entry(rfq_id) {
+            entry.insert(request.clone());
+            break request;
+        }
     };
-    state.rfq.requests.insert(rfq_id, request.clone());
 
     (StatusCode::OK, Json(ApiResponse::ok(request))).into_response()
 }
@@ -5279,26 +5284,30 @@ async fn rfq_quote(
             .into_response();
     }
 
-    let quote_id = crate::rfq::next_quote_id();
-    let quote = crate::rfq::RfqQuote {
-        quote_id,
-        rfq_id: body.rfq_id,
-        maker: maker_lower.clone(),
-        price: body.price,
-        quantity: body.quantity,
-        expires_at_ms: body.expires_at_ms,
-        created_at_ms: now_ms,
-        provenance,
+    let quote = loop {
+        let quote_id = crate::rfq::next_quote_id();
+        let quote = crate::rfq::RfqQuote {
+            quote_id,
+            rfq_id: body.rfq_id,
+            maker: maker_lower.clone(),
+            price: body.price,
+            quantity: body.quantity,
+            expires_at_ms: body.expires_at_ms,
+            created_at_ms: now_ms,
+            provenance,
+        };
+        if let dashmap::mapref::entry::Entry::Vacant(entry) =
+            state.rfq.quotes.entry((body.rfq_id, quote_id))
+        {
+            entry.insert(quote.clone());
+            break quote;
+        }
     };
-    state
-        .rfq
-        .quotes
-        .insert((body.rfq_id, quote_id), quote.clone());
 
     tracing::info!(
         target: "rfq",
         rfq_id = body.rfq_id,
-        quote_id,
+        quote_id = quote.quote_id,
         maker = %maker_lower,
         price = body.price,
         provenance = ?quote.provenance,
