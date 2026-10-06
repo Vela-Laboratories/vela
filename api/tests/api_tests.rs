@@ -137,6 +137,110 @@ fn test_server_with_mode(engine: MatchingEngine, runtime_mode: types::RuntimeMod
 }
 
 #[tokio::test]
+async fn concurrent_rfq_accepts_settle_only_once() {
+    use api::rfq::{MakerProvenance, RfqQuote, RfqRequest, RfqStatus};
+
+    if std::env::var("ADMIN_TOKEN").is_err() {
+        std::env::set_var("ADMIN_TOKEN", "test-admin-token");
+    }
+    let state = AppState::new_with_runtime(
+        engine_with_market(),
+        make_wal(),
+        types::RuntimeMode::Development,
+    );
+    let (requester_key, requester) = wallet(41);
+    let (_, maker) = wallet(42);
+    let requester_id = types::UserId::from_hex(&requester).unwrap();
+    let maker_id = types::UserId::from_hex(&maker).unwrap();
+    let rfq_id = api::rfq::next_rfq_id();
+    let quote_id = api::rfq::next_quote_id();
+    let expires_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 60_000;
+    state.rfq.requests.insert(
+        rfq_id,
+        RfqRequest {
+            rfq_id,
+            requester: requester.clone(),
+            market: "BTC-USDC".to_owned(),
+            side: OrderSide::Bid,
+            quantity: 1_000_000,
+            expires_at_ms,
+            created_at_ms: expires_at_ms - 60_000,
+            status: RfqStatus::Open,
+            filled_by_quote_id: None,
+        },
+    );
+    state.rfq.quotes.insert(
+        (rfq_id, quote_id),
+        RfqQuote {
+            quote_id,
+            rfq_id,
+            maker: maker.clone(),
+            price: 2_000_000,
+            quantity: 1_000_000,
+            expires_at_ms,
+            created_at_ms: expires_at_ms - 60_000,
+            provenance: MakerProvenance::Allowlist,
+        },
+    );
+    {
+        let mut users = state.shards.user_state.write().await;
+        for (user, asset, available) in [
+            (requester_id.clone(), "USDC", 4_000_000),
+            (maker_id.clone(), "BTC", 2_000_000),
+        ] {
+            let asset = AssetId::from_str(asset);
+            users.balances.insert(
+                (user.clone(), asset),
+                types::Balance {
+                    user,
+                    asset,
+                    available,
+                    locked: 0,
+                },
+            );
+        }
+    }
+    let server = TestServer::new(api::build_router(state.clone())).unwrap();
+    let body = json!({
+        "rfq_id": rfq_id,
+        "quote_id": quote_id,
+        "requester": requester,
+        "nonce": 1,
+        "signature": sign_personal(
+            &requester_key,
+            format!("vela:rfq:accept:{rfq_id}:{quote_id}:1").as_bytes(),
+        ),
+    });
+    let (first, second) = tokio::join!(
+        server.post("/rfq/accept").json(&body),
+        server.post("/rfq/accept").json(&body),
+    );
+    let mut statuses = [first.status_code(), second.status_code()];
+    statuses.sort();
+    assert_eq!(
+        statuses,
+        [axum::http::StatusCode::OK, axum::http::StatusCode::CONFLICT]
+    );
+    let users = state.shards.user_state.read().await;
+    assert_eq!(
+        users.balances[&(requester_id.clone(), AssetId::from_str("USDC"))].available,
+        2_000_000
+    );
+    assert_eq!(
+        users.balances[&(requester_id, AssetId::from_str("BTC"))].available,
+        1_000_000
+    );
+    assert_eq!(
+        state.rfq.requests.get(&rfq_id).unwrap().status,
+        RfqStatus::Filled
+    );
+}
+
+#[tokio::test]
 async fn test_health() {
     let server = test_server(engine_with_market());
     let resp = server.get("/health").await;

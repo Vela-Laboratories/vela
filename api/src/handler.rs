@@ -5455,6 +5455,38 @@ async fn rfq_accept(
 
     {
         let mut us = state.shards.user_state.write().await;
+        // The balance lock serializes acceptance with other settlement calls.
+        // Recheck the request while holding it, then mark it filled before
+        // releasing balances so two signed accepts cannot settle twice.
+        let Some(mut live_request) = state.rfq.requests.get_mut(&body.rfq_id) else {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::<()>::err("rfq_id not found")),
+            )
+                .into_response();
+        };
+        if !matches!(live_request.status, crate::rfq::RfqStatus::Open) {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err("rfq is not open")),
+            )
+                .into_response();
+        }
+        let settlement_time_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if !crate::rfq::quote_window_valid(
+            live_request.expires_at_ms,
+            quote.expires_at_ms,
+            settlement_time_ms,
+        ) {
+            return (
+                StatusCode::GONE,
+                Json(ApiResponse::<()>::err("rfq or quote has expired")),
+            )
+                .into_response();
+        }
 
         // Buyer needs `notional_micro` of quote; seller needs `quantity` of base.
         let buyer_quote_key = (buyer_id.clone(), quote_asset);
@@ -5532,12 +5564,8 @@ async fn rfq_accept(
                 locked: 0,
             })
             .available += quote.quantity;
-    }
-
-    // Flip request status.
-    if let Some(mut r) = state.rfq.requests.get_mut(&body.rfq_id) {
-        r.status = crate::rfq::RfqStatus::Filled;
-        r.filled_by_quote_id = Some(body.quote_id);
+        live_request.status = crate::rfq::RfqStatus::Filled;
+        live_request.filled_by_quote_id = Some(body.quote_id);
     }
 
     (
