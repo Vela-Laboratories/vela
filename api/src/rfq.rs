@@ -180,8 +180,11 @@ pub fn next_quote_id() -> u64 {
 }
 
 fn nonzero_random_id() -> u64 {
+    // RFQ IDs are JSON numbers consumed by browser clients. Preserve exact
+    // integer round trips while retaining 53 bits of restart-safe entropy.
+    const MAX_JSON_INTEGER: u64 = (1u64 << 53) - 1;
     loop {
-        let id = OsRng.next_u64();
+        let id = OsRng.next_u64() & MAX_JSON_INTEGER;
         if id != 0 {
             return id;
         }
@@ -231,6 +234,7 @@ mod tests {
         let ids: std::collections::HashSet<_> = (0..100).map(|_| next_rfq_id()).collect();
         assert_eq!(ids.len(), 100);
         assert!(!ids.contains(&0));
+        assert!(ids.iter().all(|id| *id <= (1u64 << 53) - 1));
         assert_ne!(next_quote_id(), next_rfq_id());
     }
 }
