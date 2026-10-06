@@ -22,7 +22,7 @@ def fetch(base_url: str, path: str) -> tuple[int, object]:
     return status, json.loads(body)
 
 
-def check(base_url: str) -> None:
+def check(base_url: str, expected_build_id: str) -> None:
     status, health = fetch(base_url, "/health")
     if status != 200 or health != "ok":
         raise ValueError(f"health failed: HTTP {status}")
@@ -30,6 +30,12 @@ def check(base_url: str) -> None:
     status, ready = fetch(base_url, "/ready")
     if status != 200 or not isinstance(ready, dict) or ready.get("ok") is not True:
         raise ValueError(f"readiness failed: HTTP {status}")
+
+    status, build = fetch(base_url, "/status")
+    if (status != 200 or not isinstance(build, dict)
+            or not isinstance(build.get("data"), dict)
+            or build["data"].get("build_id") != expected_build_id):
+        raise ValueError("running API build does not match the deployed commit")
 
     status, markets = fetch(base_url, "/markets")
     if (status != 200 or not isinstance(markets, dict)
@@ -48,11 +54,12 @@ def check(base_url: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base_url", help="Public API origin, for example https://vela-engine.fly.dev")
+    parser.add_argument("--expected-build-id", required=True, help="Git commit approved by CI")
     parser.add_argument("--attempts", type=int, default=6)
     args = parser.parse_args()
     for attempt in range(1, args.attempts + 1):
         try:
-            check(args.base_url)
+            check(args.base_url, args.expected_build_id)
             print(f"Post-deploy smoke checks passed for {args.base_url}")
             return 0
         except (ValueError, URLError, TimeoutError, json.JSONDecodeError) as error:
