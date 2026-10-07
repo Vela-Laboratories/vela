@@ -48,7 +48,7 @@ const COMMITMENTS = [
   },
   {
     title: 'FULL RESERVES',
-    body: 'Vela holds 100% of user funds in the VelaSettlement smart contract on Ethereum. We never lend, rehypothecate, or use user deposits for any purpose. Verifiable in real time at vela.monolithsystematic.com/transparency.',
+    body: 'Vela holds 100% of user funds in the VelaSettlement smart contract on Ethereum. We never lend, rehypothecate, or use user deposits for any purpose. Verifiable in real time at dippi.fun/transparency.',
   },
   {
     title: 'EMERGENCY EXIT',
@@ -294,7 +294,7 @@ export default function OperatorPage() {
           <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.2)', margin: 0 }}>
             Want to be listed? Register your MM wallet at{' '}
             <a href="/market-makers/register" style={{ color: 'rgba(232,234,240,0.4)', textDecoration: 'underline' }}>
-              vela.monolithsystematic.com/market-makers/register
+              dippi.fun/market-makers/register
             </a>
           </p>
         </div>

@@ -2,7 +2,7 @@
 
 A high-performance spot-exchange research preview built by [Monolith Systematic LLC](https://monolithsystematic.com).
 
-**Live:** [vela.monolithsystematic.com](https://vela.monolithsystematic.com) · **Docs:** [monolithsystematicllc.mintlify.app](https://monolithsystematicllc.mintlify.app) · **White Paper:** [SSRN 6579199](https://ssrn.com/abstract=6579199)
+**Live:** [dippi.fun](https://dippi.fun) · **Docs:** [monolithsystematicllc.mintlify.app](https://monolithsystematicllc.mintlify.app) · **White Paper:** [SSRN 6579199](https://ssrn.com/abstract=6579199)
 
 ---
 
@@ -59,7 +59,7 @@ The batch dispatcher coalesces multiple orders into a single engine lock acquisi
 ```
 ┌─────────────────────────────────────────────┐
 │              Next.js Frontend               │
-│         vela.monolithsystematic.com         │
+│                dippi.fun                    │
 └────────────────────┬────────────────────────┘
                      │ HTTP / WebSocket / FIX
 ┌────────────────────▼────────────────────────┐
@@ -101,7 +101,7 @@ Vela exposes research and testnet telemetry for inspection:
 | Batch explorer | Locally produced batch records and keccak256 state roots; public data availability is not yet guaranteed |
 | Verification research UI | Inspect local commitments and report discrepancies; no on-chain challenge enforcement |
 
-All live at [vela.monolithsystematic.com/transparency](https://vela.monolithsystematic.com/transparency).
+All live at [dippi.fun/transparency](https://dippi.fun/transparency).
 
 ---
 

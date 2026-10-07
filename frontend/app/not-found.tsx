@@ -122,7 +122,7 @@ export default function NotFound() {
         color: 'rgba(232,234,240,0.15)',
         letterSpacing: '0.1em',
       }}>
-        vela.monolithsystematic.com
+        dippi.fun
       </span>
     </div>
   )

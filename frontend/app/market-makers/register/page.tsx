@@ -82,7 +82,7 @@ export default function RegisterMMPage() {
               <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 8px' }}>Registered.</p>
               <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.6)', margin: 0 }}>
                 You will appear on{' '}
-                <a href="/operator" style={{ color: '#e9eaf0' }}>vela.monolithsystematic.com/operator</a>
+                <a href="/operator" style={{ color: '#e9eaf0' }}>dippi.fun/operator</a>
               </p>
             </div>
           </div>

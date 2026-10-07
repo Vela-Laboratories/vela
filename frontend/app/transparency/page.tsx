@@ -476,7 +476,7 @@ export default function TransparencyPage() {
           Every order has a permanent record.
         </h2>
         <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.45)', maxWidth: '500px', marginBottom: '28px' }}>
-          Every order ever placed on Vela is accessible at vela.monolithsystematic.com/orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
+          Every order ever placed on Vela is accessible at dippi.fun/orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
         </p>
 
         <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', display: 'block', marginBottom: '8px' }}>
