@@ -49,7 +49,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-025 Document free-only staging topology and production-control gaps.
 - [ ] D-026 Verify hosted database roles, schema, and connection limits.
 - [ ] D-027 Connect encrypted recovery export to an off-host target.
-- [ ] D-028 Restore and verify a signed engine recovery bundle.
+- [x] D-028 Restore and verify a signed engine recovery bundle.
 - [ ] D-029 Rehearse a named-point PostgreSQL restore.
 - [ ] D-030 Rehearse recovery with financial operations in flight.
 - [ ] D-031 Exercise operational alert delivery to a staging receiver.
@@ -139,3 +139,8 @@ runtime code, and operator mismatches, but the deployment rehearsal is open.
 The [free-only staging boundary](operations/free-testnet-staging.md) records the
 current local evidence path, hosted testnet admission requirements, and
 production controls that remain unfulfilled.
+
+The D-028 clean lost-directory test calls the operator-facing trusted-key
+restore command and verifies WAL shutdown and sequence after restoration.
+Periodic unclean bundles and post-signature changes are rejected in adjacent
+tests. This is local restore evidence, not an off-host durability proof.

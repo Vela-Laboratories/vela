@@ -1498,7 +1498,9 @@ mod tests {
 
         let lost = fixture.base.join("lost-source-evidence");
         fs::rename(&fixture.source, &lost).unwrap();
-        let restored = restore_bundle(&bundle, &fixture.source).unwrap();
+        let restored =
+            restore_bundle_with_trusted_key(&bundle, &fixture.source, &fixture.trusted_key_hex)
+                .unwrap();
         assert_eq!(restored, manifest);
         let recovery = Wal::inspect(&fixture.source).unwrap();
         assert!(recovery.clean_shutdown);
