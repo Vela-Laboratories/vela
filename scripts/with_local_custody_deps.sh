@@ -64,7 +64,7 @@ postgres_running=true
 pg_isready -h 127.0.0.1 -p "$pg_port" -U postgres >/dev/null
 createdb -h 127.0.0.1 -p "$pg_port" -U postgres vela_test
 
-anvil --host 127.0.0.1 --port "$anvil_port" --chain-id 31337 \
+anvil --host 127.0.0.1 --port "$anvil_port" --chain-id 84532 \
   >"$work_dir/anvil.log" 2>&1 &
 anvil_pid=$!
 
@@ -85,7 +85,7 @@ request = urllib.request.Request(
     headers={'Content-Type': 'application/json'},
 )
 with urllib.request.urlopen(request, timeout=1) as response:
-    assert json.load(response)['result'] == '0x7a69'
+    assert int(json.load(response)['result'], 16) == 84532
 PY
   then
     ready=true
