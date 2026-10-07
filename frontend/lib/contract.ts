@@ -1,4 +1,4 @@
-import { parseUnits } from 'viem'
+import { encodeFunctionData, encodePacked, getAddress, keccak256, parseAbi, parseUnits } from 'viem'
 
 const CONTRACT_ADDRESS = '0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686'
 const SEPOLIA_CHAIN_ID = 11155111
@@ -11,8 +11,8 @@ const DEPOSIT_USDC_ADDRESS = process.env.NEXT_PUBLIC_DEPOSIT_USDC_ADDRESS ?? ''
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export interface VerifiedDepositConfig {
-  chainId: 8453 | 84532 | 11155111
-  chainName: 'Base' | 'Base Sepolia' | 'Ethereum Sepolia'
+  chainId: 8453 | 84532
+  chainName: 'Base' | 'Base Sepolia'
   chainIdHex: string
   vaultAddress: string
   usdcAddress: string | null
@@ -37,19 +37,18 @@ export function resolveVerifiedDepositConfig(
   vaultAddress: string,
   usdcAddress: string,
 ): VerifiedDepositConfig | null {
-  if ((chainId !== 8453 && chainId !== 84532 && chainId !== 11155111) || !isAddress(vaultAddress)) {
+  if ((chainId !== 8453 && chainId !== 84532) || !isAddress(vaultAddress)) {
     return null
   }
-  const isEthereumSepolia = chainId === 11155111
   const isMainnet = chainId === 8453
   return {
     chainId,
-    chainName: isEthereumSepolia ? 'Ethereum Sepolia' : isMainnet ? 'Base' : 'Base Sepolia',
+    chainName: isMainnet ? 'Base' : 'Base Sepolia',
     chainIdHex: `0x${chainId.toString(16)}`,
     vaultAddress,
     usdcAddress: isAddress(usdcAddress) ? usdcAddress : null,
-    rpcUrl: isEthereumSepolia ? 'https://ethereum-sepolia-rpc.publicnode.com' : isMainnet ? 'https://mainnet.base.org' : 'https://sepolia.base.org',
-    explorerUrl: isEthereumSepolia ? 'https://sepolia.etherscan.io' : isMainnet ? 'https://basescan.org' : 'https://sepolia.basescan.org',
+    rpcUrl: isMainnet ? 'https://mainnet.base.org' : 'https://sepolia.base.org',
+    explorerUrl: isMainnet ? 'https://basescan.org' : 'https://sepolia.basescan.org',
   }
 }
 
@@ -64,8 +63,37 @@ function requireVerifiedDepositConfig(asset?: 'ETH' | 'USDC'): VerifiedDepositCo
   return config
 }
 
-function encodeDepositETH(): string {
-  return '0xf9a06f72'
+export const V3_DEPOSIT_ABI = parseAbi([
+  'function depositETH(bytes32 accountId) payable',
+  'function depositToken(bytes32 accountId,address asset,uint256 amount)',
+])
+
+// The account marker is stable audit context. The V3 indexer credits the
+// indexed depositor wallet, so this marker cannot redirect beneficial ownership.
+export function accountMarkerForWallet(wallet: string, chainId: 8453 | 84532): `0x${string}` {
+  const address = getAddress(wallet as `0x${string}`)
+  return keccak256(encodePacked(['string', 'uint256', 'address'], ['dippi-account-v1', BigInt(chainId), address]))
+}
+
+export function encodeV3DepositETH(wallet: string, chainId: 8453 | 84532): `0x${string}` {
+  return encodeFunctionData({
+    abi: V3_DEPOSIT_ABI,
+    functionName: 'depositETH',
+    args: [accountMarkerForWallet(wallet, chainId)],
+  })
+}
+
+export function encodeV3DepositToken(
+  wallet: string,
+  chainId: 8453 | 84532,
+  asset: string,
+  amountWei: string,
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: V3_DEPOSIT_ABI,
+    functionName: 'depositToken',
+    args: [accountMarkerForWallet(wallet, chainId), getAddress(asset as `0x${string}`), BigInt(amountWei)],
+  })
 }
 
 function encodeGetBalance(userAddress: string): string {
@@ -144,7 +172,7 @@ export async function depositETH(amountEth: string): Promise<string> {
       {
         from: accounts[0],
         to: config.vaultAddress,
-        data: encodeDepositETH(),
+        data: encodeV3DepositETH(accounts[0], config.chainId),
         value: weiHex,
       },
     ],
@@ -261,9 +289,7 @@ export async function depositToken(amountWei: string): Promise<string> {
   const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
   if (!accounts.length) throw new Error('No connected account')
 
-  const paddedAsset = config.usdcAddress!.toLowerCase().replace('0x', '').padStart(64, '0')
-  const paddedAmount = BigInt(amountWei).toString(16).padStart(64, '0')
-  const data = '0x338b5dea' + paddedAsset + paddedAmount
+  const data = encodeV3DepositToken(accounts[0], config.chainId, config.usdcAddress!, amountWei)
 
   const txHash: string = await ethereum.request({
     method: 'eth_sendTransaction',

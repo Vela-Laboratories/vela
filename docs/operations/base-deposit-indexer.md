@@ -20,6 +20,9 @@ The current V3 flow is self-deposit only. The indexer credits the indexed
 20-byte depositor wallet as the ledger customer owner; the 32-byte event
 account ID remains an audit marker. The matcher, private account routes, and
 withdrawal reservations all use that same wallet owner reference.
+The browser encodes `depositETH(bytes32)` and
+`depositToken(bytes32,address,uint256)` from the reviewed V3 ABI and rejects
+the incompatible Ethereum Sepolia vault in the verified-deposit flow.
 
 Any uncertainty stops credits. Safety failures are written to `ledger_indexer_halts`, and the monotonic PostgreSQL checkpoint advances only after the complete range is processed. A database lease prevents two workers from owning one deployment concurrently. A crash after a credit but before checkpoint advancement is safe because deposit and journal identities are deterministic and idempotent.
 

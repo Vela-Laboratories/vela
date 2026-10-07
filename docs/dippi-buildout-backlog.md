@@ -22,6 +22,8 @@ control, record the gap rather than treating the control as complete.
 - [x] D-006 Verify distinct RPC providers and pinned custody code before registration.
 - [x] D-007 Prove an ETH deposit reaches the authoritative customer ledger.
 - [x] D-008 Prove a USDC deposit credits the exact received amount.
+- [x] D-008A Credit the V3 self-deposit to its indexed wallet owner.
+- [x] D-008B Encode the exact V3 deposit calls in the browser.
 - [ ] D-009 Prove provider disagreement and reorganization containment.
 - [ ] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
 - [ ] D-011 Run custody-to-liability reconciliation in the integrated flow.
