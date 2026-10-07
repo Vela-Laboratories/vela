@@ -52,6 +52,15 @@ uncertain outcome. The policy and persistence boundaries still need an enabled
 worker that obtains two provider quotes and writes the reservation before it
 constructs or submits an exact transaction.
 
+Schema version 19 stores the exact signed transaction bytes and their keccak256
+hash before a network send, tied one-to-one to the nonce reservation. A single
+immutable submission result can then record provider acceptance or an uncertain
+response such as a timeout. Uncertain results do not release the nonce or
+authorize another transaction. This is persistence only: a future relayer must
+decode and independently verify the signed transaction against the approved
+authorization, submit it through a reviewed provider adapter, and reconcile
+uncertain results by exact transaction hash before D-018 can close.
+
 `Ledger::record_withdrawal_broadcast_attempt` stores provider acceptance of the first exact executable transaction. Each immutable attempt records its transaction hash, sender, sender nonce, destination vault, calldata hash, provider reference, submitter, and submission time.
 
 The first accepted transaction moves the projection to `broadcast`. Replacements use the separate `Ledger::record_observed_withdrawal_replacement` boundary. A supplied replacement hash must be observed independently by both providers with the same sender, Ethereum account nonce, vault destination, and authorization calldata hash as the latest attempt. The replacement and its immutable two-provider evidence commit atomically; a deferred database constraint rejects any replacement row without that evidence. An identical retry returns the existing attempt and conflicting evidence fails. Recording an attempt is evidence storage only. This repository does not contain an enabled runtime broadcaster.

@@ -169,3 +169,6 @@ The D-017 relayer decision helper now bounds a two-provider pending nonce and
 fee quote. An immutable exclusive nonce reservation is available in schema
 version 18, but the policy and persistence calls are not yet wired into an
 enabled broadcaster. D-017 remains open.
+Schema version 19 records exact prepared transaction bytes and one immutable
+accepted or uncertain submission result. The executable transaction decoder,
+provider adapter, and uncertain-result reconciliation remain D-018 work.

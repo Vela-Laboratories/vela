@@ -4,12 +4,14 @@ use ledger::{
     ActivateGlobalWithdrawalHalt, ApproveWithdrawal, ComplianceDisposition,
     EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
     FinalizedWithdrawalRevert, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
-    PostTransaction, RecordDroppedWithdrawalAttempt, RecordObservedWithdrawalReplacement,
-    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, ReserveRelayerNonce,
-    ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
+    PostTransaction, PrepareRelayerTransaction, RecordDroppedWithdrawalAttempt,
+    RecordObservedWithdrawalReplacement, RecordRelayerSubmissionResult,
+    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, RelayerSubmissionOutcome,
+    ReserveRelayerNonce, ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
     WithdrawalPolicyDisposition, WithdrawalState,
 };
 use serde_json::json;
+use sha3::{Digest, Keccak256};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -1103,6 +1105,102 @@ async fn relayer_nonce_reservation_is_exclusive_immutable_and_replay_safe(pool: 
     assert!(
         sqlx::query("DELETE FROM ledger_relayer_nonce_reservations WHERE id = $1")
             .bind(stored.id)
+            .execute(fixture.ledger.pool())
+            .await
+            .is_err()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn relayer_submission_preserves_exact_bytes_and_uncertain_outcome(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (withdrawal, _, _) = fixture
+        .sign_withdrawal(303, 100_000, "withdrawal-policy.submission", 600)
+        .await;
+    let reserved = fixture
+        .ledger
+        .reserve_relayer_nonce(&ReserveRelayerNonce {
+            reservation_id: Uuid::new_v4(),
+            withdrawal_id: withdrawal.withdrawal_id,
+            sender_address: CUSTOMER.to_owned(),
+            primary_pending_nonce: 9,
+            secondary_pending_nonce: 9,
+            gas_limit: 100_000,
+            max_fee_per_gas_wei: 50,
+            max_priority_fee_per_gas_wei: 2,
+            maximum_cost_wei: 5_000_000,
+            primary_provider: "rpc-primary".to_owned(),
+            secondary_provider: "rpc-secondary".to_owned(),
+            allocated_by: "relayer:test".to_owned(),
+        })
+        .await
+        .unwrap();
+    let bytes = vec![2, 4, 6, 8];
+    let command = PrepareRelayerTransaction {
+        prepared_id: Uuid::new_v4(),
+        reservation_id: reserved.id,
+        transaction_hash: format!("0x{}", hex::encode(Keccak256::digest(&bytes))),
+        signed_transaction: bytes,
+        prepared_by: "relayer:test".to_owned(),
+    };
+    let prepared = fixture
+        .ledger
+        .prepare_relayer_transaction(&command)
+        .await
+        .unwrap();
+    assert_eq!(
+        prepared,
+        fixture
+            .ledger
+            .prepare_relayer_transaction(&command)
+            .await
+            .unwrap()
+    );
+    assert_eq!(prepared.signed_transaction, command.signed_transaction);
+    let wrong_hash = PrepareRelayerTransaction {
+        transaction_hash: format!("0x{}", "00".repeat(32)),
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .prepare_relayer_transaction(&wrong_hash)
+        .await
+        .is_err());
+    let uncertain = RecordRelayerSubmissionResult {
+        prepared_id: prepared.id,
+        outcome: RelayerSubmissionOutcome::Uncertain,
+        provider_name: "rpc-primary".to_owned(),
+        provider_reference: None,
+        submitted_by: "relayer:test".to_owned(),
+        submitted_at: Utc::now(),
+    };
+    let recorded = fixture
+        .ledger
+        .record_relayer_submission_result(&uncertain)
+        .await
+        .unwrap();
+    assert_eq!(recorded.outcome, "uncertain");
+    assert_eq!(
+        recorded,
+        fixture
+            .ledger
+            .record_relayer_submission_result(&uncertain)
+            .await
+            .unwrap()
+    );
+    let accepted = RecordRelayerSubmissionResult {
+        outcome: RelayerSubmissionOutcome::Accepted,
+        provider_reference: Some("rpc:acceptance".to_owned()),
+        ..uncertain
+    };
+    assert!(fixture
+        .ledger
+        .record_relayer_submission_result(&accepted)
+        .await
+        .is_err());
+    assert!(
+        sqlx::query("DELETE FROM ledger_relayer_prepared_transactions WHERE id = $1")
+            .bind(prepared.id)
             .execute(fixture.ledger.pool())
             .await
             .is_err()

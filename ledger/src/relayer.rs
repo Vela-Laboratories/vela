@@ -1,6 +1,7 @@
 use crate::{Ledger, LedgerError};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
+use sha3::{Digest, Keccak256};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -37,7 +38,175 @@ pub struct RelayerNonceReservation {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PrepareRelayerTransaction {
+    pub prepared_id: Uuid,
+    pub reservation_id: Uuid,
+    pub transaction_hash: String,
+    pub signed_transaction: Vec<u8>,
+    pub prepared_by: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct PreparedRelayerTransaction {
+    pub id: Uuid,
+    pub reservation_id: Uuid,
+    pub transaction_hash: String,
+    pub signed_transaction: Vec<u8>,
+    pub prepared_by: String,
+    pub prepared_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelayerSubmissionOutcome {
+    Accepted,
+    Uncertain,
+}
+
+impl RelayerSubmissionOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Uncertain => "uncertain",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordRelayerSubmissionResult {
+    pub prepared_id: Uuid,
+    pub outcome: RelayerSubmissionOutcome,
+    pub provider_name: String,
+    pub provider_reference: Option<String>,
+    pub submitted_by: String,
+    pub submitted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct RelayerSubmissionResult {
+    pub prepared_id: Uuid,
+    pub outcome: String,
+    pub provider_name: String,
+    pub provider_reference: Option<String>,
+    pub submitted_by: String,
+    pub submitted_at: DateTime<Utc>,
+    pub recorded_at: DateTime<Utc>,
+}
+
 impl Ledger {
+    pub async fn prepare_relayer_transaction(
+        &self,
+        command: &PrepareRelayerTransaction,
+    ) -> Result<PreparedRelayerTransaction, LedgerError> {
+        let computed_hash = format!(
+            "0x{}",
+            hex::encode(Keccak256::digest(&command.signed_transaction))
+        );
+        if command.signed_transaction.is_empty()
+            || command.signed_transaction.len() > 32768
+            || command.transaction_hash != computed_hash
+            || command.prepared_by.trim().is_empty()
+        {
+            return Err(LedgerError::InvalidWithdrawal(
+                "prepared relayer transaction has invalid signed bytes or hash".to_owned(),
+            ));
+        }
+        let mut tx = self.pool.begin().await?;
+        if let Some(stored) = sqlx::query_as::<_, PreparedRelayerTransaction>(
+            "SELECT * FROM ledger_relayer_prepared_transactions WHERE reservation_id = $1 FOR UPDATE",
+        )
+        .bind(command.reservation_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            if stored.id != command.prepared_id
+                || stored.transaction_hash != command.transaction_hash
+                || stored.signed_transaction != command.signed_transaction
+                || stored.prepared_by != command.prepared_by
+            {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return Ok(stored);
+        }
+        sqlx::query(
+            "INSERT INTO ledger_relayer_prepared_transactions (id, reservation_id, transaction_hash, signed_transaction, prepared_by) VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(command.prepared_id)
+        .bind(command.reservation_id)
+        .bind(&command.transaction_hash)
+        .bind(&command.signed_transaction)
+        .bind(&command.prepared_by)
+        .execute(&mut *tx)
+        .await?;
+        let stored = sqlx::query_as::<_, PreparedRelayerTransaction>(
+            "SELECT * FROM ledger_relayer_prepared_transactions WHERE id = $1",
+        )
+        .bind(command.prepared_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(stored)
+    }
+
+    pub async fn record_relayer_submission_result(
+        &self,
+        command: &RecordRelayerSubmissionResult,
+    ) -> Result<RelayerSubmissionResult, LedgerError> {
+        if command.provider_name.trim().is_empty()
+            || command.submitted_by.trim().is_empty()
+            || matches!(command.outcome, RelayerSubmissionOutcome::Accepted)
+                && command
+                    .provider_reference
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+        {
+            return Err(LedgerError::InvalidWithdrawal(
+                "relayer submission outcome requires provider evidence".to_owned(),
+            ));
+        }
+        let mut tx = self.pool.begin().await?;
+        if let Some(stored) = sqlx::query_as::<_, RelayerSubmissionResult>(
+            "SELECT * FROM ledger_relayer_submission_results WHERE prepared_id = $1 FOR UPDATE",
+        )
+        .bind(command.prepared_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            if stored.outcome != command.outcome.as_str()
+                || stored.provider_name != command.provider_name
+                || stored.provider_reference != command.provider_reference
+                || stored.submitted_by != command.submitted_by
+                || stored.submitted_at != command.submitted_at
+            {
+                return Err(LedgerError::IdempotencyConflict);
+            }
+            tx.commit().await?;
+            return Ok(stored);
+        }
+        sqlx::query(
+            "INSERT INTO ledger_relayer_submission_results (prepared_id, outcome, provider_name, provider_reference, submitted_by, submitted_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(command.prepared_id)
+        .bind(command.outcome.as_str())
+        .bind(&command.provider_name)
+        .bind(&command.provider_reference)
+        .bind(&command.submitted_by)
+        .bind(command.submitted_at)
+        .execute(&mut *tx)
+        .await?;
+        let stored = sqlx::query_as::<_, RelayerSubmissionResult>(
+            "SELECT * FROM ledger_relayer_submission_results WHERE prepared_id = $1",
+        )
+        .bind(command.prepared_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(stored)
+    }
+
     pub async fn reserve_relayer_nonce(
         &self,
         command: &ReserveRelayerNonce,

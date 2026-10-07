@@ -90,6 +90,8 @@ REVOKE UPDATE, DELETE ON ledger_withdrawal_policy_decisions FROM vela_ledger_wri
 REVOKE UPDATE, DELETE ON ledger_global_withdrawal_halts FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_broadcast_attempts FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_relayer_nonce_reservations FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_relayer_prepared_transactions FROM vela_ledger_writer;
+REVOKE UPDATE, DELETE ON ledger_relayer_submission_results FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_chain_observations FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_executions FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_failure_releases FROM vela_ledger_writer;
