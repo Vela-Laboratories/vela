@@ -40,13 +40,27 @@
 //!   fees).
 
 use dashmap::DashMap;
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use types::OrderSide;
 
-pub static NEXT_RFQ_ID: AtomicU64 = AtomicU64::new(1);
-pub static NEXT_QUOTE_ID: AtomicU64 = AtomicU64::new(1);
+/// Convert fixed-point price and base quantity to quote micro-units.
+/// Reject dust and values that cannot fit in an account balance.
+pub fn quote_notional_micro(price: u64, quantity: u64) -> Option<u64> {
+    let amount = u128::from(price) * u128::from(quantity) / 1_000_000;
+    u64::try_from(amount).ok().filter(|amount| *amount > 0)
+}
+
+pub fn quote_window_valid(
+    request_expires_at_ms: u64,
+    quote_expires_at_ms: u64,
+    now_ms: u64,
+) -> bool {
+    now_ms < request_expires_at_ms
+        && now_ms < quote_expires_at_ms
+        && quote_expires_at_ms <= request_expires_at_ms
+}
 
 pub fn min_notional_micro() -> u64 {
     std::env::var("VELA_RFQ_MIN_NOTIONAL_MICRO")
@@ -158,11 +172,23 @@ impl RfqRegistry {
 }
 
 pub fn next_rfq_id() -> u64 {
-    NEXT_RFQ_ID.fetch_add(1, Ordering::Relaxed)
+    nonzero_random_id()
 }
 
 pub fn next_quote_id() -> u64 {
-    NEXT_QUOTE_ID.fetch_add(1, Ordering::Relaxed)
+    nonzero_random_id()
+}
+
+fn nonzero_random_id() -> u64 {
+    // RFQ IDs are JSON numbers consumed by browser clients. Preserve exact
+    // integer round trips while retaining 53 bits of restart-safe entropy.
+    const MAX_JSON_INTEGER: u64 = (1u64 << 53) - 1;
+    loop {
+        let id = OsRng.next_u64() & MAX_JSON_INTEGER;
+        if id != 0 {
+            return id;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -186,5 +212,29 @@ mod tests {
         assert!(j.contains("Reputation"));
         let d: MakerProvenance = serde_json::from_str(&j).unwrap();
         assert_eq!(d, p);
+    }
+
+    #[test]
+    fn quote_notional_rejects_dust_and_balance_overflow() {
+        assert_eq!(quote_notional_micro(2_000_000, 3_000_000), Some(6_000_000));
+        assert_eq!(quote_notional_micro(1, 1), None);
+        assert_eq!(quote_notional_micro(u64::MAX, u64::MAX), None);
+    }
+
+    #[test]
+    fn quote_cannot_outlive_its_request() {
+        assert!(quote_window_valid(100, 90, 89));
+        assert!(!quote_window_valid(100, 90, 90));
+        assert!(!quote_window_valid(100, 101, 50));
+        assert!(!quote_window_valid(100, 100, 100));
+    }
+
+    #[test]
+    fn rfq_ids_do_not_restart_at_a_replayable_counter() {
+        let ids: std::collections::HashSet<_> = (0..100).map(|_| next_rfq_id()).collect();
+        assert_eq!(ids.len(), 100);
+        assert!(!ids.contains(&0));
+        assert!(ids.iter().all(|id| *id <= (1u64 << 53) - 1));
+        assert_ne!(next_quote_id(), next_rfq_id());
     }
 }

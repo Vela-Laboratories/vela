@@ -2,24 +2,39 @@
 
 name: Fly Deploy
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches:
       - main
 jobs:
   deploy:
     name: Deploy app
-    runs-on: ubuntu-latest
-    concurrency: deploy-group    # optional: ensure only one action runs at a time
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    concurrency: fly-deploy-main
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Skip commits superseded on main
+        run: |
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)"
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --build-arg VELA_BUILD_ID="${GITHUB_SHA}"
+      - run: flyctl deploy --remote-only --build-arg VELA_BUILD_ID="${{ github.event.workflow_run.head_sha }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Verify machine and public API after deploy
         run: |
           flyctl status --app vela-engine
           flyctl checks list --app vela-engine
-          python3 scripts/post_deploy_smoke.py https://vela-engine.fly.dev
+          python3 scripts/post_deploy_smoke.py https://vela-engine.fly.dev \
+            --expected-build-id "${{ github.event.workflow_run.head_sha }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

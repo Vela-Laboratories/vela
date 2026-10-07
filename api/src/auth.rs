@@ -18,9 +18,17 @@ pub fn recover_signer(message: &[u8], signature_hex: &str) -> Result<UserId, Vel
         return Err(VelaError::InvalidSignature);
     }
     let hash = eth_message_hash(message);
-    let v = sig_bytes[64];
-    let recovery_id = RecoveryId::try_from(v % 27).map_err(|_| VelaError::InvalidSignature)?;
+    let recovery_byte = match sig_bytes[64] {
+        0 | 1 => sig_bytes[64],
+        27 | 28 => sig_bytes[64] - 27,
+        _ => return Err(VelaError::InvalidSignature),
+    };
+    let recovery_id =
+        RecoveryId::try_from(recovery_byte).map_err(|_| VelaError::InvalidSignature)?;
     let sig = Signature::try_from(&sig_bytes[..64]).map_err(|_| VelaError::InvalidSignature)?;
+    if sig.normalize_s().is_some() {
+        return Err(VelaError::InvalidSignature);
+    }
     let vk = VerifyingKey::recover_from_prehash(&hash, &sig, recovery_id)
         .map_err(|_| VelaError::InvalidSignature)?;
     let pubkey = vk.to_encoded_point(false);
@@ -184,6 +192,23 @@ pub async fn verify_batch_async(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn personal_sign_accepts_only_canonical_recovery_values() {
+        let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
+        let message = b"vela:test:canonical-signature";
+        let (signature, recovery) = key
+            .sign_prehash_recoverable(&eth_message_hash(message))
+            .unwrap();
+        let mut bytes = [0u8; 65];
+        bytes[..64].copy_from_slice(&signature.to_bytes());
+        bytes[64] = recovery.to_byte() + 27;
+        assert!(recover_signer(message, &hex::encode(bytes)).is_ok());
+        bytes[64] = recovery.to_byte();
+        assert!(recover_signer(message, &hex::encode(bytes)).is_ok());
+        bytes[64] = recovery.to_byte() + 54;
+        assert!(recover_signer(message, &hex::encode(bytes)).is_err());
+    }
 
     #[test]
     fn v2_order_signature_binds_every_execution_control() {

@@ -4720,6 +4720,7 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "status": status,
         "engine_uptime_seconds": uptime_secs,
         "engine_version": state.engine_version,
+        "build_id": state.build_id.as_deref(),
         "last_snapshot_timestamp": last_snapshot_ts,
         "last_state_root": last_state_root,
         "orders_processed_today": orders_today,
@@ -5132,20 +5133,39 @@ async fn rfq_request(
         )
             .into_response();
     }
-
-    let rfq_id = crate::rfq::next_rfq_id();
-    let request = crate::rfq::RfqRequest {
-        rfq_id,
-        requester: body.requester.to_lowercase(),
-        market: body.market,
-        side: body.side,
-        quantity: body.quantity,
-        expires_at_ms: body.expires_at_ms,
-        created_at_ms: now_ms,
-        status: crate::rfq::RfqStatus::Open,
-        filled_by_quote_id: None,
+    let listed_usdc_market = {
+        let engine = state.engine.lock().await;
+        engine
+            .markets
+            .get(&MarketId(body.market.clone()))
+            .is_some_and(|market| market.quote == AssetId::from_str("USDC"))
     };
-    state.rfq.requests.insert(rfq_id, request.clone());
+    if !listed_usdc_market {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err("rfq requires a listed USDC market")),
+        )
+            .into_response();
+    }
+
+    let request = loop {
+        let rfq_id = crate::rfq::next_rfq_id();
+        let request = crate::rfq::RfqRequest {
+            rfq_id,
+            requester: body.requester.to_lowercase(),
+            market: body.market.clone(),
+            side: body.side,
+            quantity: body.quantity,
+            expires_at_ms: body.expires_at_ms,
+            created_at_ms: now_ms,
+            status: crate::rfq::RfqStatus::Open,
+            filled_by_quote_id: None,
+        };
+        if let dashmap::mapref::entry::Entry::Vacant(entry) = state.rfq.requests.entry(rfq_id) {
+            entry.insert(request.clone());
+            break request;
+        }
+    };
 
     (StatusCode::OK, Json(ApiResponse::ok(request))).into_response()
 }
@@ -5232,11 +5252,27 @@ async fn rfq_quote(
         )
             .into_response();
     }
+    if !crate::rfq::quote_window_valid(req.expires_at_ms, body.expires_at_ms, now_ms) {
+        return (
+            StatusCode::GONE,
+            Json(ApiResponse::<()>::err("rfq or quote has expired")),
+        )
+            .into_response();
+    }
     if body.quantity != req.quantity {
         return (
             StatusCode::BAD_REQUEST,
             Json(ApiResponse::<()>::err(
                 "quote quantity must equal RFQ quantity (partials are v2)",
+            )),
+        )
+            .into_response();
+    }
+    if crate::rfq::quote_notional_micro(body.price, body.quantity).is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "quote notional is zero or exceeds account limits",
             )),
         )
             .into_response();
@@ -5262,26 +5298,30 @@ async fn rfq_quote(
             .into_response();
     }
 
-    let quote_id = crate::rfq::next_quote_id();
-    let quote = crate::rfq::RfqQuote {
-        quote_id,
-        rfq_id: body.rfq_id,
-        maker: maker_lower.clone(),
-        price: body.price,
-        quantity: body.quantity,
-        expires_at_ms: body.expires_at_ms,
-        created_at_ms: now_ms,
-        provenance,
+    let quote = loop {
+        let quote_id = crate::rfq::next_quote_id();
+        let quote = crate::rfq::RfqQuote {
+            quote_id,
+            rfq_id: body.rfq_id,
+            maker: maker_lower.clone(),
+            price: body.price,
+            quantity: body.quantity,
+            expires_at_ms: body.expires_at_ms,
+            created_at_ms: now_ms,
+            provenance,
+        };
+        if let dashmap::mapref::entry::Entry::Vacant(entry) =
+            state.rfq.quotes.entry((body.rfq_id, quote_id))
+        {
+            entry.insert(quote.clone());
+            break quote;
+        }
     };
-    state
-        .rfq
-        .quotes
-        .insert((body.rfq_id, quote_id), quote.clone());
 
     tracing::info!(
         target: "rfq",
         rfq_id = body.rfq_id,
-        quote_id,
+        quote_id = quote.quote_id,
         maker = %maker_lower,
         price = body.price,
         provenance = ?quote.provenance,
@@ -5367,7 +5407,7 @@ async fn rfq_accept(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    if quote.expires_at_ms <= now_ms {
+    if !crate::rfq::quote_window_valid(request.expires_at_ms, quote.expires_at_ms, now_ms) {
         return (
             StatusCode::GONE,
             Json(ApiResponse::<()>::err("quote has expired")),
@@ -5420,7 +5460,15 @@ async fn rfq_accept(
     let quote_asset = AssetId::from_str(quote_str);
 
     // Notional in USDC micro = price × quantity / 1_000_000.
-    let notional_micro = (quote.price as u128 * quote.quantity as u128 / 1_000_000u128) as u64;
+    let Some(notional_micro) = crate::rfq::quote_notional_micro(quote.price, quote.quantity) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "quote notional is zero or exceeds account limits",
+            )),
+        )
+            .into_response();
+    };
 
     // Direction: request.side is the requester's side. Bid = requester
     // buys base, pays quote. Ask = requester sells base, receives quote.
@@ -5428,47 +5476,77 @@ async fn rfq_accept(
         types::OrderSide::Bid => (requester_id.clone(), maker_id.clone()),
         types::OrderSide::Ask => (maker_id.clone(), requester_id.clone()),
     };
+    if buyer_id == seller_id || base_asset == quote_asset {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(
+                "rfq parties and assets must be distinct",
+            )),
+        )
+            .into_response();
+    }
 
     {
         let mut us = state.shards.user_state.write().await;
+        // The balance lock serializes acceptance with other settlement calls.
+        // Recheck the request while holding it, then mark it filled before
+        // releasing balances so two signed accepts cannot settle twice.
+        let Some(mut live_request) = state.rfq.requests.get_mut(&body.rfq_id) else {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::<()>::err("rfq_id not found")),
+            )
+                .into_response();
+        };
+        if !matches!(live_request.status, crate::rfq::RfqStatus::Open) {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err("rfq is not open")),
+            )
+                .into_response();
+        }
+        let settlement_time_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if !crate::rfq::quote_window_valid(
+            live_request.expires_at_ms,
+            quote.expires_at_ms,
+            settlement_time_ms,
+        ) {
+            return (
+                StatusCode::GONE,
+                Json(ApiResponse::<()>::err("rfq or quote has expired")),
+            )
+                .into_response();
+        }
 
         // Buyer needs `notional_micro` of quote; seller needs `quantity` of base.
         let buyer_quote_key = (buyer_id.clone(), quote_asset);
         let seller_base_key = (seller_id.clone(), base_asset);
-
-        let buyer_bal = us
+        let seller_quote_key = (seller_id.clone(), quote_asset);
+        let buyer_base_key = (buyer_id.clone(), base_asset);
+        let buyer_available = us
             .balances
-            .entry(buyer_quote_key)
-            .or_insert_with(|| types::Balance {
-                user: buyer_id.clone(),
-                asset: quote_asset,
-                available: 0,
-                locked: 0,
-            });
-        if buyer_bal.available < notional_micro {
+            .get(&buyer_quote_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        if buyer_available < notional_micro {
             return (
                 StatusCode::PAYMENT_REQUIRED,
                 Json(ApiResponse::<()>::err(format!(
                     "buyer needs {} quote micro; has {}",
-                    notional_micro, buyer_bal.available
+                    notional_micro, buyer_available
                 ))),
             )
                 .into_response();
         }
-        buyer_bal.available -= notional_micro;
-
-        // Check seller balance without holding the entry borrow across
-        // the rollback path.
         let seller_available = us
             .balances
             .get(&seller_base_key)
             .map(|b| b.available)
             .unwrap_or(0);
         if seller_available < quote.quantity {
-            // Rollback the buyer's debit.
-            if let Some(b) = us.balances.get_mut(&(buyer_id.clone(), quote_asset)) {
-                b.available += notional_micro;
-            }
             return (
                 StatusCode::PAYMENT_REQUIRED,
                 Json(ApiResponse::<()>::err(format!(
@@ -5478,6 +5556,29 @@ async fn rfq_accept(
             )
                 .into_response();
         }
+        let seller_quote_available = us
+            .balances
+            .get(&seller_quote_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        let buyer_base_available = us
+            .balances
+            .get(&buyer_base_key)
+            .map(|balance| balance.available)
+            .unwrap_or(0);
+        if seller_quote_available.checked_add(notional_micro).is_none()
+            || buyer_base_available.checked_add(quote.quantity).is_none()
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiResponse::<()>::err(
+                    "rfq settlement exceeds account limits",
+                )),
+            )
+                .into_response();
+        }
+
+        us.balances.get_mut(&buyer_quote_key).unwrap().available -= notional_micro;
         let seller_bal = us
             .balances
             .entry(seller_base_key)
@@ -5491,7 +5592,7 @@ async fn rfq_accept(
 
         // Credit the other side.
         us.balances
-            .entry((seller_id.clone(), quote_asset))
+            .entry(seller_quote_key)
             .or_insert_with(|| types::Balance {
                 user: seller_id.clone(),
                 asset: quote_asset,
@@ -5500,7 +5601,7 @@ async fn rfq_accept(
             })
             .available += notional_micro;
         us.balances
-            .entry((buyer_id.clone(), base_asset))
+            .entry(buyer_base_key)
             .or_insert_with(|| types::Balance {
                 user: buyer_id.clone(),
                 asset: base_asset,
@@ -5508,12 +5609,8 @@ async fn rfq_accept(
                 locked: 0,
             })
             .available += quote.quantity;
-    }
-
-    // Flip request status.
-    if let Some(mut r) = state.rfq.requests.get_mut(&body.rfq_id) {
-        r.status = crate::rfq::RfqStatus::Filled;
-        r.filled_by_quote_id = Some(body.quote_id);
+        live_request.status = crate::rfq::RfqStatus::Filled;
+        live_request.filled_by_quote_id = Some(body.quote_id);
     }
 
     (
