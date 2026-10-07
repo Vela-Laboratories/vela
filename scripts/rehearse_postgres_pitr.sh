@@ -67,12 +67,12 @@ docker run --name "$source_container" --detach \
   -c 'archive_command=cp %p /archive/%f' >/dev/null
 
 for _ in $(seq 1 60); do
-  if docker exec "$source_container" pg_isready -U postgres >/dev/null 2>&1; then
+  if docker exec "$source_container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-docker exec "$source_container" pg_isready -U postgres >/dev/null
+docker exec "$source_container" pg_isready -h 127.0.0.1 -U postgres >/dev/null
 
 psql_source() {
   docker exec "$source_container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres "$@"
@@ -102,12 +102,12 @@ docker run --name "$restore_container" --detach \
   -c 'recovery_target_action=promote' >/dev/null
 
 for _ in $(seq 1 60); do
-  if docker exec "$restore_container" pg_isready -U postgres >/dev/null 2>&1; then
+  if docker exec "$restore_container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-docker exec "$restore_container" pg_isready -U postgres >/dev/null
+docker exec "$restore_container" pg_isready -h 127.0.0.1 -U postgres >/dev/null
 
 restored_rows="$(docker exec "$restore_container" \
   psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
