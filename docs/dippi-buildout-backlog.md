@@ -31,7 +31,7 @@ control, record the gap rather than treating the control as complete.
 
 ## Testnet withdrawal lifecycle
 
-- [ ] D-013 Add an opt-in testnet signer runtime.
+- [x] D-013 Add an opt-in testnet signer runtime.
 - [ ] D-014 Verify signer chain, vault, code, and authorization preconditions.
 - [ ] D-015 Persist the policy approval to signing handoff.
 - [ ] D-016 Queue authorized transactions for controlled broadcast.
@@ -128,3 +128,8 @@ hosted chain reorganization rehearsal.
 The D-012 PostgreSQL test records a custody deficit, verifies the active asset
 halt, and proves deposit credit, order reservation, trade, and withdrawal
 reservation journals all fail with no journal transaction committed.
+
+The D-013 on-demand signer is documented in
+[testnet custody signer operations](operations/testnet-custody-signer.md). Its
+local key adapter is restricted to `testnet-demo` on Base Sepolia, with a
+focused signer-boundary test. A hosted deployment preflight remains D-014.

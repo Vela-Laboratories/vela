@@ -82,7 +82,7 @@ impl TestnetLocalCustodySigner {
         secret_hex: &str,
     ) -> Result<Self, CustodySignerError> {
         if mode != types::RuntimeMode::TestnetDemo
-            || !matches!(chain_id, 84532 | 11155111)
+            || chain_id != 84532
             || types::UserId::from_hex(&vault_address).is_err()
             || vault_address.eq_ignore_ascii_case(&format!("0x{}", "00".repeat(20)))
             || key_id.trim().is_empty()
@@ -316,7 +316,7 @@ mod tests {
             authorization_id: Uuid::from_u128(1),
             withdrawal_id: Uuid::from_u128(2),
             digest: [7; 32],
-            chain_id: 11155111,
+            chain_id: 84532,
             vault_address: format!("0x{}", "11".repeat(20)),
             expires_at: Utc::now() + chrono::Duration::minutes(5),
         }
@@ -346,6 +346,14 @@ mod tests {
             &"09".repeat(32)
         )
         .is_err());
+        assert!(TestnetLocalCustodySigner::new(
+            types::RuntimeMode::TestnetDemo,
+            11155111,
+            request.vault_address.clone(),
+            "staging".into(),
+            &"09".repeat(32)
+        )
+        .is_err());
         let signer = TestnetLocalCustodySigner::new(
             types::RuntimeMode::TestnetDemo,
             request.chain_id,
@@ -356,9 +364,9 @@ mod tests {
         .unwrap();
         let signed = signer.sign(&request).await.unwrap();
         validate_provider_signature(&signer.identity().unwrap(), &signed, &request.digest).unwrap();
-        request.chain_id = 84532;
-        assert!(signer.sign(&request).await.is_err());
         request.chain_id = 11155111;
+        assert!(signer.sign(&request).await.is_err());
+        request.chain_id = 84532;
         request.vault_address = format!("0x{}", "22".repeat(20));
         assert!(signer.sign(&request).await.is_err());
         request.vault_address = format!("0x{}", "11".repeat(20));
