@@ -8,6 +8,9 @@ use engine::{
 };
 use indexer::{Config, DepositIndexer, HttpRpc, IndexerStore, NewDeployment, Rpc};
 use ledger::{AccountLookup, AccountProvisionRequest, Ledger, NewAsset};
+use reconciliation_worker::{
+    Config as ReconciliationConfig, HttpRpc as ReconciliationRpc, ReconciliationWorker,
+};
 use reqwest::Url;
 use sha3::{Digest, Keccak256};
 use std::{env, sync::Arc, time::Duration};
@@ -123,12 +126,12 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
         .unwrap();
     let mut indexer = DepositIndexer::new(
         Config {
-            database_url,
+            database_url: database_url.clone(),
             deployment_id: deployment.id,
             primary_name: "local-anvil-a".to_owned(),
-            primary_url,
+            primary_url: primary_url.clone(),
             secondary_name: "local-anvil-b".to_owned(),
-            secondary_url,
+            secondary_url: secondary_url.clone(),
             request_timeout: Duration::from_secs(5),
             poll_interval: Duration::from_secs(2),
             retry_max: Duration::from_secs(30),
@@ -319,4 +322,42 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
     .unwrap();
     assert_eq!(trade_count, 1);
     assert!(ledger.verify_balance_projection().await.unwrap());
+
+    let reconciler = ReconciliationWorker::new(
+        ReconciliationConfig {
+            enabled: true,
+            database_url: database_url.clone(),
+            deployment_id: deployment.id,
+            primary_name: "local-anvil-a".to_owned(),
+            primary_url: primary_url.clone(),
+            secondary_name: "local-anvil-b".to_owned(),
+            secondary_url: secondary_url.clone(),
+            request_timeout: Duration::from_secs(5),
+            poll_interval: Duration::from_secs(2),
+            retry_max: Duration::from_secs(30),
+            lease_duration: Duration::from_secs(60),
+            max_finalized_age: Duration::from_secs(300),
+        },
+        Ledger::from_pool(ledger.pool().clone()),
+        ReconciliationRpc::new(
+            "local-anvil-a".to_owned(),
+            primary_url,
+            Duration::from_secs(5),
+        )
+        .unwrap(),
+        ReconciliationRpc::new(
+            "local-anvil-b".to_owned(),
+            secondary_url,
+            Duration::from_secs(5),
+        )
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    let cycle = reconciler.run_once().await.unwrap();
+    assert_eq!(cycle.results.len(), 2);
+    assert!(cycle
+        .results
+        .iter()
+        .all(|result| result.status == ledger::ReconciliationStatus::Balanced));
 }

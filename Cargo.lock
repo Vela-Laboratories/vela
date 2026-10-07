@@ -1865,6 +1865,7 @@ dependencies = [
  "engine",
  "hex",
  "ledger",
+ "reconciliation-worker",
  "reqwest",
  "serde",
  "serde_json",
