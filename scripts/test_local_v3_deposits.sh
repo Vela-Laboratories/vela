@@ -14,6 +14,8 @@ if [[ "$deployer" == null || "$operator" == null ]]; then
   printf 'Anvil test accounts unavailable\n' >&2
   exit 1
 fi
+export VELA_LOCAL_ETH_DEPOSITOR="$operator"
+export VELA_LOCAL_USDC_DEPOSITOR="$deployer"
 
 deployment="$(cd "$repo_root/contracts" && forge create \
   src/VelaSettlement.sol:VelaSettlement \

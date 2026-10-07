@@ -269,7 +269,7 @@ async fn agreed_finalized_event_is_credited_once_and_checkpointed(pool: PgPool) 
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'
         "#,
     )
-    .bind(ACCOUNT_ID)
+    .bind(CUSTOMER)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -476,7 +476,7 @@ async fn finalized_history_contradiction_halts_and_reverses_credit_to_pending(po
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'
         "#,
     )
-    .bind(ACCOUNT_ID)
+    .bind(CUSTOMER)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -488,7 +488,7 @@ async fn finalized_history_contradiction_halts_and_reverses_credit_to_pending(po
         WHERE account.owner_reference = $1 AND account.account_type = 'customer_pending'
         "#,
     )
-    .bind(ACCOUNT_ID)
+    .bind(CUSTOMER)
     .fetch_one(&pool)
     .await
     .unwrap();

@@ -1833,7 +1833,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         let customer_lookup = AccountLookup {
             asset_code: asset.code.clone(),
             owner_type: "customer".to_owned(),
-            owner_reference: deposit.credited_account_id.clone(),
+            owner_reference: deposit.depositor.clone(),
             account_type: "customer_available".to_owned(),
         };
         let customer = self
@@ -1841,7 +1841,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ensure_accounts(&[AccountProvisionRequest {
                 asset_code: asset.code.clone(),
                 owner_type: "customer".to_owned(),
-                owner_reference: deposit.credited_account_id.clone(),
+                owner_reference: deposit.depositor.clone(),
                 account_type: "customer_available".to_owned(),
                 allow_negative: false,
             }])
@@ -1879,7 +1879,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ledger
             .observe_deposit(&ObserveDeposit {
                 deposit_id,
-                customer_reference: deposit.credited_account_id.clone(),
+                customer_reference: deposit.depositor.clone(),
                 destination_account_id: customer.id,
                 asset_id: asset.id,
                 amount: deposit.amount.clone(),
@@ -1929,7 +1929,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                 vault_address: self.deployment.vault_address.clone(),
                 vault_deposit_id: deposit.vault_deposit_id.clone(),
                 sender_address: deposit.depositor.clone(),
-                credited_account_reference: deposit.credited_account_id.clone(),
+                credited_account_reference: deposit.depositor.clone(),
                 asset_address: deposit.asset_address.clone(),
                 actual_amount: deposit.amount.clone(),
             };

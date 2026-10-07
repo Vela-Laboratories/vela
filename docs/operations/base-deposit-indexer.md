@@ -16,6 +16,11 @@ The process credits only logs that satisfy all of these conditions:
 - the asset and custody counter-account already exist in the authoritative ledger;
 - the ledger accepts the idempotent observation, finality evidence, and atomic credit.
 
+The current V3 flow is self-deposit only. The indexer credits the indexed
+20-byte depositor wallet as the ledger customer owner; the 32-byte event
+account ID remains an audit marker. The matcher, private account routes, and
+withdrawal reservations all use that same wallet owner reference.
+
 Any uncertainty stops credits. Safety failures are written to `ledger_indexer_halts`, and the monotonic PostgreSQL checkpoint advances only after the complete range is processed. A database lease prevents two workers from owning one deployment concurrently. A crash after a credit but before checkpoint advancement is safe because deposit and journal identities are deterministic and idempotent.
 
 The same worker continuously cycles a second checkpoint from the registered deployment block through the already-processed finalized range. Both providers must continue returning identical canonical logs. A missing or changed credited event activates an asset-wide halt before the ledger moves every still-available unit into `customer_pending`; a complete isolation becomes `reversed`, while any shortfall becomes `quarantined`. A newly appeared historical event also halts the affected asset because it is behind the monotonic forward checkpoint.

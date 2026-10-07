@@ -16,7 +16,8 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
     let vault = env::var("VELA_LOCAL_VAULT").expect("local vault address");
     let rpc_url = env::var("ANVIL_RPC_URL").expect("local Anvil RPC URL");
     let usdc = env::var("VELA_LOCAL_USDC").expect("local USDC address");
-    let account_id = env::var("VELA_LOCAL_ACCOUNT_ID").expect("local account ID");
+    let eth_depositor = env::var("VELA_LOCAL_ETH_DEPOSITOR").expect("ETH depositor");
+    let usdc_depositor = env::var("VELA_LOCAL_USDC_DEPOSITOR").expect("USDC depositor");
     let start_block: i64 = env::var("VELA_LOCAL_DEPLOYMENT_BLOCK")
         .expect("local deployment block")
         .parse()
@@ -144,7 +145,7 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
          WHERE account.owner_reference = $1 AND account.account_type = 'customer_available' \
            AND account.asset_id = (SELECT id FROM ledger_assets WHERE code = 'ETH')",
     )
-    .bind(account_id.to_ascii_lowercase())
+    .bind(eth_depositor.to_ascii_lowercase())
     .fetch_one(ledger.pool())
     .await
     .unwrap();
@@ -157,7 +158,7 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
          WHERE account.owner_reference = $1 AND account.account_type = 'customer_available' \
            AND account.asset_id = (SELECT id FROM ledger_assets WHERE code = 'USDC')",
     )
-    .bind(account_id.to_ascii_lowercase())
+    .bind(usdc_depositor.to_ascii_lowercase())
     .fetch_one(ledger.pool())
     .await
     .unwrap();
@@ -173,4 +174,11 @@ async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
             .await
             .unwrap();
     assert_eq!(credited_count, 2);
+    let misplaced_credits: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_deposits WHERE length(customer_reference) != 42",
+    )
+    .fetch_one(ledger.pool())
+    .await
+    .unwrap();
+    assert_eq!(misplaced_credits, 0);
 }

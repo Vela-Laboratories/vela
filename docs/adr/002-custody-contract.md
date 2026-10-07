@@ -7,7 +7,7 @@
 
 The first release will use one audited V3 omnibus custody vault on Base. The vault holds allowlisted assets while the authoritative off-chain ledger records customer beneficial ownership. It will not maintain per-user trading balances on-chain, and it will not expose a customer self-service emergency-exit path.
 
-Deposits emit an event containing a derived unique deposit ID, depositor, opaque account identifier, asset, and actual received amount. The account identifier is an opaque ledger key, not an on-chain balance owner. ERC-20 deposits calculate the vault balance increase and reject unsupported, rebasing, and fee-on-transfer tokens. Native ETH uses a dedicated payable deposit entry point.
+Deposits emit an event containing a derived unique deposit ID, depositor, opaque account identifier, asset, and actual received amount. For the initial self-deposit flow, the indexed depositor wallet is the ledger owner reference. The 32-byte account identifier is an audit marker, not an on-chain balance owner or a replacement for the wallet identity used by trading and customer APIs. ERC-20 deposits calculate the vault balance increase and reject unsupported, rebasing, and fee-on-transfer tokens. Native ETH uses a dedicated payable deposit entry point.
 
 Withdrawals are relayed by any caller but require a policy-authorized EIP-712 signature bound to chain ID, vault address, unique ledger request ID, destination, asset, amount, expiry, nonce, policy hash, and approver hash. Executed request IDs and nonces are permanently consumed. Pausing can stop deposits or withdrawals independently, but cannot alter ownership records.
 
