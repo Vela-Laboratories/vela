@@ -10,4 +10,4 @@ The landing page uses original photographs from Unsplash, downloaded for local d
 
 ## Coming-soon footage
 
-The temporary splash page uses [Playing at the beach](https://mixkit.co/free-stock-video/playing-at-the-beach-2174/) from Mixkit. The locally hosted desktop and mobile versions and the still poster are covered by the [Mixkit Stock Video Free License](https://mixkit.co/license/modal/videoFree/), which permits commercial website use without attribution.
+The temporary splash page uses the Full HD download of [Playing at the beach](https://mixkit.co/free-stock-video/playing-at-the-beach-2174/) from Mixkit. The locally hosted desktop file is 1920×1080; the mobile file is a 522×1080 crop of the same footage. Both videos and the still poster are covered by the [Mixkit Stock Video Free License](https://mixkit.co/license/modal/videoFree/), which permits commercial website use without attribution.
