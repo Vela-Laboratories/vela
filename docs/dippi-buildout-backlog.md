@@ -25,7 +25,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-008A Credit the V3 self-deposit to its indexed wallet owner.
 - [x] D-008B Encode the exact V3 deposit calls in the browser.
 - [ ] D-009 Prove provider disagreement and reorganization containment.
-- [ ] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
+- [x] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
 - [ ] D-011 Run custody-to-liability reconciliation in the integrated flow.
 - [ ] D-012 Prove a deficit halts affected financial operations.
 
@@ -110,6 +110,8 @@ For the opt-in real-chain ETH and USDC deposit proof, run:
 This deploys V3 and a six-decimal token fixture on a local Anvil chain using
 Base Sepolia's chain ID, sends test ETH and USDC deposits, advances Anvil
 finality, and verifies the indexer credits both authoritative PostgreSQL
-balances exactly once. The test addresses use two URL
-names for one local Anvil process, so it does not prove independent RPC
-operation or hosted Base Sepolia behavior.
+balances exactly once. It then replays those credited wallet balances into the
+matcher, fills a two-wallet ETH/USDC trade, and checks customer ownership,
+fees, rebates, one trade journal, and the ledger balance projection. The test
+addresses use two URL names for one local Anvil process, so it does not prove
+independent RPC operation or hosted Base Sepolia behavior.

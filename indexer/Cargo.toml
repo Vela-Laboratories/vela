@@ -31,4 +31,7 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+api = { path = "../api" }
 axum = { workspace = true }
+engine = { workspace = true }
+types = { workspace = true }
