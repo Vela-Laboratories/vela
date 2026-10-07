@@ -27,7 +27,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-009 Prove provider disagreement and reorganization containment.
 - [x] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
 - [x] D-011 Run custody-to-liability reconciliation in the integrated flow.
-- [ ] D-012 Prove a deficit halts affected financial operations.
+- [x] D-012 Prove a deficit halts affected financial operations.
 
 ## Testnet withdrawal lifecycle
 
@@ -124,3 +124,7 @@ a contradiction in previously credited finalized history reverses the credit
 to pending and halts the asset; a one-provider audit disagreement leaves the
 prior credit untouched. These are deterministic provider simulations, not a
 hosted chain reorganization rehearsal.
+
+The D-012 PostgreSQL test records a custody deficit, verifies the active asset
+halt, and proves deposit credit, order reservation, trade, and withdrawal
+reservation journals all fail with no journal transaction committed.
