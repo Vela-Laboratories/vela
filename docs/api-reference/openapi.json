@@ -1388,7 +1388,7 @@
     "contact": {
       "email": "asomu@ucsd.edu"
     },
-    "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/Monolith-Investments-LP/vela for source and https://vela.monolithsystematic.com for live beta.",
+    "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/dippi-fun/exchange for source and https://dippi.fun for live beta.",
     "title": "Vela Exchange API",
     "version": "0.4.0"
   },
