@@ -21,7 +21,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-005 Validate V3 deployment manifests before registration.
 - [x] D-006 Verify distinct RPC providers and pinned custody code before registration.
 - [x] D-007 Prove an ETH deposit reaches the authoritative customer ledger.
-- [ ] D-008 Prove a USDC deposit credits the exact received amount.
+- [x] D-008 Prove a USDC deposit credits the exact received amount.
 - [ ] D-009 Prove provider disagreement and reorganization containment.
 - [ ] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
 - [ ] D-011 Run custody-to-liability reconciliation in the integrated flow.
@@ -99,14 +99,15 @@ both instances afterward. It requires local PostgreSQL 16, Foundry Anvil,
 Python 3, and Cargo. Its Anvil keys are deterministic test fixtures and never
 serve as hosted signer credentials.
 
-For the opt-in real-chain ETH deposit proof, run:
+For the opt-in real-chain ETH and USDC deposit proof, run:
 
 ```sh
-./scripts/with_local_custody_deps.sh ./scripts/test_local_eth_deposit.sh
+./scripts/with_local_custody_deps.sh ./scripts/test_local_v3_deposits.sh
 ```
 
-This deploys V3 on a local Anvil chain using Base Sepolia's chain ID, sends a
-test ETH deposit, advances Anvil finality, and verifies the indexer credits the
-authoritative PostgreSQL ledger exactly once. The test addresses use two URL
+This deploys V3 and a six-decimal token fixture on a local Anvil chain using
+Base Sepolia's chain ID, sends test ETH and USDC deposits, advances Anvil
+finality, and verifies the indexer credits both authoritative PostgreSQL
+balances exactly once. The test addresses use two URL
 names for one local Anvil process, so it does not prove independent RPC
 operation or hosted Base Sepolia behavior.

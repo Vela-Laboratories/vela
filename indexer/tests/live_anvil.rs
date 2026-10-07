@@ -11,11 +11,12 @@ use std::{env, time::Duration};
 use uuid::Uuid;
 
 #[tokio::test]
-async fn local_eth_deposit_reaches_the_authoritative_ledger() {
+async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
     let Ok(rpc_url) = env::var("ANVIL_RPC_URL") else {
         return;
     };
     let vault = env::var("VELA_LOCAL_VAULT").expect("local vault address");
+    let usdc = env::var("VELA_LOCAL_USDC").expect("local USDC address");
     let account_id = env::var("VELA_LOCAL_ACCOUNT_ID").expect("local account ID");
     let start_block: i64 = env::var("VELA_LOCAL_DEPLOYMENT_BLOCK")
         .expect("local deployment block")
@@ -35,6 +36,16 @@ async fn local_eth_deposit_reaches_the_authoritative_ledger() {
         })
         .await
         .unwrap();
+    ledger
+        .create_asset(&NewAsset {
+            id: Uuid::new_v4(),
+            code: "USDC".to_owned(),
+            decimals: 6,
+            chain_id: Some(84532),
+            contract_address: Some(usdc.to_ascii_lowercase()),
+        })
+        .await
+        .unwrap();
     let lookup = AccountLookup {
         asset_code: "ETH".to_owned(),
         owner_type: "custody".to_owned(),
@@ -51,6 +62,21 @@ async fn local_eth_deposit_reaches_the_authoritative_ledger() {
         }])
         .await
         .unwrap()[&lookup]
+        .id;
+    let usdc_lookup = AccountLookup {
+        asset_code: "USDC".to_owned(),
+        ..lookup.clone()
+    };
+    let usdc_custody_id = ledger
+        .ensure_accounts(&[AccountProvisionRequest {
+            asset_code: "USDC".to_owned(),
+            owner_type: "custody".to_owned(),
+            owner_reference: vault.to_ascii_lowercase(),
+            account_type: "custody_vault".to_owned(),
+            allow_negative: true,
+        }])
+        .await
+        .unwrap()[&usdc_lookup]
         .id;
 
     let primary_url = Url::parse(&rpc_url).unwrap();
@@ -111,12 +137,13 @@ async fn local_eth_deposit_reaches_the_authoritative_ledger() {
     .await
     .unwrap();
 
-    assert_eq!(indexer.tick().await.unwrap(), 1);
+    assert_eq!(indexer.tick().await.unwrap(), 2);
     assert_eq!(indexer.tick().await.unwrap(), 0);
     let customer_balance: BigDecimal = sqlx::query_scalar(
         "SELECT balance.balance FROM ledger_account_balances balance \
          JOIN ledger_accounts account ON account.id = balance.account_id \
-         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available'",
+         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available' \
+           AND account.asset_id = (SELECT id FROM ledger_assets WHERE code = 'ETH')",
     )
     .bind(account_id.to_ascii_lowercase())
     .fetch_one(ledger.pool())
@@ -125,10 +152,26 @@ async fn local_eth_deposit_reaches_the_authoritative_ledger() {
     let one_eth = BigDecimal::from(10_u64.pow(18));
     assert_eq!(customer_balance, one_eth);
     assert_eq!(ledger.balance(custody_id).await.unwrap(), -one_eth);
+    let usdc_balance: BigDecimal = sqlx::query_scalar(
+        "SELECT balance.balance FROM ledger_account_balances balance \
+         JOIN ledger_accounts account ON account.id = balance.account_id \
+         WHERE account.owner_reference = $1 AND account.account_type = 'customer_available' \
+           AND account.asset_id = (SELECT id FROM ledger_assets WHERE code = 'USDC')",
+    )
+    .bind(account_id.to_ascii_lowercase())
+    .fetch_one(ledger.pool())
+    .await
+    .unwrap();
+    let received_usdc = BigDecimal::from(1_500_000_u64);
+    assert_eq!(usdc_balance, received_usdc);
+    assert_eq!(
+        ledger.balance(usdc_custody_id).await.unwrap(),
+        -received_usdc
+    );
     let credited_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM ledger_deposits WHERE state = 'credited'")
             .fetch_one(ledger.pool())
             .await
             .unwrap();
-    assert_eq!(credited_count, 1);
+    assert_eq!(credited_count, 2);
 }
