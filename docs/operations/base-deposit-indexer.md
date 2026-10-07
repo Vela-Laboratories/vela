@@ -31,7 +31,7 @@ Deposited(bytes32 indexed depositId, address indexed depositor, bytes32 indexed 
 topic0: derive from the reviewed V3 ABI and deployment manifest; do not copy the legacy topic.
 ```
 
-The older Sepolia deployment documented in the project predates this event and is not compatible with the indexer. Deploy and audit the updated contract on Base Sepolia before registering it. Never reuse the old address or invent a deployment block or bytecode hash.
+The older Ethereum Sepolia deployment documented in the project predates this event and is not compatible with the indexer. Registration accepts only Base Sepolia or Base network identifiers with deployment version `v3` and a nonzero UUID. Deploy and audit the updated contract on Base Sepolia before registering it. Never reuse the old address or invent a deployment block or bytecode hash.
 
 After deployment, obtain the exact deployment block and hash the runtime bytecode returned by each provider. Keep RPC URLs out of shell history when practical.
 
@@ -44,13 +44,13 @@ The two hashes must match. Record the result as `VELA_CUSTODY_VAULT_CODE_HASH` i
 
 ## Controlled registration
 
-Run all migrations through 0007, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
+Run all current migrations, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
 
 For a local Base Sepolia rehearsal:
 
 ```sh
 DATABASE_MIGRATOR_URL=postgres://... \
-VELA_INDEXER_DEPLOYMENT_ID=00000000-0000-0000-0000-000000000000 \
+VELA_INDEXER_DEPLOYMENT_ID=11111111-1111-4111-8111-111111111111 \
 VELA_INDEXER_NETWORK=base-sepolia \
 VELA_CHAIN_ID=84532 \
 VELA_CUSTODY_VAULT_ADDRESS=0x... \
@@ -68,7 +68,7 @@ Use the restricted writer credential, never the migrator credential:
 
 ```sh
 DATABASE_URL=postgres://... \
-VELA_INDEXER_DEPLOYMENT_ID=00000000-0000-0000-0000-000000000000 \
+VELA_INDEXER_DEPLOYMENT_ID=11111111-1111-4111-8111-111111111111 \
 VELA_BASE_RPC_PRIMARY_NAME=provider-a \
 VELA_BASE_RPC_PRIMARY_URL=https://... \
 VELA_BASE_RPC_SECONDARY_NAME=provider-b \

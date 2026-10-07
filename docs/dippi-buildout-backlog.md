@@ -13,7 +13,7 @@ control, record the gap rather than treating the control as complete.
 
 - [x] D-001 Reconcile the live buildout backlog with the launch plan.
 - [x] D-002 Add a local PostgreSQL 16 and chain integration harness.
-- [ ] D-003 Validate compatible V3 testnet runtime configuration.
+- [x] D-003 Validate compatible V3 testnet runtime configuration.
 - [ ] D-004 Test the public holding-page route boundary.
 
 ## Deposits, trading, and reconciliation

@@ -675,13 +675,13 @@ impl IndexerStore {
 fn validate_new_deployment(input: &NewDeployment) -> Result<(), IndexerError> {
     let network_matches_chain = matches!(
         (input.chain_id, input.network.trim()),
-        (8453, "base") | (84532, "base-sepolia") | (11155111, "ethereum-sepolia")
+        (8453, "base") | (84532, "base-sepolia")
     );
     if !network_matches_chain
+        || input.id.is_nil()
         || input.network.trim().is_empty()
         || input.network.len() > 64
-        || input.deployment_version.trim().is_empty()
-        || input.deployment_version.len() > 64
+        || input.deployment_version.trim() != "v3"
         || input.start_block < 0
         || !is_hex_bytes(&input.vault_address, 20)
         || !is_hex_bytes(&input.runtime_code_hash, 32)
@@ -2014,18 +2014,28 @@ mod tests {
     fn deployment_network_must_match_supported_chain() {
         let mut input = NewDeployment {
             id: Uuid::new_v4(),
-            chain_id: 11155111,
-            network: "ethereum-sepolia".to_owned(),
+            chain_id: 84532,
+            network: "base-sepolia".to_owned(),
             vault_address: format!("0x{}", "11".repeat(20)),
             deployment_version: "v3".to_owned(),
             runtime_code_hash: format!("0x{}", "22".repeat(32)),
             start_block: 0,
         };
         assert!(validate_new_deployment(&input).is_ok());
-        input.network = "base-sepolia".to_owned();
+        input.network = "ethereum-sepolia".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.chain_id = 11155111;
         assert!(validate_new_deployment(&input).is_err());
         input.chain_id = 1;
         input.network = "ethereum".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.chain_id = 8453;
+        input.network = "base".to_owned();
+        assert!(validate_new_deployment(&input).is_ok());
+        input.deployment_version = "v2".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.deployment_version = "v3".to_owned();
+        input.id = Uuid::nil();
         assert!(validate_new_deployment(&input).is_err());
     }
 
