@@ -33,13 +33,13 @@ control, record the gap rather than treating the control as complete.
 
 - [x] D-013 Add an opt-in testnet signer runtime.
 - [ ] D-014 Verify signer chain, vault, code, and authorization preconditions.
-- [ ] D-015 Persist the policy approval to signing handoff.
+- [x] D-015 Persist the policy approval to signing handoff.
 - [ ] D-016 Queue authorized transactions for controlled broadcast.
 - [ ] D-017 Bound relayer nonce and fee decisions.
 - [ ] D-018 Persist transaction submission and uncertain outcomes.
-- [ ] D-019 Ingest trusted replacement candidates.
-- [ ] D-020 Verify replacement lineage with two providers.
-- [ ] D-021 Distinguish finalized revert, drop, and expiry outcomes.
+- [x] D-019 Ingest trusted replacement candidates.
+- [x] D-020 Verify replacement lineage with two providers.
+- [x] D-021 Distinguish finalized revert, drop, and expiry outcomes.
 - [ ] D-022 Journal remaining permanent failure and reversal outcomes.
 - [ ] D-023 Prove ETH withdrawal through finality and reconciliation.
 - [ ] D-024 Prove USDC withdrawal through finality and reconciliation.
@@ -144,3 +144,12 @@ The D-028 clean lost-directory test calls the operator-facing trusted-key
 restore command and verifies WAL shutdown and sequence after restoration.
 Periodic unclean bundles and post-signature changes are rejected in adjacent
 tests. This is local restore evidence, not an off-host durability proof.
+
+The pre-existing PostgreSQL withdrawal suite proves D-015's policy-approved
+authorization, guarded signing transition, immutable signature evidence, and
+replay behavior. The opt-in withdrawal-worker suite proves D-019 through D-021:
+a supplied replacement hash is checked by both providers before its lineage
+is recorded; wrong sender nonce or provider disagreement fails closed; and
+finalized revert, drop, and post-expiry release remain distinct states. All 16
+ledger and 18 worker tests passed locally under the PostgreSQL harness. This
+does not supply the missing controlled broadcaster or a deployed withdrawal.
