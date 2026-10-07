@@ -396,6 +396,11 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             .authorize_continuation(
                 &user_id,
                 &parent.authorized_signer,
+                u64::try_from(
+                    u128::from(parent.total_quantity) * u128::from(parent.price_limit.unwrap_or(0))
+                        / u128::from(types::QUANTITY_SCALE),
+                )
+                .unwrap_or(u64::MAX),
                 wall_time_ms(),
                 &market,
                 parent.side,

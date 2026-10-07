@@ -317,6 +317,7 @@ impl AgentRegistry {
         &self,
         master: &UserId,
         signer: &UserId,
+        reserved_notional: u64,
         now_ms: u64,
         market: &MarketId,
         side: OrderSide,
@@ -331,7 +332,7 @@ impl AgentRegistry {
         };
         if let Some(store) = &self.store {
             return store
-                .authorize(master, signer, 0, now_ms, Some(&order))
+                .authorize_continuation(master, signer, reserved_notional, now_ms, &order)
                 .await
                 .map_err(|_| "delegation no longer active");
         }
@@ -340,6 +341,32 @@ impl AgentRegistry {
             .ok_or("delegation no longer active")?;
         if delegation.master != *master {
             return Err("delegation owner changed");
+        }
+        if reserved_notional > delegation.max_notional_per_order
+            || delegation
+                .scope
+                .max_notional_per_hour
+                .is_some_and(|cap| reserved_notional > cap)
+            || delegation
+                .scope
+                .max_notional_per_day
+                .is_some_and(|cap| reserved_notional > cap)
+        {
+            return Err("delegated continuation cap exceeded");
+        }
+        for (seconds, cap) in [
+            (3600, delegation.scope.max_notional_per_hour),
+            (86400, delegation.scope.max_notional_per_day),
+        ] {
+            let Some(cap) = cap else { continue };
+            let used = self
+                .rate
+                .get(&(signer.clone(), seconds, now_ms / 1000 / seconds))
+                .map(|value| value.load(Ordering::Relaxed))
+                .unwrap_or(0);
+            if used > cap {
+                return Err("delegated continuation cap exceeded");
+            }
         }
         delegation
             .scope

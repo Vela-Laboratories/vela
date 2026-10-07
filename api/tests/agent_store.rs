@@ -163,3 +163,60 @@ async fn revocation_on_one_instance_invalidates_signatures_on_another(pool: PgPo
             .is_err()
     );
 }
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn parent_continuation_rechecks_caps_without_consuming_budget(pool: PgPool) {
+    let store = AgentStore::new(pool.clone(), "testnet-demo:11155111".into());
+    let mut d = delegation(1);
+    store
+        .register_signed(&d, "message", "signature")
+        .await
+        .unwrap();
+    let market = MarketId::new("BTC", "USDC");
+    let order = OrderScopeCheck {
+        market: &market,
+        side: OrderSide::Bid,
+        order_type: OrderType::ImmediateOrCancel,
+    };
+    store
+        .authorize(&d.master, &d.agent, 60, 1, Some(&order))
+        .await
+        .unwrap();
+    for _ in 0..3 {
+        store
+            .authorize_continuation(&d.master, &d.agent, 60, 1, &order)
+            .await
+            .unwrap();
+    }
+    let used: String = sqlx::query_scalar("SELECT notional::text FROM api_agent_notional_buckets")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(used, "60");
+    d.nonce = 2;
+    d.max_notional_per_order = 59;
+    store
+        .register_signed(&d, "lower cap", "signature")
+        .await
+        .unwrap();
+    assert!(store
+        .authorize_continuation(&d.master, &d.agent, 60, 1, &order)
+        .await
+        .is_err());
+    d.nonce = 3;
+    d.max_notional_per_order = 100;
+    d.scope.max_notional_per_hour = Some(59);
+    store
+        .register_signed(&d, "lower hourly cap", "signature")
+        .await
+        .unwrap();
+    assert!(store
+        .authorize_continuation(&d.master, &d.agent, 60, 1, &order)
+        .await
+        .is_err());
+    // Even a smaller parent must stop if existing usage exceeds a newly reduced cap.
+    assert!(store
+        .authorize_continuation(&d.master, &d.agent, 10, 1, &order)
+        .await
+        .is_err());
+}
