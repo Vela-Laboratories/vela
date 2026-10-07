@@ -55,13 +55,20 @@ manifest's `source_commit` is the 32-byte constructor identity; the
 `creation_bytecode_hash` and `runtime_template_hash` come from
 `contracts/scripts/reproducible_build.sh` at the reviewed source commit.
 Compare the final `runtime_code_hash` with both RPC providers before approval.
-The manifest alone is not on-chain verification.
+The registration command also checks two distinct RPC origins and provider
+names, matching chain IDs, the same common finalized block, and the pinned
+runtime code hash before it opens the migrator database connection. The
+manifest alone is not on-chain verification.
 
 For a local Base Sepolia rehearsal:
 
 ```sh
 DATABASE_MIGRATOR_URL=postgres://... \
 VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH=/secure/ops/v3-base-sepolia.json \
+VELA_BASE_RPC_PRIMARY_NAME=provider-a \
+VELA_BASE_RPC_PRIMARY_URL=https://... \
+VELA_BASE_RPC_SECONDARY_NAME=provider-b \
+VELA_BASE_RPC_SECONDARY_URL=https://... \
 cargo run --locked --release -p indexer --bin deposit-indexer-register
 ```
 

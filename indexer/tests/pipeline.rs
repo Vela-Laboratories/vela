@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chrono::Utc;
 use indexer::{
-    Config, Deployment, DepositIndexer, HaltReason, IndexerError, IndexerStore, NewDeployment, Rpc,
-    RpcBlock, RpcLog, DEPOSIT_EVENT_TOPIC,
+    verify_deployment_rpc, Config, Deployment, DeploymentManifest, DepositIndexer, HaltReason,
+    IndexerError, IndexerStore, NewDeployment, Rpc, RpcBlock, RpcLog, DEPOSIT_EVENT_SIGNATURE,
+    DEPOSIT_EVENT_TOPIC,
 };
 use ledger::{AccountLookup, AccountProvisionRequest, Ledger, NewAsset};
 use reqwest::Url;
@@ -198,6 +199,46 @@ fn deposit_log() -> RpcLog {
         log_index: "0x3".to_owned(),
         removed: false,
     }
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn registration_requires_agreed_finalized_v3_code(pool: PgPool) {
+    let fixture = Fixture::new(pool).await;
+    let manifest = DeploymentManifest {
+        schema_version: 1,
+        id: fixture.deployment.id,
+        chain_id: fixture.deployment.chain_id,
+        network: fixture.deployment.network.clone(),
+        vault_address: fixture.deployment.vault_address.clone(),
+        deployment_version: "v3".to_owned(),
+        runtime_code_hash: fixture.deployment.runtime_code_hash.clone(),
+        start_block: fixture.deployment.start_block,
+        source_commit: hash(0x11),
+        creation_bytecode_hash: hash(0x22),
+        runtime_template_hash: hash(0x33),
+        deposit_event_signature: DEPOSIT_EVENT_SIGNATURE.to_owned(),
+        deposit_event_topic: DEPOSIT_EVENT_TOPIC.to_owned(),
+    };
+    let primary = fixture.rpc("provider-a");
+    let mut secondary = fixture.rpc("provider-b");
+    verify_deployment_rpc(&manifest, &primary, &secondary)
+        .await
+        .unwrap();
+
+    secondary.chain_id = 11155111;
+    assert!(verify_deployment_rpc(&manifest, &primary, &secondary)
+        .await
+        .is_err());
+    secondary.chain_id = 8453;
+    secondary.code = "0x60016000".to_owned();
+    assert!(verify_deployment_rpc(&manifest, &primary, &secondary)
+        .await
+        .is_err());
+    secondary.code = fixture.code;
+    secondary.finalized.hash = hash(0xff);
+    assert!(verify_deployment_rpc(&manifest, &primary, &secondary)
+        .await
+        .is_err());
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

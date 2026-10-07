@@ -328,6 +328,61 @@ impl DeploymentManifest {
     }
 }
 
+/// Fail registration before any registry write unless both RPC providers agree
+/// on the finalized chain and the deployed vault's pinned runtime code.
+pub async fn verify_deployment_rpc<P: Rpc, S: Rpc>(
+    manifest: &DeploymentManifest,
+    primary: &P,
+    secondary: &S,
+) -> Result<(), IndexerError> {
+    manifest.validate()?;
+    if primary.name().trim().is_empty()
+        || secondary.name().trim().is_empty()
+        || primary.name().eq_ignore_ascii_case(secondary.name())
+    {
+        return Err(IndexerError::Config(
+            "registration requires two distinct RPC provider names".to_owned(),
+        ));
+    }
+    let (first_chain, second_chain) = tokio::try_join!(primary.chain_id(), secondary.chain_id())?;
+    if first_chain != manifest.chain_id as u64 || second_chain != manifest.chain_id as u64 {
+        return Err(IndexerError::Config(
+            "RPC provider chain IDs do not match the reviewed deployment".to_owned(),
+        ));
+    }
+    let (first_finalized, second_finalized) =
+        tokio::try_join!(primary.block("finalized"), secondary.block("finalized"))?;
+    let common_number = min(first_finalized.number, second_finalized.number);
+    if common_number < manifest.start_block as u64 {
+        return Err(IndexerError::Config(
+            "vault deployment is not yet finalized at both RPC providers".to_owned(),
+        ));
+    }
+    let tag = quantity(common_number);
+    let (first_common, second_common) =
+        tokio::try_join!(primary.block(&tag), secondary.block(&tag))?;
+    if first_common.number != common_number
+        || second_common.number != common_number
+        || !first_common.hash.eq_ignore_ascii_case(&second_common.hash)
+    {
+        return Err(IndexerError::Config(
+            "RPC providers disagree on the common finalized block".to_owned(),
+        ));
+    }
+    let (first_code, second_code) = tokio::try_join!(
+        primary.code(&manifest.vault_address, common_number),
+        secondary.code(&manifest.vault_address, common_number)
+    )?;
+    let first_hash = code_hash(&first_code)?;
+    let second_hash = code_hash(&second_code)?;
+    if first_hash != second_hash || !first_hash.eq_ignore_ascii_case(&manifest.runtime_code_hash) {
+        return Err(IndexerError::Config(
+            "RPC vault bytecode does not match the reviewed deployment".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Checkpoint {
     next_block: u64,
