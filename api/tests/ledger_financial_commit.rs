@@ -701,3 +701,110 @@ async fn external_credit_cannot_mutate_a_ledger_backed_engine_projection(pool: s
         .unwrap();
     assert_eq!(journal_count, 0);
 }
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn twap_restart_recovers_committed_child_without_a_second_trade(pool: sqlx::PgPool) {
+    let maker = user(1);
+    let taker = user(2);
+    let fixture = LedgerFixture::new(pool.clone()).await;
+    fixture.seed("ETH", &maker, 2_000_000_000_000_000_000).await;
+    fixture.seed("USDC", &taker, 10_000_000_000).await;
+    let token = fixture
+        .ledger
+        .acquire_engine_leadership(Uuid::new_v4(), std::time::Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap()
+        .token;
+    let store = api::algos_store::AlgoStore::new(pool.clone(), "testnet-demo:84532".into(), token);
+    let request = api::algo_request::TwapRequest {
+        address: taker.to_hex(),
+        market: MARKET.into(),
+        side: OrderSide::Bid,
+        quantity: QUANTITY_SCALE,
+        duration_secs: 60,
+        price_limit: Some(2000 * PRICE_SCALE),
+        slices: Some(1),
+        nonce: 100,
+        signature: "test-evidence".into(),
+        signature_version: 2,
+    };
+    let parent = store.admit(&request, &taker, 1, 1000).await.unwrap();
+    let mut matching_engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+    matching_engine.add_market(market());
+    api::ledger_coordinator::restore_engine_financial_state(&mut matching_engine, &fixture.ledger)
+        .await
+        .unwrap();
+    let user_state = Arc::new(RwLock::new(UserState::new(5.0)));
+    user_state.write().await.sync_from_engine(&matching_engine);
+    let mut builder = MarketShards::new(user_state);
+    builder.add_shard(MarketId(MARKET.into()), matching_engine);
+    let shards = Arc::new(builder);
+    let committer: Arc<dyn FinancialCommitter> =
+        Arc::new(LedgerFinancialCommitter::new(fixture.ledger.clone(), token));
+    for (owner, side, nonce, client_order_id, order_type) in [
+        (
+            maker,
+            OrderSide::Ask,
+            1,
+            "recovery-maker".into(),
+            OrderType::GoodTillCanceled,
+        ),
+        (
+            taker.clone(),
+            OrderSide::Bid,
+            101,
+            api::algos_store::child_client_id(parent.id, 0),
+            OrderType::ImmediateOrCancel,
+        ),
+    ] {
+        if side == OrderSide::Bid {
+            assert!(store
+                .start_child(parent.id, 0, QUANTITY_SCALE)
+                .await
+                .unwrap());
+        }
+        let responses = submit(
+            shards.clone(),
+            committer.clone(),
+            PostOrderRequest {
+                user: owner,
+                market: MarketId(MARKET.into()),
+                side,
+                order_type,
+                price: 2000 * PRICE_SCALE,
+                quantity: QUANTITY_SCALE,
+                nonce,
+                client_order_id: Some(client_order_id),
+                signature: vec![],
+                stp: Default::default(),
+                min_quantity: None,
+                display_quantity: None,
+            },
+            nonce,
+        )
+        .await;
+        assert!(responses
+            .iter()
+            .any(|r| matches!(r, Response::OrderPosted(_))));
+    }
+    // Simulate a crash after the matcher journal commits but before child completion.
+    let restarted =
+        api::algos_store::AlgoStore::new(pool.clone(), "testnet-demo:84532".into(), token);
+    let recovered = restarted.recover().await.unwrap();
+    assert_eq!(recovered[0].status, api::algos::AlgoStatus::Completed);
+    assert_eq!(recovered[0].filled_quantity, QUANTITY_SCALE);
+    assert_eq!(recovered[0].next_slice, 1);
+    restarted.recover().await.unwrap();
+    assert!(!restarted
+        .start_child(parent.id, 0, QUANTITY_SCALE)
+        .await
+        .unwrap());
+    let trade_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_journal_transactions WHERE operation_type='trade'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(trade_count, 1);
+}

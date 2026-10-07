@@ -96,7 +96,7 @@ class AlgoSnapshot(TypedDict):
     duration_secs: int
     slices: int
     started_at_ms: int
-    status: Literal["Running", "Completed", "Incomplete", "Canceled", "Failed"]
+    status: Literal["Running", "Completed", "Incomplete", "Canceled", "Failed", "RecoveryRequired"]
 
 
 class ApiEnvelope(TypedDict):

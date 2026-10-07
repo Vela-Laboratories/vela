@@ -1772,16 +1772,16 @@ async fn twap_continuation_fails_after_agent_expiry_revocation_and_scope_change(
     };
     registry.register_signed(delegation.clone()).unwrap();
     assert!(registry
-        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .authorize_continuation(&master, &agent, 1, 99, &market, OrderSide::Bid)
         .await
         .is_ok());
     assert!(registry
-        .authorize_continuation(&master, &agent, 100, &market, OrderSide::Bid)
+        .authorize_continuation(&master, &agent, 1, 100, &market, OrderSide::Bid)
         .await
         .is_err());
     assert!(registry.revoke(&master, &agent, 2));
     assert!(registry
-        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .authorize_continuation(&master, &agent, 1, 99, &market, OrderSide::Bid)
         .await
         .is_err());
     let mut changed = delegation;
@@ -1789,11 +1789,11 @@ async fn twap_continuation_fails_after_agent_expiry_revocation_and_scope_change(
     changed.scope.allowed_sides = Some(vec![OrderSide::Ask]);
     registry.register_signed(changed).unwrap();
     assert!(registry
-        .authorize_continuation(&master, &agent, 99, &market, OrderSide::Bid)
+        .authorize_continuation(&master, &agent, 1, 99, &market, OrderSide::Bid)
         .await
         .is_err());
     assert!(registry
-        .authorize_continuation(&master, &master, 100, &market, OrderSide::Bid)
+        .authorize_continuation(&master, &master, 1, 100, &market, OrderSide::Bid)
         .await
         .is_ok());
 }

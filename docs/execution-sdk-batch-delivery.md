@@ -36,8 +36,10 @@ upstream versions remain unchanged. The audit gate stays required.
 ## Limits and compatibility
 
 TWAP now requires `signature_version: 2`, a positive price limit and a fully bound
-signature. Old signatures are rejected. TWAP parents remain in memory and are
-unavailable when PostgreSQL is authoritative. Process restarts lose their state.
+signature. Old signatures are rejected. At this batch boundary, TWAP parents
+remained in memory and were unavailable with an authoritative ledger. The
+subsequent ledger session added durable execution and restart recovery; see
+[the current algorithm contract](api-reference/execution-algorithms.mdx).
 Cancellation and revocation stop future slices; a submitted child can still fill.
 Indeterminate child outcomes require checking account fills before another parent.
 Read-only Python access does not enable trading or cancellation.

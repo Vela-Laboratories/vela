@@ -25,6 +25,7 @@ pub mod agents;
 pub mod agents_store;
 pub mod algo_request;
 pub mod algos;
+pub mod algos_store;
 pub mod anchor;
 pub mod auth;
 pub mod backtest_attest;
@@ -155,6 +156,8 @@ pub struct AppState {
     pub agents: Arc<crate::agents::AgentRegistry>,
     /// Active server-side algo parents (TWAP, etc). Keyed by parent_id.
     pub algos: crate::algos::AlgoRegistry,
+    pub algo_store: Option<crate::algos_store::AlgoStore>,
+    pub algo_tasks: crate::algos::AlgoTasks,
     pub algo_nonces: dashmap::DashMap<(String, u64), ()>,
     /// Pending / accepted / rejected permissionless market listings.
     pub listings: crate::listings::ListingRegistry,
@@ -289,7 +292,7 @@ impl AppState {
                 "restored matching-engine financial cache from authoritative journal"
             );
         }
-        Ok(Self::new_inner(
+        let state = Self::new_inner(
             engine,
             wal,
             runtime_mode,
@@ -297,7 +300,17 @@ impl AppState {
             storage_health,
             leadership,
             recovery_replica,
-        ))
+        );
+        if let Err(error) = crate::algos::recover_durable(Arc::clone(&state)).await {
+            if let Some(leader) = &state.engine_leadership {
+                let _ = leader.release().await;
+            }
+            state
+                .storage_health
+                .fence("algorithm_recovery", "durable algorithm recovery failed");
+            return Err(format!("algorithm recovery failed: {error}"));
+        }
+        Ok(state)
     }
 
     fn new_inner(
@@ -439,6 +452,20 @@ impl AppState {
             }
             None => crate::agents::AgentRegistry::new(),
         };
+        let algo_store = ledger
+            .as_ref()
+            .zip(leadership.as_ref())
+            .map(|(ledger, leader)| {
+                crate::algos_store::AlgoStore::new(
+                    ledger.pool().clone(),
+                    format!(
+                        "{}:{}",
+                        runtime_mode.as_str(),
+                        std::env::var("VELA_CHAIN_ID").unwrap_or_else(|_| "11155111".into())
+                    ),
+                    leader.token(),
+                )
+            });
         let state = Arc::new(AppState {
             runtime_mode,
             ledger,
@@ -496,6 +523,8 @@ impl AppState {
             batch_metrics: Arc::clone(&batch_metrics),
             agents,
             algos: std::sync::Arc::new(dashmap::DashMap::new()),
+            algo_store,
+            algo_tasks: crate::algos::AlgoTasks::default(),
             algo_nonces: dashmap::DashMap::new(),
             listings: std::sync::Arc::new(dashmap::DashMap::new()),
             vaults: crate::vaults::VaultRegistry::new(),

@@ -16,7 +16,12 @@ contract Deploy is Script {
         require(operator != owner && operator != guardian && owner != guardian, "roles must be distinct");
         require(usdc.code.length > 0, "USDC must be a deployed contract");
 
-        vm.startBroadcast();
+        // Environment input keeps the signer key out of process arguments.
+        if (vm.envExists("VELA_DEPLOYER_PRIVATE_KEY")) {
+            vm.startBroadcast(vm.envUint("VELA_DEPLOYER_PRIVATE_KEY"));
+        } else {
+            vm.startBroadcast();
+        }
         VelaSettlement settlement = new VelaSettlement(operator, sourceCommit);
         settlement.setSupportedAsset(usdc, true);
         settlement.setGuardian(guardian);

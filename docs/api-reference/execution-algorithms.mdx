@@ -5,11 +5,14 @@ description: "Signed TWAP parents, execution limits and private progress."
 
 ## Availability
 
-TWAP parents currently live in memory. They are available in development and
-in the testnet demo when no authoritative PostgreSQL ledger is configured.
-An authoritative-ledger instance returns `501` for parent creation until
-durable parent recovery is implemented. A process restart loses parents and
-parent nonce history; unattended cross-restart execution is not supported.
+With an authoritative PostgreSQL ledger, signed parents, nonce ranges, child
+intents, progress and cancellation evidence persist across restarts. The engine
+leader recovers schedules before serving traffic. Confirmed children are never
+submitted again. Unfinished children resume only after a unique matching financial
+receipt proves their outcome; otherwise the parent pauses as `RecoveryRequired`.
+
+Without a ledger, parents and nonce history remain in memory for the process
+lifetime. Use a ledger-backed instance for cross-restart execution.
 
 ## Create a parent
 
@@ -33,7 +36,8 @@ Sign this compact UTF-8 JSON array with EIP-191 `personal_sign`:
 Every execution field is bound to the signature. Legacy v1 signatures are
 rejected. The parent reserves child nonces `nonce + 1` through `nonce + slices`;
 choose non-overlapping ranges for independent requests. Reusing a parent nonce
-for the same address within the process lifetime returns `409`.
+for the same address returns `409`. In ledger mode this history survives restarts,
+and overlapping parent/child nonce ranges are rejected.
 
 Delegated submissions must permit the market, side and IOC type. Notional
 checks use the signed limit price times total quantity in quote units. Scope,
@@ -54,11 +58,15 @@ Snapshots include `filled_quantity`, `remaining_quantity`, and status:
 | Completed | The entire requested quantity filled |
 | Incomplete | The schedule ended with some quantity unfilled |
 | Canceled | Cancellation or withdrawn agent authority stopped future slices |
-| Failed | A child was rejected or its result could not be confirmed |
+| Failed | A child was rejected |
+| RecoveryRequired | An interrupted child has no uniquely proven financial outcome |
 
 Failures and timeouts stop further child dispatch. An indeterminate child
 outcome can still settle after the parent stops; consult account fills and
-balances before attempting another parent.
+balances before attempting another parent. Zero-net IOC outcomes may have no
+financial receipt and therefore pause after a crash. There is no automatic retry
+or operator resume endpoint for uncertain outcomes. Graceful shutdown drains
+in-flight children and leaves waiting durable schedules eligible for recovery.
 
 ## Cancel
 
