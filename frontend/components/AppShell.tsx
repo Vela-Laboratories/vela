@@ -6,6 +6,10 @@ import Providers from '@/components/Providers'
 import Nav from '@/components/Nav'
 import BetaBanner from '@/components/BetaBanner'
 import UnifiedRouteRail from '@/components/UnifiedRouteRail'
+import ComingSoon from '@/components/ComingSoon'
+
+// Keep the exchange UI in the branch while the public site shows a temporary splash.
+const COMING_SOON = true
 
 /// Client-side wrapper around every route: owns the provider tree
 /// (Wagmi + React Query + AuthProvider), the nav, and the framer-motion
@@ -14,6 +18,8 @@ import UnifiedRouteRail from '@/components/UnifiedRouteRail'
 /// force a client boundary.
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  if (COMING_SOON) return <ComingSoon />
+
   const isImmersiveRoute = /^\/markets\/[^/]+/.test(pathname) || pathname === '/profile'
   const hasWorkspaceRail = !isImmersiveRoute && !pathname.startsWith('/docs') && pathname !== '/'
   const page = isImmersiveRoute ? children : <AnimatePresence mode="wait">

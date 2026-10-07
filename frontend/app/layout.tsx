@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import { IBM_Plex_Mono, Playfair_Display, Inter } from 'next/font/google'
+import { IBM_Plex_Mono, Playfair_Display, Inter, DM_Sans } from 'next/font/google'
 import './globals.css'
 import './dippi.css'
 import './dippi-bright.css'
 import './dippi-landing.css'
+import './coming-soon.css'
 import AppShell from '@/components/AppShell'
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -28,14 +29,20 @@ const inter = Inter({
   display: 'swap',
 })
 
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   metadataBase: new URL('https://dippi.fun'),
-  title: { default: 'dippi.fun | Go on. Dip in.', template: '%s | dippi.fun' },
-  description: 'Explore spot markets and try wallet-signed trading in a Sepolia testnet sandbox. No real funds or production custody.',
+  title: { default: 'dippi.fun is coming soon', template: '%s | dippi.fun' },
+  description: 'dippi.fun is coming soon.',
   icons: { icon: '/icon.svg' },
   openGraph: {
-    title: 'dippi.fun | Go on. Dip in.',
-    description: 'Explore spot markets and try wallet-signed trading in a Sepolia testnet sandbox.',
+    title: 'dippi.fun is coming soon',
+    description: 'dippi.fun is coming soon.',
     url: 'https://dippi.fun',
     siteName: 'dippi.fun',
     type: 'website',
@@ -49,7 +56,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${ibmPlexMono.variable} ${playfairDisplay.variable} ${inter.variable}`}>
+    <html lang="en" className={`${ibmPlexMono.variable} ${playfairDisplay.variable} ${inter.variable} ${dmSans.variable}`}>
       <body className="min-h-screen bg-parchment text-ink font-sans">
         <AppShell>{children}</AppShell>
       </body>
