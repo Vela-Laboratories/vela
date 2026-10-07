@@ -13,6 +13,8 @@ use thiserror::Error;
 use tokio::time::sleep;
 use uuid::Uuid;
 
+pub mod relayer_policy;
+
 pub const WITHDRAWAL_EVENT_SIGNATURE: &str =
     "WithdrawalExecuted(bytes16,address,address,uint256,uint256,uint256,bytes32,bytes32)";
 pub const WITHDRAWAL_EVENT_TOPIC: &str =
