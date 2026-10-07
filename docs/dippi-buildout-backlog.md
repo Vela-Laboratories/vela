@@ -166,4 +166,6 @@ signature. Signature replay cannot duplicate the queue record. The queue is an
 intent boundary only; D-017 and D-018 must add controlled relayer decisions,
 submission, and uncertain-outcome handling before any worker may broadcast.
 The D-017 relayer decision helper now bounds a two-provider pending nonce and
-fee quote, but is not wired to a durable nonce reservation or broadcaster.
+fee quote. An immutable exclusive nonce reservation is available in schema
+version 18, but the policy and persistence calls are not yet wired into an
+enabled broadcaster. D-017 remains open.

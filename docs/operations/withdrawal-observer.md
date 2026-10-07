@@ -39,9 +39,18 @@ this queue. Operators must review them before any separate relay process acts.
 tested decision over two provider quotes. It requires matching pending nonces,
 uses the higher base and priority fee quotes, checks arithmetic overflow, and
 rejects gas or total-cost ceilings. It has no runtime caller yet. A future
-relayer must persist an exclusive nonce reservation and exact fee decision,
+relayer must use the exclusive nonce reservation and exact fee decision below,
 then durably record the signed transaction and uncertain submission outcomes
-before this policy can close D-017 or enable broadcast.
+before D-017 can close or broadcast can be enabled.
+
+Schema version 18 adds an immutable relayer nonce reservation keyed both by
+withdrawal and by `(chain, sender, nonce)`. The ledger rejects provider nonce
+disagreement, malformed sender addresses, zero or inconsistent fee decisions,
+and conflicting replays. The database independently requires a queued, signed,
+unexpired Base Sepolia authorization. Reservations cannot be deleted after an
+uncertain outcome. The policy and persistence boundaries still need an enabled
+worker that obtains two provider quotes and writes the reservation before it
+constructs or submits an exact transaction.
 
 `Ledger::record_withdrawal_broadcast_attempt` stores provider acceptance of the first exact executable transaction. Each immutable attempt records its transaction hash, sender, sender nonce, destination vault, calldata hash, provider reference, submitter, and submission time.
 

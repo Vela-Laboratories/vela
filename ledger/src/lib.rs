@@ -14,6 +14,8 @@ mod deposits;
 pub use deposits::*;
 mod withdrawals;
 pub use withdrawals::*;
+mod relayer;
+pub use relayer::*;
 mod reconciliation;
 pub use reconciliation::*;
 mod leadership;
@@ -282,7 +284,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub const EXPECTED_SCHEMA_VERSION: i64 = 17;
+    pub const EXPECTED_SCHEMA_VERSION: i64 = 18;
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {

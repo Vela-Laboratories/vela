@@ -5,9 +5,9 @@ use ledger::{
     EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
     FinalizedWithdrawalRevert, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
     PostTransaction, RecordDroppedWithdrawalAttempt, RecordObservedWithdrawalReplacement,
-    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, ReserveWithdrawal,
-    ResolveGlobalWithdrawalHalt, WithdrawalAuthorization, WithdrawalPolicyDisposition,
-    WithdrawalState,
+    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, ReserveRelayerNonce,
+    ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
+    WithdrawalPolicyDisposition, WithdrawalState,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -1043,6 +1043,70 @@ fn broadcast_attempt(
         submitted_by: "withdrawal-broadcaster".to_owned(),
         submitted_at: Utc::now(),
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn relayer_nonce_reservation_is_exclusive_immutable_and_replay_safe(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (first, _, _) = fixture
+        .sign_withdrawal(301, 100_000, "withdrawal-policy.relayer", 600)
+        .await;
+    let (second, _, _) = fixture
+        .sign_withdrawal(302, 100_000, "withdrawal-policy.relayer-second", 600)
+        .await;
+    let command = ReserveRelayerNonce {
+        reservation_id: Uuid::new_v4(),
+        withdrawal_id: first.withdrawal_id,
+        sender_address: CUSTOMER.to_owned(),
+        primary_pending_nonce: 7,
+        secondary_pending_nonce: 7,
+        gas_limit: 100_000,
+        max_fee_per_gas_wei: 50,
+        max_priority_fee_per_gas_wei: 2,
+        maximum_cost_wei: 5_000_000,
+        primary_provider: "rpc-primary".to_owned(),
+        secondary_provider: "rpc-secondary".to_owned(),
+        allocated_by: "relayer:test".to_owned(),
+    };
+    let stored = fixture
+        .ledger
+        .reserve_relayer_nonce(&command)
+        .await
+        .unwrap();
+    assert_eq!(
+        stored,
+        fixture
+            .ledger
+            .reserve_relayer_nonce(&command)
+            .await
+            .unwrap()
+    );
+    let conflicting = ReserveRelayerNonce {
+        reservation_id: Uuid::new_v4(),
+        withdrawal_id: second.withdrawal_id,
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .reserve_relayer_nonce(&conflicting)
+        .await
+        .is_err());
+    let wrong_provider_nonce = ReserveRelayerNonce {
+        secondary_pending_nonce: 8,
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .reserve_relayer_nonce(&wrong_provider_nonce)
+        .await
+        .is_err());
+    assert!(
+        sqlx::query("DELETE FROM ledger_relayer_nonce_reservations WHERE id = $1")
+            .bind(stored.id)
+            .execute(fixture.ledger.pool())
+            .await
+            .is_err()
+    );
 }
 
 fn observed_replacement(
