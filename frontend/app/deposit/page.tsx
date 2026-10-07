@@ -85,8 +85,8 @@ function ConnectGate() {
   }
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(14,26,32,0.08)] p-8" style={{ borderRadius: 0 }}>
+    <div className="dippi-connect-gate min-h-[60vh] flex items-center justify-center px-4">
+      <div className="dippi-connect-gate__card w-full max-w-sm text-center bg-canvas border border-border p-8">
         <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
@@ -118,12 +118,12 @@ function ConnectGate() {
           type="button"
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full flex items-center justify-center gap-2 px-4 h-10 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-ink hover:text-parchment transition-colors duration-150 disabled:opacity-50"
-          style={{ borderRadius: 0 }}
+          className="dippi-connect-gate__button w-full flex items-center justify-center gap-2 px-4 h-10 text-[0.8rem] font-medium disabled:opacity-50"
         >
           {connecting && <Spinner size="xs" className="text-ink" />}
           {isConnected ? 'Authenticate Wallet' : 'Connect Wallet'}
         </button>
+        <p className="dippi-connect-gate__note">Testnet only · No real funds or production custody</p>
       </div>
     </div>
   )
@@ -301,14 +301,15 @@ export default function DepositPage() {
     : undefined
 
   return (
-    <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
+    <div className="dippi-funding-page min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-[480px]">
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           DEPOSIT FUNDS
         </p>
+        <p className="dippi-funding-page__intro">Add testnet funds to explore the Dippi sandbox. Check the credit type and network before continuing.</p>
 
         <div
-          className="mb-6"
+          className="dippi-funding-notice mb-6"
           style={{
             borderLeft: '3px solid #9488ee',
             background: 'rgba(0,210,210,0.04)',

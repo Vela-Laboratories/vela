@@ -31,9 +31,6 @@ async function fetchSparkline(marketId: string): Promise<SparklineBar[]> {
   }
 }
 
-const IN = 'Inter, sans-serif'
-const CN = "var(--font-mono), 'IBM Plex Mono', monospace"
-
 function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   if (price >= 1) return price.toFixed(2)
@@ -65,109 +62,46 @@ function MarketCard({
   const info = getMarketInfo(pair)
   const change = market?.change24h
   const changeStr = change === undefined ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
-  const isPositive = (change ?? 0) >= 0
-  const bars = sparkline
-
   const topBids = book?.bids.slice(0, 3) ?? []
   const topAsks = book?.asks.slice(0, 3) ?? []
-  const priceValue = market?.price ?? 0
-  const priceFontSize = priceValue > 10000 ? 22 : 28
 
   return (
     <Link
       href={`/markets/${pair}`}
       aria-label={`Open ${info.name} ${info.quoteTicker} testnet market`}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        color: 'inherit',
-        textDecoration: 'none',
-        transition: 'transform 0.16s ease, border-color 0.16s ease, background 0.16s ease',
-      }}
-      className="market-card p-4 sm:p-[24px] lg:p-[24px]"
+      className="market-card dippi-discovery-card"
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontFamily: IN, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(232,234,240,0.55)' }}>
-          <TokenIcon ticker={info.ticker} /> {info.ticker} / USDC
-        </span>
-        <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,234,240,0.12)', padding: '2px 6px', color: 'rgba(232,234,240,0.3)' }}>
-          BINANCE SPOT
-        </span>
+      <div className="dippi-discovery-card__top">
+        <span><TokenIcon ticker={info.ticker} />{info.name}</span>
+        <i aria-hidden="true">↗</i>
       </div>
-
-      <div style={{ fontFamily: CN, fontWeight: 700, fontSize: priceFontSize, color: '#F6F8FF', lineHeight: 1, marginBottom: 4, letterSpacing: '-0.04em' }}>
-        {market ? formatPrice(market.price) : '—'}
+      <div className="dippi-discovery-card__pair">{info.ticker}<span> / USDC</span></div>
+      <div className="dippi-discovery-card__price">
+        <strong>{market ? formatPrice(market.price) : '—'}</strong>
+        <span className={change === undefined ? '' : change >= 0 ? 'positive' : 'negative'}>{changeStr}</span>
       </div>
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontFamily: IN, fontWeight: 650, fontSize: 11, color: isPositive ? '#21E6A3' : '#FF5C7C' }}>
-          {changeStr}
-        </span>
-        <span style={{ fontFamily: IN, fontSize: 10, color: 'rgba(232,234,240,0.2)' }}>
-          Vol {formatVolume(market?.quoteVolume24h)} USDC
-        </span>
+      <div className="dippi-discovery-card__meta">
+        <span>24h volume</span><strong>{formatVolume(market?.quoteVolume24h)} USDC</strong>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <div>
-          <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(107,138,90,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            DEMO BIDS
-          </div>
-          {topBids.length === 0 ? (
-            <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(107,138,90,0.3)' }}>—</span>
-          ) : (
-            topBids.map((lvl, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 11, color: '#21E6A3' }}>{fmtBookPrice(lvl.price)}</span>
-                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,234,240,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
-              </div>
-            ))
-          )}
-        </div>
-        <div>
-          <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(204,51,51,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
-            DEMO ASKS
-          </div>
-          {topAsks.length === 0 ? (
-            <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(204,51,51,0.3)' }}>—</span>
-          ) : (
-            topAsks.map((lvl, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 11, color: '#FF5C7C' }}>{fmtBookPrice(lvl.price)}</span>
-                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,234,240,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
-              </div>
-            ))
-          )}
-        </div>
+      <div className="dippi-discovery-card__book">
+        <div><span>DEMO BIDS</span>{topBids.length === 0 ? <small>—</small> : topBids.map((level, index) => <small key={index}><b>{fmtBookPrice(level.price)}</b><em>{parseFloat(level.quantity).toFixed(2)}</em></small>)}</div>
+        <div><span>DEMO ASKS</span>{topAsks.length === 0 ? <small>—</small> : topAsks.map((level, index) => <small key={index}><b>{fmtBookPrice(level.price)}</b><em>{parseFloat(level.quantity).toFixed(2)}</em></small>)}</div>
       </div>
-
-      <div style={{ marginTop: 14, height: 28, display: 'flex', alignItems: 'flex-end', gap: 2 }} aria-label="24 hour Binance reference trend">
-        {bars.length === 0 ? <span style={{ fontFamily: IN, fontSize: 9, color: '#69697A' }}>Market data unavailable</span> : bars.map((bar, i) => (
-          <div
-            key={i}
-            style={{ flex: 1, height: `${bar.height}%`, background: bar.up ? '#21E6A3' : '#FF5C7C', borderRadius: '2px 2px 0 0', opacity: 0.78 }}
-          />
-        ))}
+      <div className="dippi-discovery-card__sparkline" aria-label="24 hour Binance reference trend">
+        {sparkline.length === 0 ? <span>Reference trend unavailable</span> : sparkline.map((bar, index) => <i key={index} className={bar.up ? 'is-up' : 'is-down'} style={{ height: `${bar.height}%` }} />)}
       </div>
+      <div className="dippi-discovery-card__foot">Binance Spot reference <span>Explore market →</span></div>
     </Link>
   )
 }
 
 function SkeletonCard() {
   return (
-    <div style={{
-      background: '#111110',
-      border: '1px solid rgba(232,234,240,0.04)',
-      display: 'flex',
-      flexDirection: 'column',
-      padding: '24px 28px',
-    }}>
+    <div className="market-card dippi-discovery-card dippi-discovery-card--loading">
       <Skeleton className="w-24 h-3" />
       <Skeleton className="w-32 h-8 mt-3" />
       <Skeleton className="w-16 h-2 mt-2" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+      <div className="dippi-discovery-card__book">
         <Skeleton className="w-full h-16" />
         <Skeleton className="w-full h-16" />
       </div>
@@ -233,25 +167,15 @@ export default function MarketsPage() {
 
   return (
     <>
-      <style>{`* { box-sizing: border-box; } ::-webkit-scrollbar { display: none; }`}</style>
       <div style={{ display: 'flex', flexDirection: 'column' }} className="market-grid-page min-h-[calc(100vh-96px)]">
 
-        <div style={{ flexShrink: 0 }} className="markets-header h-auto lg:h-[64px] px-6 lg:px-8 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
+        <div className="markets-header dippi-markets-header">
           <div>
-            <div style={{ lineHeight: 1 }}>
-              <span style={{ fontFamily: IN, fontWeight: 700, fontSize: 20, color: '#F6F8FF' }}>Explore markets</span>
-              <span style={{ marginLeft: 8, fontFamily: IN, fontWeight: 650, fontSize: 9, letterSpacing: '0.08em', color: '#66c9b4' }}>· LIVE</span>
-            </div>
-            <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,234,240,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
-              Binance Spot reference data · Synthetic Vela testnet books · Updating every 2s
-            </div>
+            <span className="dippi-kicker">MARKETS</span>
+            <h1>Find something interesting.</h1>
+            <p>Live spot price references and separate synthetic Sepolia order books.</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#66c9b4', flexShrink: 0 }} />
-            <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,234,240,0.22)', textTransform: 'uppercase' }}>
-              Binance live feed
-            </span>
-          </div>
+          <span className="dippi-markets-header__source"><i /> Binance Spot reference</span>
         </div>
 
         <div
@@ -270,24 +194,7 @@ export default function MarketsPage() {
               ))}
         </div>
 
-        <div style={{ flexShrink: 0 }} className="markets-footer hidden lg:flex h-[52px] px-8 items-center justify-between">
-          <div style={{ display: 'flex', gap: 40 }}>
-            {[
-              { label: 'TOTAL MARKETS', value: '16' },
-              { label: 'REFERENCE DATA', value: 'Binance Spot' },
-              { label: 'ORDER BOOKS', value: 'Synthetic demo' },
-              { label: 'NETWORK', value: 'Sepolia' },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.18)' }}>{label}</span>
-                <span style={{ fontFamily: CN, fontSize: 12, color: 'rgba(232,234,240,0.55)' }}>{value}</span>
-              </div>
-            ))}
-          </div>
-          <span style={{ fontFamily: IN, fontSize: 9, color: 'rgba(232,234,240,0.15)', letterSpacing: '0.1em' }}>
-            Choose a testnet market →
-          </span>
-        </div>
+        <div className="markets-footer dippi-markets-footer"><span>{ORDERED_PAIRS.length} markets</span><span>Binance Spot reference</span><span>Synthetic demo books</span><span>Sepolia testnet</span></div>
 
       </div>
     </>

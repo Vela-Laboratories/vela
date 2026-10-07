@@ -183,7 +183,7 @@ export default function BatchDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ background: '#0C0C0C', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#15131f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,234,240,0.3)' }}>Loading…</p>
       </div>
     )
@@ -191,27 +191,27 @@ export default function BatchDetailPage() {
 
   if (notFound || !batch) {
     return (
-      <div style={{ background: '#0C0C0C', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+      <div style={{ background: '#15131f', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
         <p style={{ fontFamily: IN, fontSize: '14px', color: 'rgba(232,234,240,0.4)' }}>Batch {id} not found.</p>
-        <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}>← Back to batch explorer</Link>
+        <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: '#f8f5ee', textDecoration: 'underline' }}>← Back to batch explorer</Link>
       </div>
     )
   }
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
             <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: 0 }}>
-              Vela Exchange — Batch Explorer
+              Dippi — Batch Explorer
             </p>
             <span style={{ fontFamily: IN, fontSize: '9px', color: '#20c98a', border: '1px solid #20c98a', padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               Finalized
             </span>
           </div>
-          <h1 style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#e9eaf0', margin: '0 0 8px', lineHeight: 1.1 }}>
+          <h1 style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#f8f5ee', margin: '0 0 8px', lineHeight: 1.1 }}>
             Batch {padBatchId(batch.batch_id)}
           </h1>
           <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.35)', margin: '0 0 4px' }}>
@@ -220,7 +220,7 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '24px' }}>
           Batch Details
         </p>
@@ -233,9 +233,9 @@ export default function BatchDetailPage() {
             ['MARKETS', batch.markets.join(', ')],
             ['ORDER COUNT', String(batch.order_count)],
           ].map(([label, value]) => (
-            <div key={label} style={{ background: '#0d1018', padding: '20px 24px' }}>
+            <div key={label} style={{ background: '#211e2b', padding: '20px 24px' }}>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 6px' }}>{label}</p>
-              <p style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0', margin: 0 }}>{value}</p>
+              <p style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee', margin: 0 }}>{value}</p>
             </div>
           ))}
         </div>
@@ -244,8 +244,8 @@ export default function BatchDetailPage() {
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', marginBottom: '10px' }}>
             State Root
           </p>
-          <div style={{ background: '#0C0C0C', padding: '16px 20px', marginBottom: '12px' }}>
-            <p style={{ fontFamily: CN, fontSize: '11px', color: '#e9eaf0', margin: 0, wordBreak: 'break-all' }}>{batch.state_root}</p>
+          <div style={{ background: '#15131f', padding: '16px 20px', marginBottom: '12px' }}>
+            <p style={{ fontFamily: CN, fontSize: '11px', color: '#f8f5ee', margin: 0, wordBreak: 'break-all' }}>{batch.state_root}</p>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.5)', lineHeight: 1.8, maxWidth: '560px', marginBottom: '16px' }}>
             The state root is a cryptographic hash of all trades in this batch. Anyone can recompute this hash from the fills below and verify it matches — proving the batch was not tampered with.
@@ -268,7 +268,7 @@ export default function BatchDetailPage() {
                     href={coveringAnchor.etherscan_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}
+                    style={{ fontFamily: IN, fontSize: '11px', color: '#f8f5ee', textDecoration: 'underline' }}
                   >
                     View on Etherscan →
                   </a>
@@ -288,7 +288,7 @@ export default function BatchDetailPage() {
 
           <button
             onClick={() => setShowModal(true)}
-            style={{ fontFamily: IN, fontSize: '10px', color: '#e9eaf0', background: 'transparent', border: '1px solid rgba(232,234,240,0.15)', padding: '8px 16px', cursor: 'pointer' }}
+            style={{ fontFamily: IN, fontSize: '10px', color: '#f8f5ee', background: 'transparent', border: '1px solid rgba(232,234,240,0.15)', padding: '8px 16px', cursor: 'pointer' }}
           >
             Verify this batch
           </button>
@@ -298,7 +298,7 @@ export default function BatchDetailPage() {
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', marginBottom: '10px' }}>
             Operator Signature
           </p>
-          <div style={{ background: '#0C0C0C', padding: '12px 16px', marginBottom: '10px' }}>
+          <div style={{ background: '#15131f', padding: '12px 16px', marginBottom: '10px' }}>
             <p style={{ fontFamily: CN, fontSize: '9px', color: 'rgba(232,234,240,0.3)', margin: 0, wordBreak: 'break-all' }}>{batch.operator_signature}</p>
           </div>
           <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.35)' }}>
@@ -306,7 +306,7 @@ export default function BatchDetailPage() {
           </p>
         </div>
 
-        <div style={{ background: '#0C0C0C', padding: '20px 24px', marginTop: '36px' }}>
+        <div style={{ background: '#15131f', padding: '20px 24px', marginTop: '36px' }}>
           <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.2)', margin: '0 0 14px' }}>
             ZK Proof Status
           </p>
@@ -462,10 +462,10 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#e9eaf0', margin: '0 0 32px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#f8f5ee', margin: '0 0 32px' }}>
             Fills in this batch
           </h2>
 
@@ -490,7 +490,7 @@ export default function BatchDetailPage() {
                   <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.3)' }}>
                     {new Date(fill.timestamp / 1000).toLocaleTimeString()}
                   </span>
-                  <span style={{ fontFamily: IN, fontWeight: 500, fontSize: '11px', color: '#e9eaf0' }}>{fill.market_id}</span>
+                  <span style={{ fontFamily: IN, fontWeight: 500, fontSize: '11px', color: '#f8f5ee' }}>{fill.market_id}</span>
                   <span style={{ fontFamily: CN, fontSize: '11px', color: fill.side === 'bid' ? '#20c98a' : '#ef6a5b' }}>
                     {formatPrice(priceNum)}
                   </span>
@@ -520,8 +520,8 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11', padding: '24px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-        <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}>
+      <div style={{ background: '#13111d', padding: '24px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+        <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: '#f8f5ee', textDecoration: 'underline' }}>
           ← Back to batch explorer
         </Link>
         <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)', textDecoration: 'underline' }}>
@@ -538,13 +538,13 @@ export default function BatchDetailPage() {
           onClick={() => setShowModal(false)}
         >
           <div
-            style={{ background: '#090b11', padding: '40px', maxWidth: '480px', width: '90%' }}
+            style={{ background: '#13111d', padding: '40px', maxWidth: '480px', width: '90%' }}
             onClick={(e) => e.stopPropagation()}
           >
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
               Verify Batch {padBatchId(batch.batch_id)}
             </p>
-            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '22px', color: '#e9eaf0', margin: '0 0 24px' }}>
+            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '22px', color: '#f8f5ee', margin: '0 0 24px' }}>
               How to verify this batch
             </h3>
             {[
@@ -555,7 +555,7 @@ export default function BatchDetailPage() {
               <div key={num} style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                 <span style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(232,234,240,0.3)', flexShrink: 0, paddingTop: '2px' }}>{num}.</span>
                 <div>
-                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', margin: '0 0 4px' }}>{title}</p>
+                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee', margin: '0 0 4px' }}>{title}</p>
                   <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,234,240,0.5)', margin: 0 }}>{desc}</p>
                 </div>
               </div>
@@ -563,13 +563,13 @@ export default function BatchDetailPage() {
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button
                 onClick={downloadFills}
-                style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#e9eaf0', background: '#0C0C0C', border: 'none', padding: '10px 20px', cursor: 'pointer' }}
+                style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#f8f5ee', background: '#15131f', border: 'none', padding: '10px 20px', cursor: 'pointer' }}
               >
                 Download fills JSON
               </button>
               <button
                 onClick={() => setShowModal(false)}
-                style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', background: 'transparent', border: '1px solid rgba(232,234,240,0.15)', padding: '10px 20px', cursor: 'pointer' }}
+                style={{ fontFamily: IN, fontSize: '11px', color: '#f8f5ee', background: 'transparent', border: '1px solid rgba(232,234,240,0.15)', padding: '10px 20px', cursor: 'pointer' }}
               >
                 Close
               </button>

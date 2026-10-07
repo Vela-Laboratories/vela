@@ -112,14 +112,14 @@ export default function ProofsPage() {
   }, [fetchStats, fetchProofs])
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-16 lg:px-[52px] lg:pt-[60px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-16 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '640px' }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.25)', margin: '0 0 24px' }}>
-            Vela Exchange — ZK Proof System
+            Dippi — ZK Proof System
           </p>
-          <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1.15 }}>
+          <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#f8f5ee', margin: '0 0 4px', lineHeight: 1.15 }}>
             Proof pipeline status.
           </h1>
           <h2 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: 'rgba(232,234,240,0.4)', margin: '0 0 24px', lineHeight: 1.15 }}>
@@ -131,14 +131,14 @@ export default function ProofsPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 32px' }}>
           Current Prover Mode
         </p>
 
         <div style={{ borderLeft: '3px solid rgba(180,140,60,0.7)', paddingLeft: '24px', marginBottom: '48px' }}>
           <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>CURRENT PROVER MODE</p>
-          <p style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 12px' }}>OPTIMISTIC</p>
+          <p style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 12px' }}>OPTIMISTIC</p>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.55)', lineHeight: 1.7, maxWidth: '480px', margin: '0 0 24px' }}>
             Placeholder records are emitted by default. SP1 integration exists behind explicit provider configuration and is not part of the public beta deployment.
           </p>
@@ -158,22 +158,22 @@ export default function ProofsPage() {
               ['SKIPPED (OPTIMISTIC)', String(stats.skipped)],
               ['PROVEN', String(stats.proven)],
             ].map(([label, value]) => (
-              <div key={label} style={{ background: '#0d1018', padding: '20px 24px' }}>
+              <div key={label} style={{ background: '#211e2b', padding: '20px 24px' }}>
                 <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 6px' }}>{label}</p>
-                <p style={{ fontFamily: CN, fontSize: '20px', color: '#e9eaf0', margin: 0, fontWeight: 600 }}>{value}</p>
+                <p style={{ fontFamily: CN, fontSize: '20px', color: '#f8f5ee', margin: 0, fontWeight: 600 }}>{value}</p>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.2)', margin: '0 0 16px' }}>
             Architecture
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 40px', lineHeight: 1.15 }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 40px', lineHeight: 1.15 }}>
             Optimistic-ZK verification.
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
@@ -187,7 +187,7 @@ export default function ProofsPage() {
                   {step}
                 </span>
                 <div>
-                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', margin: '0 0 8px' }}>{title}</p>
+                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee', margin: '0 0 8px' }}>{title}</p>
                   <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '12px', color: 'rgba(232,234,240,0.4)', margin: 0, lineHeight: 1.7 }}>{desc}</p>
                 </div>
               </div>
@@ -196,7 +196,7 @@ export default function ProofsPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 24px' }}>
           Proof History
         </p>
@@ -220,7 +220,7 @@ export default function ProofsPage() {
                 style={{ borderBottom: '1px solid rgba(232,234,240,0.05)', padding: '10px 0' }}
               >
                 <div style={{ display: 'grid', gridTemplateColumns: '80px 120px 100px 100px 1fr', alignItems: 'center' }}>
-                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#e9eaf0' }}>
+                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#f8f5ee' }}>
                     {padBatchId(proof.batch_id)}
                   </span>
                   <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)' }}>
@@ -245,7 +245,7 @@ export default function ProofsPage() {
         )}
       </div>
 
-      <div style={{ background: '#090b11', borderTop: '1px solid rgba(232,234,240,0.07)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+      <div style={{ background: '#13111d', borderTop: '1px solid rgba(232,234,240,0.07)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
         <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)', textDecoration: 'underline' }}>
           ← Batch Explorer
         </Link>

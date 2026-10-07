@@ -275,7 +275,7 @@ function CreditGauge({
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
   const arcColor = isDanger ? '#ef6a5b' : '#20c98a'
-  const textFill = '#e9eaf0'
+  const textFill = '#f8f5ee'
 
   return (
     <div className="flex flex-col items-center gap-5">

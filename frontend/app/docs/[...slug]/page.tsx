@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 function H1({ children }: { children: ReactNode }) {
@@ -8,7 +9,7 @@ function H1({ children }: { children: ReactNode }) {
         fontFamily: 'var(--font-inter)',
         fontWeight: 700,
         fontSize: '2rem',
-        color: '#e9eaf0',
+        color: '#f8f5ee',
         marginBottom: '8px',
         lineHeight: 1.2,
       }}
@@ -26,7 +27,7 @@ function H2({ children }: { children: ReactNode }) {
           fontFamily: 'var(--font-inter)',
           fontWeight: 600,
           fontSize: '1.3rem',
-          color: '#e9eaf0',
+          color: '#f8f5ee',
           marginBottom: '8px',
         }}
       >
@@ -44,7 +45,7 @@ function H3({ children }: { children: ReactNode }) {
         fontFamily: 'var(--font-inter)',
         fontWeight: 600,
         fontSize: '1rem',
-        color: '#e9eaf0',
+        color: '#f8f5ee',
         marginTop: '32px',
         marginBottom: '12px',
       }}
@@ -92,12 +93,12 @@ function Pre({ children }: { children: ReactNode }) {
   return (
     <pre
       style={{
-        backgroundColor: '#0d1018',
+        backgroundColor: '#211e2b',
         border: '1px solid rgba(137,148,174,0.1)',
         padding: '20px 24px',
         fontFamily: 'var(--font-mono)',
         fontSize: '0.85rem',
-        color: '#e9eaf0',
+        color: '#f8f5ee',
         borderRadius: 8,
         overflowX: 'auto',
         margin: '24px 0',
@@ -133,7 +134,7 @@ function Warning({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
-        borderLeft: '3px solid #9488ee',
+        borderLeft: '3px solid #f8df86',
         backgroundColor: 'rgba(148,136,238,0.08)',
         padding: '16px 20px',
         margin: '24px 0',
@@ -215,7 +216,7 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
               <th
                 key={h}
                 style={{
-                  backgroundColor: '#0d1018',
+                  backgroundColor: '#211e2b',
                   fontFamily: 'var(--font-inter)',
                   fontSize: '0.7rem',
                   fontWeight: 600,
@@ -277,85 +278,40 @@ function Subtitle({ children }: { children: ReactNode }) {
 function WhatIsVela() {
   return (
     <>
-      <H1>What is Vela?</H1>
-      <Subtitle>A high-performance verifiable spot DEX built by Monolith Systematic LLC.</Subtitle>
+      <H1>What is Dippi?</H1>
+      <Subtitle>A public Sepolia testnet trading sandbox powered by the Vela matching engine.</Subtitle>
 
-      <H2>The Problem</H2>
+      <H2>Explore the market</H2>
       <P>
-        Cryptocurrency trading infrastructure exists on a spectrum between two poles. Centralized
-        exchanges like Binance and Coinbase deliver the speed and order book depth that professional
-        traders need — sub-millisecond latency, tight spreads, reliable fill execution. But they are
-        opaque by design. Users must trust that the exchange is matching orders fairly, that their
-        balances are accurate, and that the operator is not front-running their flow. There is no
-        independent way to verify any of this.
-      </P>
-      <P>
-        Decentralized exchanges, by contrast, are transparent and non-custodial. Every swap is
-        verifiable on-chain. But the dominant DEX model — automated market makers (AMMs) — imposes
-        serious costs: capital inefficiency, impermanent loss for liquidity providers, and price
-        impact that scales poorly with order size. More fundamentally, AMMs are designed around
-        passive liquidity rather than active quoting, making them ill-suited for institutional market
-        makers who want to express precise two-sided quotes.
+        Dippi lets you browse spot markets, inspect reference charts and synthetic testnet order
+        books, and try wallet-signed orders. Binance Spot prices are used for reference data only.
+        Orders use a separate Sepolia demo book, so reference prices are not executable quotes.
       </P>
 
-      <H2>Vela's Approach</H2>
+      <H2>What powers it</H2>
       <P>
-        Vela combines the execution model of a centralized exchange with the verifiability guarantees
-        of a blockchain. At its core is a central limit order book (CLOB) — the same model used by
-        every professional exchange in traditional and crypto markets. Orders are matched by a
-        deterministic price-time priority algorithm, the same algorithm that governs the NYSE, Nasdaq,
-        and every major derivatives venue.
-      </P>
-      <P>
-        The key difference from a traditional CEX is that every batch of matches is cryptographically
-        verifiable. The matching engine publishes state roots and transaction logs to a data
-        availability layer, and any party can run a fraud proof to verify that the operator computed
-        the correct result. If the operator cheats, the fraud proof detects it.
+        The underlying Vela engine is a central limit order book with deterministic price-time
+        priority. The repository also contains research on state commitments, proofs, and data
+        availability. Those research components should not be read as active production guarantees.
       </P>
 
-      <H2>Key Performance Numbers</H2>
-      <Table
-        headers={['Metric', 'Value', 'Context']}
-        rows={[
-          ['p50 match latency', '0.68 μs', 'Per-operation on realistic MM workload'],
-          ['Throughput', '1,430,000 ops/sec', 'Sustained on Apple M3'],
-          ['vs Pulse (baseline)', '11.6× faster', 'Per-operation comparison'],
-          ['Markets (beta)', '11', 'Live on public beta'],
-        ]}
-      />
-
-      <H2>Who Vela Is For</H2>
-      <H3>Traders</H3>
+      <H2>What you can do today</H2>
       <P>
-        Traders who want the UX of a centralized exchange — limit orders, market orders, a live order
-        book, immediate fills — without having to trust a centralized operator. Vela provides familiar
-        trading mechanics with cryptographic guarantees underneath.
+        Explore 16 configured USDC spot markets, connect an Ethereum-compatible wallet, inspect
+        testnet balances and activity, and review the public transparency pages. Availability of
+        individual reference feeds or demo books can vary.
       </P>
 
-      <H3>Market Makers</H3>
-      <P>
-        Professional market makers who need low-latency execution and capital-efficient quoting. The
-        credit system allows MMs to quote up to N× their deposited collateral across all markets
-        simultaneously, with atomic enforcement. Private L3 WebSocket feeds give MMs real-time
-        visibility into their own fills and balance changes without exposing their positions publicly.
-      </P>
-
-      <H3>Researchers and Builders</H3>
-      <P>
-        Developers building on top of Vela via the HTTP and WebSocket APIs. Researchers studying
-        order book dynamics, CLOB matching algorithms, or optimistic-ZK proof systems. The full source
-        code is MIT licensed and available on GitHub.
-      </P>
-
-      <H2>Current Status</H2>
+      <H2>Current limits</H2>
       <Warning>
-        Vela is in public beta. Deposits are trust-based and not settled on-chain. Do not deposit
-        significant funds. On-chain settlement and fraud proof verification are on the M6 roadmap.
+        Dippi is a Sepolia demo. Do not use real funds. It does not have an authoritative production
+        ledger, reconciled custody, real SP1 proofs, an on-chain fraud-proof verifier, or enforceable
+        forced inclusion. The technical pages in these docs include designs and research that are
+        not deployed as customer protections.
       </Warning>
       <P>
-        The public beta includes 11 markets, full order book matching, live WebSocket feeds, and the
-        MM credit system. The zkVM fraud proof crate is implemented and verifiable locally. On-chain
-        verification contracts are in development.
+        Read the <Link href="/transparency">transparency overview</Link> for current beta disclosures,
+        or open the <Link href="/markets">market list</Link> to explore the sandbox.
       </P>
     </>
   )
@@ -2628,16 +2584,16 @@ function Faq() {
     <>
       <H1>Frequently Asked Questions</H1>
 
-      <H3>Is Vela live?</H3>
+      <H3>Is Dippi live?</H3>
       <P>
-        Yes. Vela public beta is live. Eleven markets are available. Deposits are currently
-        trust-based.
+        Dippi is a public Sepolia testnet demo with 16 configured USDC spot markets.
+        It is not a production exchange and does not support real funds.
       </P>
 
       <H3>Are deposits safe?</H3>
       <P>
-        Vela is in public beta. Deposits are not settled on-chain and are trust-based. Do not deposit
-        significant funds. On-chain settlement is the M6 roadmap milestone.
+        Dippi is a testnet demo. Do not use real funds. The beta does not have an authoritative
+        production ledger or reconciled custody, and the contract alone is not a solvency guarantee.
       </P>
 
       <H3>What wallets are supported?</H3>
@@ -2655,7 +2611,7 @@ function Faq() {
 
       <H3>Is the source code available?</H3>
       <P>
-        Yes. Vela is MIT licensed and available at <strong>github.com/arpjw/vela</strong>.
+        Yes. Vela is MIT licensed and available at <strong>github.com/dippi-fun/exchange</strong>.
       </P>
 
       <H3>What is the white paper?</H3>
@@ -2690,17 +2646,17 @@ function Faq() {
 
       <H3>How do I report a bug?</H3>
       <P>
-        Open an issue on the Vela GitHub repository at <strong>github.com/arpjw/vela</strong>. For
+        Open an issue on the Vela GitHub repository at <strong>github.com/dippi-fun/exchange</strong>. For
         security vulnerabilities, contact the team through private channels before public disclosure.
       </P>
 
       <H3>What markets are available?</H3>
       <P>
-        Eleven markets are live in the beta. The current market list is available at the{' '}
+        Sixteen USDC spot markets are configured. The current market list is available at the{' '}
         <C>GET /markets</C> endpoint and on the Markets page of the exchange.
       </P>
 
-      <H3>Can I use Vela programmatically without the UI?</H3>
+      <H3>Can I use the Vela engine API programmatically?</H3>
       <P>
         Yes. The HTTP and WebSocket APIs are fully documented and designed for programmatic access.
         Market makers in particular are expected to use the API directly rather than the UI. See the

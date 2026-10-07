@@ -99,15 +99,15 @@ export default function BatchesPage() {
   const avgFills = batches.length > 0 ? (totalFills / batches.length).toFixed(1) : '—'
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — Batch Explorer
+            Dippi — Batch Explorer
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
               Every batch.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
@@ -120,7 +120,7 @@ export default function BatchesPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '24px' }}>
           Batch History
         </p>
@@ -146,14 +146,14 @@ export default function BatchesPage() {
               style={{ padding: '12px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', alignItems: 'center' }}
               className="grid grid-cols-[80px_80px_1fr] lg:grid-cols-[80px_1fr_80px_80px_140px_1fr]"
             >
-              <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#e9eaf0' }}>{padBatchId(batch.batch_id)}</span>
+              <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#f8f5ee' }}>{padBatchId(batch.batch_id)}</span>
               <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.45)' }} className="hidden lg:block">{formatDateTime(batch.timestamp)}</span>
-              <span style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0' }}>{batch.fill_count}</span>
+              <span style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee' }}>{batch.fill_count}</span>
               <span style={{ fontFamily: CN, fontSize: '12px', color: 'rgba(232,234,240,0.5)' }} className="hidden lg:block">{batch.order_count}</span>
               <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)' }} className="hidden lg:block">{batch.state_root.slice(0, 10)}…</span>
               <Link
                 href={`/batches/${batch.batch_id}`}
-                style={{ fontFamily: IN, fontSize: '10px', color: '#e9eaf0', textDecoration: 'none' }}
+                style={{ fontFamily: IN, fontSize: '10px', color: '#f8f5ee', textDecoration: 'none' }}
                 onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
                 onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
               >
@@ -166,20 +166,20 @@ export default function BatchesPage() {
         <div style={{ display: 'flex', gap: '48px', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid rgba(232,234,240,0.08)' }}>
           <div>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 4px' }}>Total Batches</p>
-            <p style={{ fontFamily: CN, fontSize: '16px', color: '#e9eaf0', margin: 0 }}>{batches.length}</p>
+            <p style={{ fontFamily: CN, fontSize: '16px', color: '#f8f5ee', margin: 0 }}>{batches.length}</p>
           </div>
           <div>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 4px' }}>Total Fills</p>
-            <p style={{ fontFamily: CN, fontSize: '16px', color: '#e9eaf0', margin: 0 }}>{totalFills}</p>
+            <p style={{ fontFamily: CN, fontSize: '16px', color: '#f8f5ee', margin: 0 }}>{totalFills}</p>
           </div>
           <div>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 4px' }}>Avg Fills / Batch</p>
-            <p style={{ fontFamily: CN, fontSize: '16px', color: '#e9eaf0', margin: 0 }}>{avgFills}</p>
+            <p style={{ fontFamily: CN, fontSize: '16px', color: '#f8f5ee', margin: 0 }}>{avgFills}</p>
           </div>
         </div>
       </div>
 
-      <div style={{ background: '#090b11', borderTop: '1px solid rgba(232,234,240,0.08)' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d', borderTop: '1px solid rgba(232,234,240,0.08)' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '8px' }}>
           On-Chain Anchors
         </p>
@@ -204,10 +204,10 @@ export default function BatchesPage() {
               style={{ padding: '11px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', alignItems: 'center' }}
               className="grid grid-cols-[80px_1fr_180px_120px_100px]"
             >
-              <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#e9eaf0' }}>{formatAnchorId(anchor.anchor_id)}</span>
+              <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#f8f5ee' }}>{formatAnchorId(anchor.anchor_id)}</span>
               <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)' }}>{anchor.state_root.slice(0, 10)}…</span>
               <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.45)' }}>{formatDateTime(anchor.timestamp)}</span>
-              <span style={{ fontFamily: CN, fontSize: '11px', color: '#e9eaf0' }}>{formatNumber(anchor.orders_processed)}</span>
+              <span style={{ fontFamily: CN, fontSize: '11px', color: '#f8f5ee' }}>{formatNumber(anchor.orders_processed)}</span>
               <a
                 href={anchor.etherscan_url}
                 target="_blank"
@@ -222,7 +222,7 @@ export default function BatchesPage() {
           ))
         )}
       </div>
-      <div style={{ background: '#090b11', borderTop: '1px solid rgba(232,234,240,0.07)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+      <div style={{ background: '#13111d', borderTop: '1px solid rgba(232,234,240,0.07)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
         <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.5)', textDecoration: 'underline' }}>
           ZK Proof System →
         </Link>

@@ -3,12 +3,12 @@ import Link from 'next/link'
 const SECTIONS = [
   {
     title: 'Introduction',
-    description: 'Learn what Vela is, how the protocol works, and its core design principles.',
+    description: 'Meet Dippi and learn about the Vela engine behind the testnet beta.',
     href: '/docs/introduction/what-is-vela',
   },
   {
     title: 'Getting Started',
-    description: 'Set up your wallet, deposit funds, and place your first order in minutes.',
+    description: 'Connect a wallet and explore the Sepolia testnet workflow.',
     href: '/docs/getting-started/connect-wallet',
   },
   {
@@ -23,7 +23,7 @@ const SECTIONS = [
   },
   {
     title: 'API Reference',
-    description: 'Complete HTTP and WebSocket API documentation for building on Vela.',
+    description: 'HTTP and WebSocket API documentation for the Vela engine.',
     href: '/docs/api-reference/http-endpoints',
   },
   {
@@ -38,7 +38,7 @@ const SECTIONS = [
   },
   {
     title: 'FAQ',
-    description: 'Frequently asked questions about Vela Exchange and its public beta.',
+    description: "Frequently asked questions about Dippi's public beta.",
     href: '/docs/faq',
   },
 ]
@@ -51,12 +51,12 @@ export default function DocsIndex() {
           fontFamily: 'var(--font-inter)',
           fontWeight: 700,
           fontSize: '2rem',
-          color: '#e9eaf0',
+          color: '#f8f5ee',
           marginBottom: '8px',
           lineHeight: 1.2,
         }}
       >
-        Vela Exchange Documentation
+        Dippi documentation
       </h1>
       <p
         style={{
@@ -69,11 +69,12 @@ export default function DocsIndex() {
           maxWidth: '560px',
         }}
       >
-        Vela is a high-performance verifiable spot exchange built on a central limit order book
-        with cryptographic verification of every match. Use this documentation to explore the
-        protocol, integrate via the API, or understand the architecture.
+        Dippi is a Sepolia testnet trading sandbox powered by the Vela matching engine.
+        Explore the current beta, its limits, and the underlying research architecture.
+        Do not use real funds or assume production custody or verification guarantees.
       </p>
       <div
+        className="dippi-docs-grid"
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, 1fr)',
@@ -87,8 +88,8 @@ export default function DocsIndex() {
             style={{
               display: 'block',
               padding: '24px',
-              backgroundColor: '#0d1018',
-              border: '1px solid rgba(137,148,174,0.08)',
+              backgroundColor: '#1a1825',
+              border: '1px solid rgba(248,245,238,0.11)',
               borderRadius: '10px',
               textDecoration: 'none',
             }}
@@ -98,7 +99,7 @@ export default function DocsIndex() {
                 fontSize: '0.875rem',
                 fontWeight: 600,
                 fontFamily: 'var(--font-inter)',
-                color: '#e9eaf0',
+                color: '#f8f5ee',
                 marginBottom: '8px',
               }}
             >
@@ -119,7 +120,7 @@ export default function DocsIndex() {
               style={{
                 fontSize: '0.8rem',
                 fontFamily: 'var(--font-inter)',
-                color: '#9488ee',
+                color: '#f8df86',
                 fontWeight: 500,
               }}
             >

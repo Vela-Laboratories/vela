@@ -1,0 +1,301 @@
+/* A quieter front door: personality in the words and the smile, clarity in the data. */
+.app-shell--home,
+.app-shell--discover {
+  --dippi-light-ink: #241f29;
+  --dippi-light-muted: #6e6873;
+  --dippi-light-line: #e5e1e8;
+  --dippi-light-accent: #6247a5;
+  color: var(--dippi-light-ink);
+  background: #faf9f6;
+}
+
+.app-shell--home .beta-banner,
+.app-shell--discover .beta-banner {
+  color: #554d5e;
+  background: #efedf2;
+  border-bottom: 1px solid var(--dippi-light-line);
+}
+.app-shell--home .beta-banner > span:first-child,
+.app-shell--discover .beta-banner > span:first-child,
+.app-shell--home .beta-banner__detail,
+.app-shell--discover .beta-banner__detail,
+.app-shell--home .beta-banner__link,
+.app-shell--discover .beta-banner__link { color: #554d5e !important; }
+
+.app-shell--home .app-nav,
+.app-shell--discover .app-nav {
+  background: rgba(250, 249, 246, .97);
+  border-bottom: 1px solid var(--dippi-light-line);
+}
+.app-shell--home .dippi-wordmark,
+.app-shell--discover .dippi-wordmark { color: var(--dippi-light-ink); }
+.app-shell--home .dippi-wordmark__suffix,
+.app-shell--discover .dippi-wordmark__suffix { color: var(--dippi-light-accent); }
+.app-shell--home .app-nav__primary a,
+.app-shell--discover .app-nav__primary a,
+.app-shell--home .app-nav__secondary a,
+.app-shell--discover .app-nav__secondary a { color: #5f5865; }
+.app-shell--home .app-nav__primary a:hover,
+.app-shell--discover .app-nav__primary a:hover,
+.app-shell--home .app-nav__primary a.is-active,
+.app-shell--discover .app-nav__primary a.is-active,
+.app-shell--home .app-nav__secondary a:hover,
+.app-shell--discover .app-nav__secondary a:hover {
+  color: var(--dippi-light-ink);
+  background: #eeeaf4;
+}
+.app-shell--home .wallet-button--primary,
+.app-shell--discover .wallet-button--primary {
+  color: #fff;
+  background: var(--dippi-light-accent);
+  border-color: var(--dippi-light-accent);
+}
+.app-shell--home .wallet-button--primary:hover,
+.app-shell--discover .wallet-button--primary:hover { background: #51398e; }
+.app-shell--home .nav-menu-button,
+.app-shell--discover .nav-menu-button {
+  color: var(--dippi-light-ink);
+  background: transparent;
+  border-color: var(--dippi-light-line);
+}
+
+.app-shell--home .dippi-home { max-width: 1400px; color: var(--dippi-light-ink); }
+.app-shell--home .dippi-hero {
+  min-height: min(680px, calc(100svh - 100px));
+  grid-template-columns: minmax(0, 1.05fr) minmax(390px, .95fr);
+  gap: clamp(52px, 7vw, 110px);
+  padding: 62px 0 80px;
+  border-bottom: 1px solid var(--dippi-light-line);
+}
+.app-shell--home .dippi-hero__copy { padding: 0; }
+.app-shell--home .dippi-eyebrow,
+.app-shell--home .dippi-kicker,
+.app-shell--discover .dippi-kicker {
+  color: var(--dippi-light-accent);
+  font-size: .72rem;
+  font-weight: 750;
+  letter-spacing: .09em;
+}
+.app-shell--home .dippi-hero h1 {
+  margin: 25px 0 25px;
+  color: var(--dippi-light-ink);
+  font-size: clamp(4.4rem, 6.4vw, 7.4rem);
+  letter-spacing: -.087em;
+  line-height: .99;
+}
+.app-shell--home .dippi-hero h1 em { color: var(--dippi-light-accent); }
+.app-shell--home .dippi-hero__copy > p {
+  max-width: 465px;
+  color: var(--dippi-light-muted);
+  font-size: clamp(1.04rem, 1.35vw, 1.19rem);
+  line-height: 1.55;
+}
+.app-shell--home .dippi-hero__actions { margin-top: 32px; gap: 12px; }
+.app-shell--home .dippi-button { min-height: 48px; border-radius: 9px; font-weight: 700; }
+.app-shell--home .dippi-button--primary { color: #fff; background: var(--dippi-light-accent); }
+.app-shell--home .dippi-button--primary:hover { background: #51398e; }
+.app-shell--home .dippi-button--quiet { color: var(--dippi-light-accent); background: transparent; border-color: transparent; }
+.app-shell--home .dippi-button--quiet:hover { background: #eeeaf4; border-color: transparent; }
+.app-shell--home .dippi-hero__note {
+  margin-top: 26px;
+  color: #77717b;
+  font-size: .76rem;
+}
+.app-shell--home .dippi-hero__note::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #8b78b7;
+  border-radius: 50%;
+}
+
+.app-shell--home .dippi-hero__markets {
+  align-self: center;
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--dippi-light-line);
+  border-radius: 16px;
+}
+.app-shell--home .dippi-hero__markets-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 25px;
+  border-bottom: 1px solid var(--dippi-light-line);
+  color: var(--dippi-light-ink);
+  font-size: .81rem;
+  font-weight: 750;
+}
+.app-shell--home .dippi-hero__markets-header span:last-child {
+  color: #89828d;
+  font-size: .7rem;
+  font-weight: 600;
+}
+.app-shell--home .dippi-hero__markets > p {
+  margin: 0;
+  padding: 17px 25px 19px;
+  border-top: 1px solid var(--dippi-light-line);
+  color: #807a84;
+  font-size: .67rem;
+  line-height: 1.5;
+}
+.app-shell--home .dippi-market-cards { display: block; }
+.app-shell--home .dippi-market-card {
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 25px;
+  color: var(--dippi-light-ink);
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid var(--dippi-light-line);
+  border-radius: 0;
+  transition: background .18s ease;
+}
+.app-shell--home .dippi-market-card:last-child { border-bottom: 0; }
+.app-shell--home .dippi-market-card:hover { transform: none; background: #f7f5fa; }
+.app-shell--home .dippi-market-card__top { min-width: 0; gap: 12px; color: var(--dippi-light-ink); }
+.app-shell--home .dippi-market-card__top > span { display: grid; gap: 3px; min-width: 0; }
+.app-shell--home .dippi-market-card__top strong { font-size: .93rem; font-weight: 750; }
+.app-shell--home .dippi-market-card__top small { color: #88818b; font-size: .68rem; }
+.app-shell--home .dippi-market-card__bottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  color: var(--dippi-light-ink);
+  font-size: .77rem;
+}
+.app-shell--home .dippi-market-card__bottom strong { font-weight: 700; white-space: nowrap; }
+.app-shell--home .dippi-market-card__bottom span { min-width: 55px; text-align: right; }
+.app-shell--home .dippi-market-card__bottom i { color: #aaa1b0; font-size: 1rem; font-style: normal; }
+.app-shell--home .dippi-market-card__bottom .positive { color: #208161; }
+.app-shell--home .dippi-market-card__bottom .negative { color: #b65362; }
+
+.app-shell--home .dippi-wayfinder { padding: 78px 0 86px; }
+.app-shell--home .dippi-section-heading { margin-bottom: 34px; }
+.app-shell--home .dippi-section-heading h2 {
+  max-width: 700px;
+  margin-top: 13px;
+  color: var(--dippi-light-ink);
+  font-size: clamp(2.1rem, 3vw, 3rem);
+  line-height: 1.08;
+}
+.app-shell--home .dippi-wayfinder__grid { gap: 24px; }
+.app-shell--home .dippi-wayfinder__card,
+.app-shell--home .dippi-wayfinder__card:nth-child(2),
+.app-shell--home .dippi-wayfinder__card:nth-child(3) {
+  min-height: 215px;
+  padding: 22px 20px 0 0;
+  color: var(--dippi-light-ink);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #cac4d0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.app-shell--home .dippi-wayfinder__card:hover { transform: none; border-color: var(--dippi-light-accent); }
+.app-shell--home .dippi-wayfinder__card small { color: #887b9d; }
+.app-shell--home .dippi-wayfinder__card strong { margin-top: 25px; font-size: 1.35rem; }
+.app-shell--home .dippi-wayfinder__card p { max-width: 290px; color: var(--dippi-light-muted); }
+.app-shell--home .dippi-wayfinder__arrow { color: var(--dippi-light-accent); }
+.app-shell--home .dippi-home-footer { color: #817a84; border-top-color: var(--dippi-light-line); }
+.app-shell--home .dippi-home-footer a { color: #5c5267; }
+
+/* Discovery is a product surface, so give the data one consistent canvas. */
+.app-shell--discover .market-grid-page,
+.app-shell--discover .market-card-grid { background: #faf9f6; }
+.app-shell--discover .markets-header,
+.app-shell--discover .markets-footer { color: var(--dippi-light-ink); border-color: var(--dippi-light-line); }
+.app-shell--discover .markets-header {
+  margin: 0;
+  background: transparent;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+}
+.app-shell--discover .dippi-markets-header { min-height: 170px; padding-block: 36px; }
+.app-shell--discover .dippi-markets-header h1 { color: var(--dippi-light-ink); }
+.app-shell--discover .dippi-markets-header p { color: var(--dippi-light-muted); }
+.app-shell--discover .dippi-markets-header__source { color: #6d6573; background: #fff; border-color: var(--dippi-light-line); }
+.app-shell--discover .dippi-markets-header__source i { background: #4a9c78; }
+.app-shell--discover .market-card {
+  color: var(--dippi-light-ink);
+  background: #fff !important;
+  border-color: var(--dippi-light-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+.app-shell--discover .market-card:hover { background: #fff !important; border-color: #aa9abe; transform: translateY(-2px); }
+.app-shell--discover .dippi-discovery-card__top,
+.app-shell--discover .dippi-discovery-card__pair span,
+.app-shell--discover .dippi-discovery-card__meta,
+.app-shell--discover .dippi-discovery-card__book small,
+.app-shell--discover .dippi-discovery-card__book em,
+.app-shell--discover .dippi-discovery-card__foot { color: #77717d; }
+.app-shell--discover .dippi-discovery-card__top i,
+.app-shell--discover .dippi-discovery-card__foot span { color: var(--dippi-light-accent); }
+.app-shell--discover .dippi-discovery-card__meta,
+.app-shell--discover .dippi-discovery-card__foot { border-top-color: var(--dippi-light-line); }
+.app-shell--discover .dippi-discovery-card__meta strong { color: var(--dippi-light-ink); }
+.app-shell--discover .dippi-discovery-card__book > div > span { color: #89818e; }
+.app-shell--discover .dippi-discovery-card__price .positive,
+.app-shell--discover .dippi-discovery-card__book > div:first-child b { color: #208161; }
+.app-shell--discover .dippi-discovery-card__price .negative,
+.app-shell--discover .dippi-discovery-card__book > div:last-child b { color: #b65362; }
+.app-shell--discover .dippi-discovery-card__sparkline > span { color: #817b84; }
+.app-shell--discover .dippi-discovery-card--loading .animate-pulse { background: #eeeaf0; }
+.app-shell--discover .markets-footer { background: #f1eff2; }
+
+.terminal-market-header { color: #27212e; background: #eeeaf3; border-bottom-color: #d8d1e1; }
+.terminal-market-header .terminal-header-glow { display: none; }
+.terminal-market-header .terminal-pair,
+.terminal-market-header .terminal-reference-price strong { color: #27212e; }
+.terminal-market-header .terminal-pair span,
+.terminal-market-header .terminal-product,
+.terminal-market-header .terminal-reference-price span,
+.terminal-market-header .terminal-header-stat span,
+.terminal-market-header .terminal-source-state { color: #635a6c; }
+.terminal-market-header .terminal-pair b { color: #6247a5; background: #fff; border-color: #d8d1e1; }
+.terminal-market-header .terminal-header-stat { background: #faf9fc; border-color: #d8d1e1; }
+.terminal-market-header .terminal-header-stat strong { color: #27212e; }
+.mobile-terminal__tabs { background: #eeeaf3; border-bottom-color: #d8d1e1; }
+.mobile-terminal__tabs button { color: #645a6c; }
+.mobile-terminal__tabs button[aria-selected='true'] { color: #27212e; background: #fff; border-color: #d8d1e1; }
+.dippi-connect-gate__card { background: #fff; border-color: #d8d1e1; box-shadow: 0 18px 42px rgba(16, 10, 26, .2); }
+.dippi-connect-gate__card h2 { color: #27212e; }
+.dippi-connect-gate__card > p:not(.dippi-connect-gate__note) { color: #625a68; }
+.dippi-connect-gate__button { color: #fff; background: #6247a5; border-color: #6247a5; }
+.dippi-connect-gate__button:hover { background: #51398e; }
+.dippi-connect-gate__note { color: #746d79; }
+
+@media (max-width: 900px) {
+  .app-shell--home .dippi-hero { min-height: 0; grid-template-columns: 1fr; gap: 42px; padding: 64px 0 72px; }
+  .app-shell--home .dippi-hero h1 { font-size: clamp(4.2rem, 10vw, 6.7rem); }
+  .app-shell--home .dippi-hero__markets { max-width: 640px; }
+}
+@media (max-width: 600px) {
+  .app-shell--home .dippi-home { padding-inline: 20px; }
+  .app-shell--home .dippi-hero { gap: 38px; padding: 50px 0 54px; }
+  .app-shell--home .dippi-hero h1 { margin: 19px 0 20px; font-size: clamp(3.25rem, 12.2vw, 4.5rem); }
+  .app-shell--home .dippi-hero__copy > p { font-size: 1rem; }
+  .app-shell--home .dippi-hero__actions { align-items: center; flex-direction: row; gap: 4px; }
+  .app-shell--home .dippi-button { padding-inline: 15px; font-size: .78rem; }
+  .app-shell--home .dippi-button--quiet { min-height: 48px; }
+  .app-shell--home .dippi-market-card { padding: 16px; }
+  .app-shell--home .dippi-market-card__bottom { gap: 6px; font-size: .69rem; }
+  .app-shell--home .dippi-market-card__bottom i { display: none; }
+  .app-shell--home .dippi-market-card__bottom span { min-width: 48px; }
+  .app-shell--home .dippi-hero__markets-header,
+  .app-shell--home .dippi-hero__markets > p { padding-inline: 16px; }
+  .app-shell--home .dippi-wayfinder { padding: 60px 0 70px; }
+  .app-shell--home .dippi-wayfinder__grid { gap: 16px; }
+  .app-shell--home .dippi-wayfinder__card,
+  .app-shell--home .dippi-wayfinder__card:last-child { min-height: 180px; }
+  .app-shell--discover .markets-header { margin-inline: 0; }
+}

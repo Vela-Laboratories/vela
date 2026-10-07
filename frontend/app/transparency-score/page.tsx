@@ -144,7 +144,7 @@ function StatusBadge({ criterion, isDark }: { criterion: Criterion; isDark: bool
 function CriterionCard({ criterion, isDark }: { criterion: Criterion; isDark: boolean }) {
   const bgBase = isDark ? 'rgba(232,234,240,0.03)' : 'rgba(232,234,240,0.03)'
   const bgHover = isDark ? 'rgba(232,234,240,0.06)' : 'rgba(232,234,240,0.06)'
-  const titleColor = '#e9eaf0'
+  const titleColor = '#f8f5ee'
   const descColor = isDark ? 'rgba(232,234,240,0.4)' : 'rgba(232,234,240,0.45)'
   const idColor = isDark ? 'rgba(232,234,240,0.2)' : 'rgba(232,234,240,0.2)'
 
@@ -201,7 +201,7 @@ export default function TransparencyScorePage() {
   })
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
       <style>{`
         @keyframes velaPulse {
           0%, 100% { opacity: 1; }
@@ -209,14 +209,14 @@ export default function TransparencyScorePage() {
         }
       `}</style>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.25em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
-            Vela Exchange — Transparency Standard
+            Dippi — Transparency Standard
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '64px', color: '#e9eaf0', display: 'block', lineHeight: 1 }} className="text-5xl lg:text-[64px]">
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '64px', color: '#f8f5ee', display: 'block', lineHeight: 1 }} className="text-5xl lg:text-[64px]">
               Transparency
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '64px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1, marginBottom: '24px' }} className="text-5xl lg:text-[64px]">
@@ -229,10 +229,10 @@ export default function TransparencyScorePage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '96px', color: '#e9eaf0', lineHeight: 1 }} className="text-[64px] lg:text-[96px]">
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '96px', color: '#f8f5ee', lineHeight: 1 }} className="text-[64px] lg:text-[96px]">
               {COMPLETE_COUNT}
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontSize: '48px', color: 'rgba(232,234,240,0.25)', lineHeight: 1 }} className="text-3xl lg:text-[48px]">
@@ -249,11 +249,11 @@ export default function TransparencyScorePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-[1px]" style={{ background: 'rgba(232,234,240,0.06)' }}>
           {categoryStats.map(({ category, complete, total }) => (
-            <div key={category} style={{ background: '#0d1018', padding: '20px 24px' }}>
+            <div key={category} style={{ background: '#211e2b', padding: '20px 24px' }}>
               <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>
                 {category}
               </p>
-              <p style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#e9eaf0', margin: 0 }}>
+              <p style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#f8f5ee', margin: 0 }}>
                 {complete}/{total}
               </p>
               <MiniProgressBar complete={complete} total={total} isDark={false} />
@@ -271,9 +271,9 @@ export default function TransparencyScorePage() {
 
       {categoryStats.map(({ category, criteria, complete, total, index }) => {
         const isDark = true
-        const bg = index % 2 === 0 ? '#0c0e15' : '#090b11'
+        const bg = index % 2 === 0 ? '#0c0e15' : '#13111d'
         const categoryLabelColor = 'rgba(232,234,240,0.28)'
-        const categoryNameColor = '#e9eaf0'
+        const categoryNameColor = '#f8f5ee'
         const categoryScoreColor = 'rgba(232,234,240,0.38)'
 
         return (
@@ -304,14 +304,14 @@ export default function TransparencyScorePage() {
         )
       })}
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
             The Standard
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', display: 'block', lineHeight: 1.15 }}>
+            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', display: 'block', lineHeight: 1.15 }}>
               This rubric is open.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '32px', color: 'rgba(232,234,240,0.35)', display: 'block', lineHeight: 1.15 }}>
@@ -339,7 +339,7 @@ export default function TransparencyScorePage() {
               Dispute a rating →
             </a>
             <a
-              href="https://github.com/arpjw/vela"
+              href="https://github.com/dippi-fun/exchange"
               target="_blank"
               rel="noopener noreferrer"
               style={{

@@ -81,7 +81,7 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     title: 'Engine version history public',
     description: 'Full git history and release notes published on GitHub. Every change is auditable.',
     status: 'complete',
-    evidence: 'https://github.com/arpjw/vela/releases',
+    evidence: 'https://github.com/dippi-fun/exchange/releases',
   },
   {
     id: 'OT-05',
@@ -97,7 +97,7 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     title: 'Every order wallet-signed',
     description: "All orders require a cryptographic signature from the user's wallet before the engine will accept them.",
     status: 'complete',
-    evidence: 'https://github.com/arpjw/vela',
+    evidence: 'https://github.com/dippi-fun/exchange',
   },
   {
     id: 'OI-02',
@@ -113,7 +113,7 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     title: 'Matching algorithm open source',
     description: 'The complete matching engine source code is published on GitHub under the MIT license.',
     status: 'complete',
-    evidence: 'https://github.com/arpjw/vela',
+    evidence: 'https://github.com/dippi-fun/exchange',
   },
   {
     id: 'OI-04',
@@ -201,7 +201,7 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     title: 'DA layer for state reconstruction',
     description: 'All fills posted to a content-addressed DA layer. Full exchange state reconstructable from DA alone.',
     status: 'complete',
-    evidence: 'https://github.com/arpjw/vela',
+    evidence: 'https://github.com/dippi-fun/exchange',
   },
   {
     id: 'CV-05',

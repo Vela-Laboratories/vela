@@ -158,7 +158,7 @@ export default function StatusPage() {
     ? '#ef6a5b'
     : 'rgba(232,234,240,0.4)'
 
-  const walSeqColor = '#e9eaf0'
+  const walSeqColor = '#f8f5ee'
   const walEntriesColor = walStats == null
     ? 'rgba(232,234,240,0.6)'
     : walStats.entries_since_checkpoint > 5000
@@ -179,15 +179,15 @@ export default function StatusPage() {
   ] : []
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — System Status
+            Dippi — System Status
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
               Status
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
@@ -200,7 +200,7 @@ export default function StatusPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '40px' }}>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
@@ -234,7 +234,7 @@ export default function StatusPage() {
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ background: '#090b11', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
+              <div key={i} style={{ background: '#13111d', padding: '24px', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
                 <Skeleton className="w-24 h-2 mb-3" />
                 <Skeleton className="w-16 h-8" />
               </div>
@@ -247,7 +247,7 @@ export default function StatusPage() {
                 <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 10px' }}>
                   {m.label}
                 </p>
-                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '20px', color: '#e9eaf0', margin: 0 }}>
+                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '20px', color: '#f8f5ee', margin: 0 }}>
                   {m.value}
                 </p>
               </div>
@@ -282,13 +282,13 @@ export default function StatusPage() {
         )}
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Incident History
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 16px' }}>
             The complete record.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.35)', maxWidth: '500px', marginBottom: '32px' }}>
@@ -344,7 +344,7 @@ export default function StatusPage() {
         </div>
       </div>
 
-      <div style={{ background: '#0C0C0C', borderTop: '1px solid rgba(232,234,240,0.06)' }} className="px-6 py-6 lg:px-[52px]">
+      <div style={{ background: '#15131f', borderTop: '1px solid rgba(232,234,240,0.06)' }} className="px-6 py-6 lg:px-[52px]">
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           {[
             { href: '/', label: 'Home' },

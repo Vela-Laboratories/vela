@@ -44,7 +44,7 @@ const CANNOT_DO = [
 const COMMITMENTS = [
   {
     title: 'FAIR MATCHING',
-    body: 'Orders are matched in strict price-time priority. We do not front-run orders, preference any user, or execute trades not submitted by users. The matching engine is open source and verifiable at github.com/arpjw/vela.',
+    body: 'Orders are matched in strict price-time priority. We do not front-run orders, preference any user, or execute trades not submitted by users. The matching engine is open source and verifiable at github.com/dippi-fun/exchange.',
   },
   {
     title: 'FULL RESERVES',
@@ -85,15 +85,15 @@ export default function OperatorPage() {
   }, [fetchMMs])
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — Operator Disclosure
+            Dippi — Operator Disclosure
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
               Who runs Vela.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
@@ -106,11 +106,11 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
           The Operator
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '36px', color: '#e9eaf0', margin: '0 0 32px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '36px', color: '#f8f5ee', margin: '0 0 32px' }}>
           Monolith Systematic LLC
         </h2>
 
@@ -123,12 +123,12 @@ export default function OperatorPage() {
             ['FOUNDER', 'Arya Somu'],
             ['CONTACT', 'arya@monolithsystematic.com'],
             ['WEBSITE', 'monolithsystematic.com'],
-            ['GITHUB', 'github.com/arpjw/vela'],
+            ['GITHUB', 'github.com/dippi-fun/exchange'],
             ['WHITE PAPER', 'ssrn.com/abstract=6579199'],
           ].map(([label, value]) => (
-            <div key={label} style={{ background: '#0d1018', padding: '20px 24px' }}>
+            <div key={label} style={{ background: '#211e2b', padding: '20px 24px' }}>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 6px' }}>{label}</p>
-              <p style={{ fontFamily: IN, fontSize: '13px', color: '#e9eaf0', margin: 0 }}>{value}</p>
+              <p style={{ fontFamily: IN, fontSize: '13px', color: '#f8f5ee', margin: 0 }}>{value}</p>
             </div>
           ))}
         </div>
@@ -136,8 +136,8 @@ export default function OperatorPage() {
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', marginBottom: '10px' }}>
           Operator Wallet Address
         </p>
-        <div style={{ background: '#0C0C0C', padding: '16px 20px', marginBottom: '10px' }}>
-          <p style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0', margin: 0, wordBreak: 'break-all' }}>
+        <div style={{ background: '#15131f', padding: '16px 20px', marginBottom: '10px' }}>
+          <p style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee', margin: 0, wordBreak: 'break-all' }}>
             {OPERATOR_ADDRESS}
           </p>
         </div>
@@ -145,7 +145,7 @@ export default function OperatorPage() {
           href={`https://sepolia.etherscan.io/address/${OPERATOR_ADDRESS}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontFamily: IN, fontSize: '11px', color: '#e9eaf0', textDecoration: 'underline' }}
+          style={{ fontFamily: IN, fontSize: '11px', color: '#f8f5ee', textDecoration: 'underline' }}
         >
           View on Sepolia Etherscan →
         </a>
@@ -154,13 +154,13 @@ export default function OperatorPage() {
         </p>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Operator Powers
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 36px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 36px' }}>
             What we can do.
           </h2>
 
@@ -170,7 +170,7 @@ export default function OperatorPage() {
                 {CAN_DO.map((item) => (
                   <div key={item} style={{ display: 'flex', gap: '10px', marginBottom: '14px', alignItems: 'flex-start' }}>
                     <span style={{ color: '#20c98a', fontWeight: 700, flexShrink: 0 }}>✓</span>
-                    <span style={{ fontFamily: IN, fontSize: '13px', color: '#e9eaf0', lineHeight: 1.5 }}>{item}</span>
+                    <span style={{ fontFamily: IN, fontSize: '13px', color: '#f8f5ee', lineHeight: 1.5 }}>{item}</span>
                   </div>
                 ))}
               </div>
@@ -190,17 +190,17 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
           Commitments
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 32px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 32px' }}>
           Our promise to users.
         </h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,234,240,0.07)' }}>
           {COMMITMENTS.map((c) => (
-            <div key={c.title} style={{ background: '#0d1018', padding: '28px 28px' }}>
+            <div key={c.title} style={{ background: '#211e2b', padding: '28px 28px' }}>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>{c.title}</p>
               <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.7)', lineHeight: 1.8, margin: 0 }}>{c.body}</p>
             </div>
@@ -208,16 +208,16 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
           Conflicts of Interest
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 24px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 24px' }}>
           Disclosed in full.
         </h2>
 
-        <div style={{ background: '#0d1018', padding: '28px 32px', marginBottom: '24px' }}>
-          <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 16px' }}>
+        <div style={{ background: '#211e2b', padding: '28px 32px', marginBottom: '24px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#f8f5ee', margin: '0 0 16px' }}>
             Monolith Systematic LLC operates both Vela Exchange and the Onyx Fund LP, a systematic global macro CTA fund.
           </p>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.8, color: 'rgba(232,234,240,0.6)', margin: '0 0 16px' }}>
@@ -235,7 +235,7 @@ export default function OperatorPage() {
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', marginBottom: '8px' }}>
             Operator Signature — Conflict of Interest Disclosure
           </p>
-          <div style={{ background: '#0C0C0C', padding: '12px 16px', marginBottom: '8px' }}>
+          <div style={{ background: '#15131f', padding: '12px 16px', marginBottom: '8px' }}>
             <p style={{ fontFamily: CN, fontSize: '9px', color: 'rgba(232,234,240,0.25)', margin: 0, wordBreak: 'break-all' }}>
               {'0x' + 'pending'.padEnd(130, '0')}
             </p>
@@ -246,13 +246,13 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Active Market Makers
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 16px' }}>
             Who makes markets on Vela.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.35)', maxWidth: '520px', marginBottom: '32px' }}>
@@ -269,7 +269,7 @@ export default function OperatorPage() {
                 <div key={mm.address} style={{ padding: '20px 24px', background: 'rgba(232,234,240,0.04)', borderLeft: '2px solid rgba(232,234,240,0.07)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                     <div>
-                      <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', margin: '0 0 2px' }}>
+                      <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee', margin: '0 0 2px' }}>
                         {mm.display_name ?? 'Anonymous Market Maker'}
                       </p>
                       {mm.is_internal && (
@@ -300,13 +300,13 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Governance
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 16px' }}>
             Decision Log
           </h2>
 
@@ -317,7 +317,7 @@ export default function OperatorPage() {
             <a
               href="/decisions"
               style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.6)', textDecoration: 'none' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#e9eaf0')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#f8f5ee')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,234,240,0.6)')}
             >
               View decision log →
@@ -326,13 +326,13 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Operator Key Rotation
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 16px' }}>
             The key rotates. The record is permanent.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.35)', maxWidth: '500px', marginBottom: '32px' }}>
@@ -348,7 +348,7 @@ export default function OperatorPage() {
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)' }}>{label}</span>
-                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0' }}>{value}</span>
+                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee' }}>{value}</span>
                 </div>
               ))}
             </div>
@@ -388,13 +388,13 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
             Signed Commitment
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 16px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 16px' }}>
             Cryptographically committed.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.35)', maxWidth: '560px', marginBottom: '32px' }}>
@@ -402,7 +402,7 @@ export default function OperatorPage() {
           </p>
 
           <div style={{ background: 'rgba(232,234,240,0.04)', border: '1px solid rgba(232,234,240,0.08)', padding: '24px', marginBottom: '24px' }}>
-            <pre style={{ fontFamily: CN, fontSize: '11px', color: '#e9eaf0', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{SIGNED_STATEMENT}</pre>
+            <pre style={{ fontFamily: CN, fontSize: '11px', color: '#f8f5ee', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{SIGNED_STATEMENT}</pre>
           </div>
 
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.25)', marginBottom: '8px' }}>

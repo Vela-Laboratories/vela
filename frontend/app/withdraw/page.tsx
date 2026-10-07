@@ -39,8 +39,8 @@ function ConnectGate() {
   }
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border p-8">
+    <div className="dippi-connect-gate min-h-[60vh] flex items-center justify-center px-4">
+      <div className="dippi-connect-gate__card w-full max-w-sm text-center bg-canvas border border-border p-8">
         <h2 className="text-xl font-semibold text-ink mb-2">
           {isConnected ? 'Authenticate your wallet' : 'Connect your wallet'}
         </h2>
@@ -52,11 +52,12 @@ function ConnectGate() {
           type="button"
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full flex items-center justify-center gap-2 h-10 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] disabled:opacity-50"
+          className="dippi-connect-gate__button w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium disabled:opacity-50"
         >
           {connecting && <Spinner size="xs" className="text-ink" />}
           {isConnected ? 'Authenticate Wallet' : 'Connect Wallet'}
         </button>
+        <p className="dippi-connect-gate__note">Testnet only · No real funds or production custody</p>
       </div>
     </div>
   )
@@ -195,12 +196,13 @@ export default function WithdrawPage() {
   if (!isConnected || !isAuthenticated) return <ConnectGate />
 
   return (
-    <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
+    <div className="dippi-funding-page min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-[520px]">
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           WITHDRAW FUNDS
         </p>
-        <div className="mb-6 border-l-[3px] border-[#9488ee] bg-[rgba(0,210,210,0.04)] px-4 py-3">
+        <p className="dippi-funding-page__intro">Review your testnet balance and request state before continuing.</p>
+        <div className="dippi-funding-notice mb-6 border-l-[3px] border-[#9488ee] bg-[rgba(0,210,210,0.04)] px-4 py-3">
           <p className="text-[0.8rem] text-ink leading-relaxed">
             A wallet signature authorizes one exact request. Vela reserves the balance atomically
             before review, signing, or broadcast. This build does not issue custody signatures yet.

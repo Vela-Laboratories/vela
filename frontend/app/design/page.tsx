@@ -41,10 +41,10 @@ export default function DesignPage() {
       <div>
         <Badge variant="primary" className="mb-3">Design System</Badge>
         <h1 className="text-4xl font-bold text-ink tracking-tight mb-2">
-          Vela Component Library
+          Dippi Component Library
         </h1>
         <p className="text-brown">
-          The shared terminal language for Vela&apos;s consumer and operational surfaces.
+          A friendly Dippi layer around a clear, data-focused trading desk.
         </p>
       </div>
 
@@ -54,13 +54,13 @@ export default function DesignPage() {
       <Section title="Color Palette">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { name: 'Primary', value: '#9488EE', bg: 'bg-[#9488ee]', text: 'text-[#11121a]' },
-            { name: 'Secondary', value: '#4F90D9', bg: 'bg-[#4f90d9]', text: 'text-ink' },
-            { name: 'Success', value: '#20C98A', bg: 'bg-[#20c98a]', text: 'text-[#07100d]' },
+            { name: 'Butter', value: '#F8DF86', bg: 'bg-[#f8df86]', text: 'text-[#211d2c]' },
+            { name: 'Lilac', value: '#B9AAE9', bg: 'bg-[#b9aae9]', text: 'text-[#211d2c]' },
+            { name: 'Mint', value: '#93DCC1', bg: 'bg-[#93dcc1]', text: 'text-[#211d2c]' },
             { name: 'Warning', value: '#F59E0B', bg: 'bg-warning', text: 'text-white' },
             { name: 'Error', value: '#EF4444', bg: 'bg-error', text: 'text-white' },
-            { name: 'Background', value: '#080A10', bg: 'bg-parchment border border-border', text: 'text-fresco' },
-            { name: 'Text', value: '#E9EAF0', bg: 'bg-canvas', text: 'text-white' },
+            { name: 'Background', value: '#11101B', bg: 'bg-parchment border border-border', text: 'text-fresco' },
+            { name: 'Text', value: '#F8F5EE', bg: 'bg-canvas', text: 'text-white' },
             { name: 'Border', value: 'rgba(137,148,174,.13)', bg: 'bg-vellum', text: 'text-brown' },
           ].map(({ name, value, bg, text }) => (
             <div key={name} className={['rounded-2xl px-4 py-5', bg].join(' ')}>
@@ -315,7 +315,7 @@ export default function DesignPage() {
               ))}
             </div>
             <p className="text-xs text-brown">
-              This order will be signed with your wallet and submitted to the Vela matching engine.
+              This testnet order will be signed with your wallet and submitted to the Vela matching engine.
             </p>
           </div>
         </Modal>

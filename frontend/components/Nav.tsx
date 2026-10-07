@@ -10,9 +10,9 @@ import { ORDERED_PAIRS } from '@/lib/markets'
 import { fetchReferenceMarkets, type ReferenceMarket } from '@/lib/market-data'
 
 const PRIMARY_LINKS = [
-  { href: '/markets/BTC-USDC', label: 'Trade', match: '/markets' },
-  { href: '/profile', label: 'Profile', match: '/profile' },
-  { href: '/dashboard', label: 'Orders', match: '/dashboard' },
+  { href: '/markets', label: 'Markets', match: '/markets' },
+  { href: '/markets/BTC-USDC', label: 'Trade', match: '/markets/' },
+  { href: '/profile', label: 'Portfolio', match: '/profile' },
   { href: '/history', label: 'Activity', match: '/history' },
 ]
 
@@ -161,7 +161,7 @@ function MobileMenu({
 }) {
   const pathname = usePathname()
   const [connecting, setConnecting] = useState(false)
-  const links = [...PRIMARY_LINKS, ...SECONDARY_LINKS]
+  const links = [{ href: '/', label: 'Home' }, ...PRIMARY_LINKS, ...SECONDARY_LINKS]
 
   async function handleConnect() {
     setConnecting(true)
@@ -178,17 +178,17 @@ function MobileMenu({
   return (
     <div className="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation">
       <div className="mobile-nav__header">
-        <Link href="/markets/BTC-USDC" onClick={onClose} className="vela-wordmark">Vela</Link>
+        <Link href="/" onClick={onClose} className="dippi-wordmark" aria-label="Dippi home"><span className="dippi-wordmark__emoji" aria-hidden="true">😁</span>dippi<span className="dippi-wordmark__suffix">.fun</span></Link>
         <button type="button" onClick={onClose} className="icon-button" aria-label="Close menu">×</button>
       </div>
 
       <nav className="mobile-nav__links">
         {links.map(({ href, label }) => (
-          <Link key={href} href={href} onClick={onClose} className={pathname.startsWith(href.split('/').slice(0, 2).join('/')) ? 'is-active' : ''}>
+          <Link key={href} href={href} onClick={onClose} className={pathname === href || (href !== '/' && pathname.startsWith(`${href}/`)) ? 'is-active' : ''}>
             {label}
           </Link>
         ))}
-        <a href="https://monolithsystematicllc.mintlify.app" target="_blank" rel="noopener noreferrer">Docs ↗</a>
+        <Link href="/docs" onClick={onClose}>Docs</Link>
       </nav>
 
       <div className="mobile-nav__actions">
@@ -221,7 +221,7 @@ export default function Nav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [marketSearch, setMarketSearch] = useState('')
   const marketSearchRef = useRef<HTMLInputElement>(null)
-  const usesTerminalShell = true
+  const usesTerminalShell = pathname !== '/'
 
   useEffect(() => {
     if (!mobileMenuOpen) return
@@ -269,14 +269,20 @@ export default function Nav() {
     <>
       <header className={`app-nav${usesTerminalShell ? ' app-nav--terminal' : ''}`}>
         <div className="app-nav__inner">
-          <Link href="/markets/BTC-USDC" className="vela-wordmark" aria-label="Vela trading home">Vela</Link>
+          <Link href="/" className="dippi-wordmark" aria-label="Dippi home"><span className="dippi-wordmark__emoji" aria-hidden="true">😁</span>dippi<span className="dippi-wordmark__suffix">.fun</span></Link>
 
           {!usesTerminalShell ? <nav className="app-nav__primary" aria-label="Primary navigation">
             {PRIMARY_LINKS.map(({ href, label, match }) => (
-              <Link key={href} href={href} className={pathname.startsWith(match) ? 'is-active' : ''}>
+              <Link key={href} href={href} className={pathname === href || (href === '/markets/BTC-USDC' && pathname.startsWith(match)) ? 'is-active' : ''}>
                 {label}
               </Link>
             ))}
+          </nav> : null}
+
+          {usesTerminalShell ? <nav className="app-nav__quicklinks" aria-label="Main navigation">
+            <Link href="/markets" className={pathname === '/markets' ? 'is-active' : ''}>Markets</Link>
+            <Link href="/markets/BTC-USDC" className={/^\/markets\/[^/]+/.test(pathname) ? 'is-active' : ''}>Trade</Link>
+            <Link href="/profile" className={pathname === '/profile' ? 'is-active' : ''}>Portfolio</Link>
           </nav> : null}
 
           {usesTerminalShell ? (

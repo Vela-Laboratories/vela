@@ -70,15 +70,15 @@ export default function DecisionsPage() {
   const filters: FilterStatus[] = ['ALL', 'PENDING', 'ENACTED', 'CANCELLED']
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — Governance
+            Dippi — Governance
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '52px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '52px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
               Decision log.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
@@ -86,12 +86,12 @@ export default function DecisionsPage() {
             </span>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '540px', marginTop: '20px' }}>
-            Every material decision about Vela Exchange is published here before it takes effect, signed by the operator wallet. Decisions affecting fees or markets are announced at least 14 days in advance.
+            Material decisions about Dippi are published here before they take effect, signed by the operator wallet. Decisions affecting fees or markets are announced at least 14 days in advance.
           </p>
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pb-10 lg:px-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pb-10 lg:px-[52px]">
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ padding: '20px 28px', background: 'rgba(232,234,240,0.04)', border: '1px solid rgba(232,234,240,0.08)', borderLeft: '3px solid #20c98a', display: 'flex', alignItems: 'center', gap: '16px' }}>
             <span style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#20c98a', whiteSpace: 'nowrap' }}>● ACTIVE POLICY</span>
@@ -102,11 +102,11 @@ export default function DecisionsPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
           Decision History
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 28px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 28px' }}>
           The permanent record.
         </h2>
 
@@ -155,13 +155,13 @@ export default function DecisionsPage() {
                 CANCELLED: { color: '#ef6a5b', border: '1px solid rgba(204,51,51,0.3)', background: 'transparent' },
               }
               return (
-                <div key={d.id} style={{ background: '#0d1018', padding: '28px 32px' }}>
+                <div key={d.id} style={{ background: '#211e2b', padding: '28px 32px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
                     <div>
                       <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.5)', border: '1px solid rgba(232,234,240,0.15)', padding: '3px 8px', display: 'inline-block' }}>
                         {typeLabel(d.decision_type)}
                       </span>
-                      <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#e9eaf0', margin: '8px 0 0' }}>
+                      <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#f8f5ee', margin: '8px 0 0' }}>
                         {d.title}
                       </h3>
                     </div>
@@ -213,7 +213,7 @@ export default function DecisionsPage() {
         )}
       </div>
 
-      <div style={{ background: '#0C0C0C', borderTop: '1px solid rgba(232,234,240,0.06)' }} className="px-6 py-6 lg:px-[52px]">
+      <div style={{ background: '#15131f', borderTop: '1px solid rgba(232,234,240,0.06)' }} className="px-6 py-6 lg:px-[52px]">
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           {[
             { href: '/', label: 'Home' },

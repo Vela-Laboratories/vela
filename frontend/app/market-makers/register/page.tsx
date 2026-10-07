@@ -59,14 +59,14 @@ export default function RegisterMMPage() {
   }
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px] lg:pb-[48px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — Market Makers
+            Dippi — Market Makers
           </p>
-          <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '40px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+          <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '40px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
             Register as a Market Maker
           </span>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '480px', marginTop: '16px' }}>
@@ -75,14 +75,14 @@ export default function RegisterMMPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         {status === 'success' ? (
           <div style={{ maxWidth: '480px' }}>
             <div style={{ background: 'rgba(107,138,90,0.08)', border: '1px solid rgba(107,138,90,0.25)', borderLeft: '3px solid #20c98a', padding: '20px 24px' }}>
-              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 8px' }}>Registered.</p>
+              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#f8f5ee', margin: '0 0 8px' }}>Registered.</p>
               <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.6)', margin: 0 }}>
                 You will appear on{' '}
-                <a href="/operator" style={{ color: '#e9eaf0' }}>dippi.fun/operator</a>
+                <a href="/operator" style={{ color: '#f8f5ee' }}>dippi.fun/operator</a>
               </p>
             </div>
           </div>
@@ -93,13 +93,13 @@ export default function RegisterMMPage() {
                 Wallet Address
               </p>
               {isConnected && address ? (
-                <div style={{ background: '#0C0C0C', padding: '12px 16px' }}>
-                  <span style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0' }}>{address}</span>
+                <div style={{ background: '#15131f', padding: '12px 16px' }}>
+                  <span style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee' }}>{address}</span>
                 </div>
               ) : (
                 <button
                   onClick={() => connect()}
-                  style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', background: '#0C0C0C', padding: '12px 24px', border: 'none', cursor: 'pointer', borderRadius: 0 }}
+                  style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee', background: '#15131f', padding: '12px 24px', border: 'none', cursor: 'pointer', borderRadius: 0 }}
                 >
                   Connect wallet to continue
                 </button>
@@ -122,8 +122,8 @@ export default function RegisterMMPage() {
                       width: '100%',
                       fontFamily: IN,
                       fontSize: '13px',
-                      color: '#e9eaf0',
-                      background: '#0d1018',
+                      color: '#f8f5ee',
+                      background: '#211e2b',
                       border: '1px solid rgba(232,234,240,0.15)',
                       padding: '12px 14px',
                       outline: 'none',
@@ -155,8 +155,8 @@ export default function RegisterMMPage() {
                     fontSize: '12px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.15em',
-                    color: '#e9eaf0',
-                    background: '#0C0C0C',
+                    color: '#f8f5ee',
+                    background: '#15131f',
                     padding: '14px 28px',
                     border: 'none',
                     cursor: status === 'signing' || status === 'submitting' ? 'wait' : 'pointer',

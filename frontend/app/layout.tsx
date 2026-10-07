@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import { IBM_Plex_Mono, Playfair_Display, Inter } from 'next/font/google'
 import './globals.css'
+import './dippi.css'
+import './dippi-bright.css'
+import './dippi-landing.css'
 import AppShell from '@/components/AppShell'
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -26,9 +29,18 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Vela Exchange',
-  description: 'High-performance spot exchange research preview on Ethereum Sepolia',
-  icons: { icon: '/favicon.ico' },
+  metadataBase: new URL('https://dippi.fun'),
+  title: { default: 'dippi.fun | Go on. Dip in.', template: '%s | dippi.fun' },
+  description: 'Explore spot markets and try wallet-signed trading in a Sepolia testnet sandbox. No real funds or production custody.',
+  icons: { icon: '/icon.svg' },
+  openGraph: {
+    title: 'dippi.fun | Go on. Dip in.',
+    description: 'Explore spot markets and try wallet-signed trading in a Sepolia testnet sandbox.',
+    url: 'https://dippi.fun',
+    siteName: 'dippi.fun',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image' },
 }
 
 export default function RootLayout({

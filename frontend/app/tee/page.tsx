@@ -117,15 +117,15 @@ export default function TeePage() {
   }, [fetchStats, fetchAttestations])
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
       {/* Page Header */}
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-16 lg:px-[52px] lg:pt-[60px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-16 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '640px' }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.25)', margin: '0 0 24px' }}>
-            Vela Exchange — TEE Verification
+            Dippi — TEE Verification
           </p>
-          <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1.15 }}>
+          <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#f8f5ee', margin: '0 0 4px', lineHeight: 1.15 }}>
             Trusted hardware.
           </h1>
           <h2 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: 'rgba(232,234,240,0.4)', margin: '0 0 24px', lineHeight: 1.15 }}>
@@ -138,19 +138,19 @@ export default function TeePage() {
       </div>
 
       {/* TEE vs ZK Comparison */}
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 16px' }}>
           Two Verification Paths
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 40px', lineHeight: 1.15 }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 40px', lineHeight: 1.15 }}>
           Complementary, not competing.
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[1px]" style={{ background: 'rgba(232,234,240,0.05)' }}>
           {/* ZK Proofs column */}
-          <div style={{ background: '#0d1018', padding: '28px 32px' }}>
+          <div style={{ background: '#211e2b', padding: '28px 32px' }}>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>ZK Proofs (VEL-T1-01)</p>
-            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#e9eaf0', margin: '0 0 16px' }}>Trustless cryptography</h3>
+            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#f8f5ee', margin: '0 0 16px' }}>Trustless cryptography</h3>
             <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.55)', lineHeight: 1.7, margin: '0 0 12px' }}>
               The matching engine computed the correct output — mathematically, without trusting any hardware or operator.
             </p>
@@ -175,9 +175,9 @@ export default function TeePage() {
           </div>
 
           {/* TEE Attestation column */}
-          <div style={{ background: '#0d1018', padding: '28px 32px' }}>
+          <div style={{ background: '#211e2b', padding: '28px 32px' }}>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>TEE Attestation (VEL-T1-04)</p>
-            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#e9eaf0', margin: '0 0 16px' }}>Hardware trust</h3>
+            <h3 style={{ fontFamily: PF, fontWeight: 700, fontSize: '20px', color: '#f8f5ee', margin: '0 0 16px' }}>Hardware trust</h3>
             <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.55)', lineHeight: 1.7, margin: '0 0 12px' }}>
               Target design: an attestation would bind a measured binary to supported AMD SEV-SNP hardware. This is not active in the deployed demo and would still depend on hardware, firmware, cloud, and verification assumptions.
             </p>
@@ -204,13 +204,13 @@ export default function TeePage() {
       </div>
 
       {/* How TEE Works */}
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.2)', margin: '0 0 16px' }}>
             Architecture
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 40px', lineHeight: 1.15 }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 40px', lineHeight: 1.15 }}>
             AMD SEV-SNP + Vela.
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
@@ -225,7 +225,7 @@ export default function TeePage() {
                   {step}
                 </span>
                 <div>
-                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#e9eaf0', margin: '0 0 8px' }}>{title}</p>
+                  <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#f8f5ee', margin: '0 0 8px' }}>{title}</p>
                   <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '12px', color: 'rgba(232,234,240,0.4)', margin: 0, lineHeight: 1.7 }}>{desc}</p>
                 </div>
               </div>
@@ -235,13 +235,13 @@ export default function TeePage() {
       </div>
 
       {/* Current Status */}
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: '0 0 32px' }}>
           Current Status
         </p>
 
         <div style={{ borderLeft: '3px solid rgba(180,140,60,0.7)', paddingLeft: '24px', marginBottom: '48px' }}>
-          <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#e9eaf0', margin: '0 0 12px' }}>DEVELOPMENT MODE</p>
+          <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#f8f5ee', margin: '0 0 12px' }}>DEVELOPMENT MODE</p>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.55)', lineHeight: 1.7, maxWidth: '480px', margin: '0 0 24px' }}>
             TEE hardware deployment requires AMD SEV-SNP confidential VMs on Azure, AWS, or GCP. Current deployment (fly.io) uses standard VMs without TEE hardware.
           </p>
@@ -251,7 +251,7 @@ export default function TeePage() {
           ) : stats && (
             <div style={{ marginBottom: '24px' }}>
               <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 8px' }}>Current Binary Hash</p>
-              <p style={{ fontFamily: CN, fontSize: '9px', color: '#e9eaf0', margin: '0 0 6px', wordBreak: 'break-all' }}>{stats.binary_hash}</p>
+              <p style={{ fontFamily: CN, fontSize: '9px', color: '#f8f5ee', margin: '0 0 6px', wordBreak: 'break-all' }}>{stats.binary_hash}</p>
               <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', margin: 0 }}>
                 This is the SHA-256 of the current Vela matching engine binary. In TEE mode, this hash is embedded in the hardware attestation report.
               </p>
@@ -273,9 +273,9 @@ export default function TeePage() {
               ['SIMULATED', String(stats.simulated)],
               ['ATTESTED', String(stats.attested)],
             ].map(([label, value]) => (
-              <div key={label} style={{ background: '#0d1018', padding: '20px 24px' }}>
+              <div key={label} style={{ background: '#211e2b', padding: '20px 24px' }}>
                 <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 6px' }}>{label}</p>
-                <p style={{ fontFamily: CN, fontSize: '20px', color: '#e9eaf0', margin: 0, fontWeight: 600 }}>{value}</p>
+                <p style={{ fontFamily: CN, fontSize: '20px', color: '#f8f5ee', margin: 0, fontWeight: 600 }}>{value}</p>
               </div>
             ))}
           </div>
@@ -283,7 +283,7 @@ export default function TeePage() {
       </div>
 
       {/* Attestation History */}
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.2)', margin: '0 0 24px' }}>
@@ -309,7 +309,7 @@ export default function TeePage() {
                   style={{ borderBottom: '1px solid rgba(232,234,240,0.04)', padding: '10px 0' }}
                 >
                   <div style={{ display: 'grid', gridTemplateColumns: '80px 120px 100px 100px 1fr', alignItems: 'center' }}>
-                    <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#e9eaf0' }}>
+                    <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#f8f5ee' }}>
                       {padBatchId(record.batch_id)}
                     </span>
                     <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.3)' }}>
@@ -322,7 +322,7 @@ export default function TeePage() {
                     <Link
                       href={`/batches/${record.batch_id}`}
                       style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.3)', textDecoration: 'none' }}
-                      onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#e9eaf0')}
+                      onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#f8f5ee')}
                       onMouseLeave={(e) => ((e.target as HTMLElement).style.color = 'rgba(232,234,240,0.3)')}
                     >
                       View →
@@ -335,7 +335,7 @@ export default function TeePage() {
         </div>
       </div>
 
-      <div style={{ background: '#0C0C0C', borderTop: '1px solid rgba(232,234,240,0.06)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+      <div style={{ background: '#15131f', borderTop: '1px solid rgba(232,234,240,0.06)', padding: '20px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
         <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', textDecoration: 'underline' }}>
           ← ZK Proof System
         </Link>

@@ -18,7 +18,7 @@ const SIDEBAR_NAV: NavSection[] = [
   {
     section: 'INTRODUCTION',
     items: [
-      { label: 'What is Vela?', href: '/docs/introduction/what-is-vela' },
+      { label: 'What is Dippi?', href: '/docs/introduction/what-is-vela' },
       { label: 'Architecture Overview', href: '/docs/introduction/architecture-overview' },
       { label: 'White Paper', href: '/docs/introduction/white-paper' },
     ],
@@ -121,9 +121,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                   fontSize: '0.875rem',
                   fontWeight: 400,
                   fontFamily: 'var(--font-inter)',
-                  color: active ? '#e9eaf0' : '#737b8e',
-                  backgroundColor: active ? 'rgba(148,136,238,0.1)' : 'transparent',
-                  borderLeft: active ? '2px solid #9488ee' : '2px solid transparent',
+                  color: active ? '#f8f5ee' : '#aaa4b4',
+                  backgroundColor: active ? 'rgba(248,223,134,0.12)' : 'transparent',
+                  borderLeft: active ? '2px solid #f8df86' : '2px solid transparent',
                   textDecoration: 'none',
                   transition: 'color 0.15s, background-color 0.15s',
                   lineHeight: '1.6',
@@ -139,14 +139,14 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 74px)', background: '#090b11' }}>
+    <div className="dippi-docs" style={{ display: 'flex', minHeight: 'calc(100vh - 74px)', background: '#13111d' }}>
       <aside
         className="hidden md:block"
         style={{
           width: '260px',
           flexShrink: 0,
-          backgroundColor: '#0d1018',
-          borderRight: '1px solid rgba(137,148,174,0.08)',
+          backgroundColor: '#1a1825',
+          borderRight: '1px solid rgba(248,245,238,0.11)',
           position: 'sticky',
           top: 0,
           height: 'calc(100vh - 74px)',
@@ -156,7 +156,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         <div
           style={{
             padding: '16px 20px 12px',
-            borderBottom: '1px solid rgba(137,148,174,0.08)',
+            borderBottom: '1px solid rgba(248,245,238,0.11)',
           }}
         >
           <Link
@@ -165,7 +165,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               fontSize: '0.65rem',
               fontWeight: 700,
               letterSpacing: '0.12em',
-              color: '#9488ee',
+              color: '#f8df86',
               textTransform: 'uppercase' as const,
               textDecoration: 'none',
               fontFamily: 'var(--font-inter)',
@@ -191,16 +191,16 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             style={{
               width: '280px',
               height: '100%',
-              backgroundColor: '#0d1018',
+              backgroundColor: '#1a1825',
               overflowY: 'auto',
-              borderRight: '1px solid rgba(137,148,174,0.08)',
+              borderRight: '1px solid rgba(248,245,238,0.11)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
                 padding: '16px 20px',
-                borderBottom: '1px solid rgba(137,148,174,0.08)',
+                borderBottom: '1px solid rgba(248,245,238,0.11)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -211,7 +211,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                   fontSize: '0.65rem',
                   fontWeight: 700,
                   letterSpacing: '0.12em',
-                  color: '#9488ee',
+                  color: '#f8df86',
                   textTransform: 'uppercase' as const,
                   fontFamily: 'var(--font-inter)',
                 }}
@@ -243,8 +243,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           className="md:hidden"
           style={{
             padding: '12px 24px',
-            borderBottom: '1px solid rgba(137,148,174,0.08)',
-            backgroundColor: '#0d1018',
+            borderBottom: '1px solid rgba(248,245,238,0.11)',
+            backgroundColor: '#1a1825',
           }}
         >
           <button
@@ -254,7 +254,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               border: 'none',
               cursor: 'pointer',
               fontSize: '0.875rem',
-              color: '#e9eaf0',
+              color: '#f8f5ee',
               fontFamily: 'var(--font-inter)',
               fontWeight: 500,
               display: 'flex',
@@ -263,12 +263,16 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             }}
           >
             <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-              <path d="M0 0h16v2H0zm0 5h16v2H0zm0 5h16v2H0z" fill="#e9eaf0" />
+              <path d="M0 0h16v2H0zm0 5h16v2H0zm0 5h16v2H0z" fill="#f8f5ee" />
             </svg>
             Documentation
           </button>
         </div>
         <div className="px-6 py-12 md:px-16" style={{ maxWidth: '760px' }}>
+          <div className="dippi-docs-note">
+            <strong>Public beta on Sepolia</strong>
+            <span>These docs also cover Vela research and planned systems. Dippi is a testnet demo with no real funds or production custody. It does not currently offer an authoritative production ledger, reconciled custody, real SP1 proofs, or enforceable forced inclusion.</span>
+          </div>
           {children}
         </div>
       </div>

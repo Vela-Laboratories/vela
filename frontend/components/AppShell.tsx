@@ -30,7 +30,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Providers>
-      <div className={`relative z-10 app-shell app-shell--terminal${hasWorkspaceRail ? ' app-shell--workspace' : ''}`}>
+      <div className={`relative z-10 app-shell app-shell--terminal${hasWorkspaceRail ? ' app-shell--workspace' : ''}${pathname === '/' ? ' app-shell--home' : ''}${pathname === '/markets' ? ' app-shell--discover' : ''}`}>
         <BetaBanner />
         <Nav />
         <main className="app-main">

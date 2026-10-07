@@ -84,7 +84,7 @@ function SlippageBarChart({ slippage1k, slippage10k, slippage100k }: SlippageBar
         const height = v !== null ? Math.max((v / max) * 120, 4) : 0
         return (
           <div key={labels[i]} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontFamily: IN, fontSize: '10px', color: '#e9eaf0' }}>
+            <span style={{ fontFamily: IN, fontSize: '10px', color: '#f8f5ee' }}>
               {v !== null ? `${v.toFixed(1)} bps` : '—'}
             </span>
             <div style={{ width: '48px', height: '120px', display: 'flex', alignItems: 'flex-end' }}>
@@ -774,17 +774,17 @@ export default function AnalyticsPage() {
   })
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
 
       {/* ── PAGE HEADER ──────────────────────────────────────────────────── */}
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Vela Exchange — Market Analytics
+            Dippi — Market Analytics
           </p>
           <div>
-            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '48px', color: '#e9eaf0', display: 'block', lineHeight: 1.1 }}>
+            <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '48px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
               Market quality.
             </span>
             <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '48px', color: 'rgba(232,234,240,0.3)', display: 'block', lineHeight: 1.1 }}>
@@ -798,7 +798,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── TIMEFRAME SELECTOR ───────────────────────────────────────────── */}
-      <div style={{ background: '#090b11' }} className="px-6 lg:px-[52px]" >
+      <div style={{ background: '#13111d' }} className="px-6 lg:px-[52px]" >
         <div style={{ paddingTop: '24px', borderBottom: '1px solid rgba(232,234,240,0.07)', display: 'flex' }}>
           {(['1H', '24H', '7D'] as Timeframe[]).map((tf) => (
             <button key={tf} onClick={() => setTimeframe(tf)} style={tfBtn(tf)}>{tf}</button>
@@ -807,7 +807,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── MARKET ANALYTICS TABLE ───────────────────────────────────────── */}
-      <div style={{ background: '#090b11' }} className="px-6 pb-12 lg:px-[52px] lg:pb-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 pb-12 lg:px-[52px] lg:pb-[52px]">
         <div style={{ paddingTop: '28px' }}>
           {analyticsError ? (
             <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.35)', textAlign: 'center', padding: '48px 0' }}>
@@ -849,7 +849,7 @@ export default function AnalyticsPage() {
                   key={m.market_id}
                   style={{ display: 'grid', gridTemplateColumns: '120px 80px 80px 80px 80px 100px 1fr', gap: '0 16px', padding: '14px 0', borderBottom: '1px solid rgba(232,234,240,0.05)', alignItems: 'center' }}
                 >
-                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#e9eaf0' }}>
+                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#f8f5ee' }}>
                     {ticker(m.market_id)}/USDC
                   </span>
                   <span style={{ fontFamily: CN, fontSize: '11px', color: spreadColor(m.current_spread_bps) }}>
@@ -878,13 +878,13 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── SLIPPAGE CURVES ──────────────────────────────────────────────── */}
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '12px' }}>
             Slippage Curves
           </p>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#e9eaf0', margin: '0 0 12px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#f8f5ee', margin: '0 0 12px' }}>
             Cost of trading by size.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
@@ -926,11 +926,11 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── METHODOLOGY ──────────────────────────────────────────────────── */}
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '12px' }}>
           Methodology
         </p>
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#e9eaf0', margin: '0 0 32px' }}>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#f8f5ee', margin: '0 0 32px' }}>
           How these numbers are computed.
         </h2>
 
@@ -949,7 +949,7 @@ export default function AnalyticsPage() {
               body: 'Market depth shows the total available liquidity within 1% of the current mid price on both the bid and ask sides. Higher depth means larger orders can be filled with less slippage.',
             },
           ].map((c) => (
-            <div key={c.title} style={{ background: '#0d1018', padding: '28px' }}>
+            <div key={c.title} style={{ background: '#211e2b', padding: '28px' }}>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.3)', margin: '0 0 12px' }}>{c.title}</p>
               <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.7)', lineHeight: 1.8, margin: 0 }}>{c.body}</p>
             </div>
@@ -957,7 +957,7 @@ export default function AnalyticsPage() {
         </div>
 
         <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', marginTop: '20px' }}>
-          All analytics are computed from the live Vela order book and trade history. Methodology is open source at github.com/arpjw/vela.
+          All analytics are computed from the live Vela order book and trade history. Methodology is open source at github.com/dippi-fun/exchange.
         </p>
 
         <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid rgba(232,234,240,0.07)' }}>
@@ -965,8 +965,8 @@ export default function AnalyticsPage() {
             Engine Performance Context
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-[1px]" style={{ background: 'rgba(232,234,240,0.07)', marginBottom: '16px' }}>
-            <div style={{ background: '#0d1018', padding: '24px' }}>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1 }}>2.5M ops/sec</p>
+            <div style={{ background: '#211e2b', padding: '24px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#f8f5ee', margin: '0 0 4px', lineHeight: 1 }}>2.5M ops/sec</p>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                 Vela engine throughput (isolated microbench)
               </p>
@@ -974,8 +974,8 @@ export default function AnalyticsPage() {
                 vs. Hyperliquid&apos;s 200k ops/sec execution ceiling¹
               </p>
             </div>
-            <div style={{ background: '#0d1018', padding: '24px' }}>
-              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#e9eaf0', margin: '0 0 4px', lineHeight: 1 }}>16.9 ms</p>
+            <div style={{ background: '#211e2b', padding: '24px' }}>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '30px', color: '#f8f5ee', margin: '0 0 4px', lineHeight: 1 }}>16.9 ms</p>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,234,240,0.35)', margin: '0 0 8px' }}>
                 Vela end-to-end p50 (single client, loopback)
               </p>

@@ -5,8 +5,8 @@ const IN = "var(--font-inter-sans), 'Inter', sans-serif"
 const CN = "'Courier New', monospace"
 
 const CRIMSON = '#ef6a5b'
-const INK = '#e9eaf0'
-const PARCHMENT = '#090b11'
+const INK = '#f8f5ee'
+const PARCHMENT = '#13111d'
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ const SCOPE_NOTE = 'These benchmarks prove the matching algorithm is fast in iso
 
 function StatCard({ label, value, sublabel }: { label: string; value: string; sublabel: string }) {
   return (
-    <div style={{ background: '#0d1018', borderTop: `3px solid ${CRIMSON}`, padding: '28px 24px 26px' }}>
+    <div style={{ background: '#211e2b', borderTop: `3px solid ${CRIMSON}`, padding: '28px 24px 26px' }}>
       <div style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: INK, lineHeight: 1.05, marginBottom: '8px' }}>
         {value}
       </div>
@@ -64,7 +64,7 @@ function SectionLabel({ text }: { text: string }) {
 
 function ChartBox({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ background: '#0d1018', padding: '24px 20px 20px' }}>
+    <div style={{ background: '#211e2b', padding: '24px 20px 20px' }}>
       <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '20px' }}>
         {title}
       </div>
@@ -454,7 +454,7 @@ export default function BenchmarksPage() {
             <E2EBarChart />
           </ChartBox>
           {/* Metrics table */}
-          <div style={{ background: '#0d1018', padding: '24px 20px' }}>
+          <div style={{ background: '#211e2b', padding: '24px 20px' }}>
             <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '16px' }}>
               Scenario metrics
             </div>
@@ -500,7 +500,7 @@ export default function BenchmarksPage() {
               The ~40% throughput drop at t=120 s is expected: each MM agent exhausts its resting-order queue within two minutes. The dominant operation shifts from new orders (1 round-trip) to cancel-repost (2 round-trips), halving raw request count while preserving equivalent trading activity. Throughput stabilizes at ~130 ops/sec.
             </p>
           </ChartBox>
-          <div style={{ background: '#0d1018', padding: '24px 20px 20px' }}>
+          <div style={{ background: '#211e2b', padding: '24px 20px 20px' }}>
             <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '20px' }}>
               Memory usage (RSS)
             </div>
@@ -510,7 +510,7 @@ export default function BenchmarksPage() {
             </p>
           </div>
           {/* Tier 3 summary stats */}
-          <div style={{ background: '#0d1018', padding: '24px 20px' }}>
+          <div style={{ background: '#211e2b', padding: '24px 20px' }}>
             <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,234,240,0.28)', marginBottom: '16px' }}>
               300-second summary
             </div>
@@ -525,7 +525,7 @@ export default function BenchmarksPage() {
                 { v: '35.6 ms', l: 'p50 match latency' },
                 { v: '63.1 ms', l: 'p99 match latency' },
               ].map(({ v, l }) => (
-                <div key={l} style={{ background: '#0d1018', padding: '16px 16px 14px' }}>
+                <div key={l} style={{ background: '#211e2b', padding: '16px 16px 14px' }}>
                   <div style={{ fontFamily: PF, fontWeight: 900, fontSize: '22px', color: INK, lineHeight: 1.1 }}>{v}</div>
                   <div style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'rgba(232,234,240,0.35)', marginTop: '5px' }}>{l}</div>
                 </div>
@@ -538,12 +538,12 @@ export default function BenchmarksPage() {
       {/* ── Table 1: Engine-layer isolation ───────────────────────────────── */}
       <section className="px-6 pb-10 lg:px-[52px]">
         <SectionLabel text="Table 1 — Engine-layer isolation · Both measured in isolation, no consensus, no networking, no signature verification on hot path" />
-        <div style={{ background: '#0d1018', overflowX: 'auto' }}>
+        <div style={{ background: '#211e2b', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
             <thead>
               <tr>
                 {['Engine', 'Hardware', 'Throughput ceiling', 'Methodology'].map((h) => (
-                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#0d1018' }}>
+                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#211e2b' }}>
                     {h}
                   </th>
                 ))}
@@ -571,12 +571,12 @@ export default function BenchmarksPage() {
       {/* ── Table 2: System-level reference ───────────────────────────────── */}
       <section className="px-6 pb-16 lg:px-[52px]">
         <SectionLabel text="Table 2 — System-level reference · Hyperliquid published figures · Includes HyperBFT consensus and real networking · Not directly comparable to Table 1" />
-        <div style={{ background: '#0d1018', overflowX: 'auto' }}>
+        <div style={{ background: '#211e2b', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
             <thead>
               <tr>
                 {['Metric', 'Hyperliquid (published)', 'Includes'].map((h) => (
-                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#0d1018' }}>
+                  <th key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.18em', padding: '16px 20px', textAlign: 'left' as const, borderBottom: '1px solid rgba(232,234,240,0.08)', color: 'rgba(232,234,240,0.3)', whiteSpace: 'nowrap' as const, background: '#211e2b' }}>
                     {h}
                   </th>
                 ))}

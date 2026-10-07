@@ -66,14 +66,7 @@ export default function BetaBanner() {
       <span className="beta-banner__detail">
         SEPOLIA TESTNET · NO REAL FUNDS · NOT PRODUCTION CUSTODY
       </span>
-      <a
-        href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="beta-banner__link"
-      >
-        Learn more →
-      </a>
+      <a href="/transparency" className="beta-banner__link">What this means →</a>
     </div>
   )
 }

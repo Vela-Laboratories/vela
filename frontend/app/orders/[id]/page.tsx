@@ -113,15 +113,15 @@ export default function OrderAuditPage() {
 
   if (loading) {
     return (
-      <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-        <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#15131f', minHeight: '100vh' }}>
+        <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
           <HexCanvas />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <Skeleton className="w-24 h-3 mb-6" />
             <Skeleton className="w-48 h-5" />
           </div>
         </div>
-        <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {Array.from({ length: 9 }).map((_, i) => (
               <div key={i} style={{ padding: '20px 24px', background: 'rgba(232,234,240,0.04)', borderLeft: '2px solid rgba(232,234,240,0.08)' }}>
@@ -137,7 +137,7 @@ export default function OrderAuditPage() {
 
   if (notFound || !order) {
     return (
-      <div style={{ background: '#0C0C0C', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+      <div style={{ background: '#15131f', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
         <p style={{ fontFamily: PF, fontStyle: 'italic', fontSize: '24px', color: 'rgba(232,234,240,0.5)', margin: 0 }}>Order not found.</p>
         <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.25)', margin: 0 }}>This order ID doesn&apos;t exist or hasn&apos;t been indexed yet.</p>
         <a href="/transparency" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.3)', textDecoration: 'underline', marginTop: '8px' }}>← Back to transparency</a>
@@ -152,8 +152,8 @@ export default function OrderAuditPage() {
   const msgSigned = `vela:order:${order.market_id}:${order.side}:${order.price}:${order.quantity}:${order.nonce}`
 
   return (
-    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+    <div style={{ background: '#15131f', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <a href="/transparency" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.3)', textDecoration: 'none', display: 'inline-block', marginBottom: '24px' }}>
@@ -163,7 +163,7 @@ export default function OrderAuditPage() {
             Order Audit Trail
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: CN, fontWeight: 700, fontSize: '18px', color: '#e9eaf0' }}>
+            <span style={{ fontFamily: CN, fontWeight: 700, fontSize: '18px', color: '#f8f5ee' }}>
               Order #{order.id}
             </span>
             <StatusBadge status={order.status} />
@@ -171,10 +171,10 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <DetailCard label="Market">
-            <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '16px', color: '#e9eaf0' }}>{order.market_id}</span>
+            <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '16px', color: '#f8f5ee' }}>{order.market_id}</span>
           </DetailCard>
           <DetailCard label="Side">
             <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '16px', color: order.side === 'bid' ? '#20c98a' : '#ef6a5b' }}>
@@ -182,27 +182,27 @@ export default function OrderAuditPage() {
             </span>
           </DetailCard>
           <DetailCard label="Type">
-            <span style={{ fontFamily: IN, fontSize: '14px', color: '#e9eaf0' }}>
+            <span style={{ fontFamily: IN, fontSize: '14px', color: '#f8f5ee' }}>
               {order.order_type.toUpperCase()} {order.time_in_force.toUpperCase()}
             </span>
           </DetailCard>
           <DetailCard label="Price">
-            <span style={{ fontFamily: CN, fontSize: '16px', color: '#e9eaf0' }}>{formatPrice(priceNum)}</span>
+            <span style={{ fontFamily: CN, fontSize: '16px', color: '#f8f5ee' }}>{formatPrice(priceNum)}</span>
           </DetailCard>
           <DetailCard label="Size">
-            <span style={{ fontFamily: CN, fontSize: '16px', color: '#e9eaf0' }}>{qtyNum.toFixed(6)}</span>
+            <span style={{ fontFamily: CN, fontSize: '16px', color: '#f8f5ee' }}>{qtyNum.toFixed(6)}</span>
           </DetailCard>
           <DetailCard label="Filled">
-            <span style={{ fontFamily: CN, fontSize: '14px', color: '#e9eaf0' }}>
+            <span style={{ fontFamily: CN, fontSize: '14px', color: '#f8f5ee' }}>
               {filledNum.toFixed(6)} / {qtyNum.toFixed(6)}
               <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', marginLeft: '8px' }}>{filledPct}%</span>
             </span>
           </DetailCard>
           <DetailCard label="Submitted">
-            <span style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0' }}>{formatTimestamp(order.created_at)}</span>
+            <span style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee' }}>{formatTimestamp(order.created_at)}</span>
           </DetailCard>
           <DetailCard label="Wallet">
-            <span title={order.user} style={{ fontFamily: CN, fontSize: '12px', color: '#e9eaf0' }}>{truncateAddress(order.user)}</span>
+            <span title={order.user} style={{ fontFamily: CN, fontSize: '12px', color: '#f8f5ee' }}>{truncateAddress(order.user)}</span>
           </DetailCard>
           <DetailCard label="Nonce">
             <span style={{ fontFamily: CN, fontSize: '12px', color: 'rgba(232,234,240,0.5)' }}>{order.nonce}</span>
@@ -210,10 +210,10 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+      <div style={{ position: 'relative', background: '#15131f', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#e9eaf0', margin: '0 0 10px' }}>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#f8f5ee', margin: '0 0 10px' }}>
             Cryptographic proof of intent
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,234,240,0.38)', maxWidth: '560px', marginBottom: '28px' }}>
@@ -240,8 +240,8 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ background: '#090b11' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
-        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#e9eaf0', margin: '0 0 20px' }}>
+      <div style={{ background: '#13111d' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#f8f5ee', margin: '0 0 20px' }}>
           Fill history
         </h2>
 
@@ -263,7 +263,7 @@ export default function OrderAuditPage() {
                 >
                   {truncateAddress(fill.counterparty_address)}
                 </a>
-                <span style={{ fontFamily: CN, fontSize: '11px', color: '#e9eaf0' }}>{formatPrice(fill.price / 1e8)}</span>
+                <span style={{ fontFamily: CN, fontSize: '11px', color: '#f8f5ee' }}>{formatPrice(fill.price / 1e8)}</span>
                 <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.6)' }}>{(fill.quantity / 1e8).toFixed(6)}</span>
                 <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,234,240,0.4)' }}>{new Date(fill.timestamp / 1000).toLocaleTimeString()}</span>
               </div>
