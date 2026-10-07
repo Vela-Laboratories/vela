@@ -54,4 +54,4 @@ cast send "$VELA_LOCAL_VAULT" 'depositToken(bytes32,address,uint256)' \
 # Anvil's finalized tag trails the head. Mine past that window so both the
 # vault deployment and the deposit are finalized before the indexer runs.
 cast rpc anvil_mine 100 --rpc-url "$ANVIL_RPC_URL" >/dev/null
-cargo test -p indexer --test live_anvil -- --nocapture
+cargo test -p indexer --test live_anvil -- --ignored --nocapture

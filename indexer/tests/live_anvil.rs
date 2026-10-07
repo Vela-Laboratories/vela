@@ -11,11 +11,10 @@ use std::{env, time::Duration};
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "run with scripts/with_local_custody_deps.sh scripts/test_local_v3_deposits.sh"]
 async fn local_eth_and_usdc_deposits_reach_the_authoritative_ledger() {
-    let Ok(rpc_url) = env::var("ANVIL_RPC_URL") else {
-        return;
-    };
     let vault = env::var("VELA_LOCAL_VAULT").expect("local vault address");
+    let rpc_url = env::var("ANVIL_RPC_URL").expect("local Anvil RPC URL");
     let usdc = env::var("VELA_LOCAL_USDC").expect("local USDC address");
     let account_id = env::var("VELA_LOCAL_ACCOUNT_ID").expect("local account ID");
     let start_block: i64 = env::var("VELA_LOCAL_DEPLOYMENT_BLOCK")
