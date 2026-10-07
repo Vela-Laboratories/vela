@@ -378,8 +378,10 @@ impl AlgoStore {
                     .iter()
                     .filter(|fill| fill.taker_order_id == ids[0])
                     .try_fold(0u64, |total, fill| {
-                        if fill.taker.to_hex().to_ascii_lowercase()
-                            != parent.request.address.to_ascii_lowercase()
+                        if !fill
+                            .taker
+                            .to_hex()
+                            .eq_ignore_ascii_case(&parent.request.address)
                             || fill.market.0 != parent.request.market
                             || fill.side != parent.request.side
                         {
