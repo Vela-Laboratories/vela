@@ -232,6 +232,8 @@ fn settlement_context() -> Result<(u64, [u8; 20]), String> {
 pub fn build_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list([
+            "https://dippi.fun".parse::<HeaderValue>().unwrap(),
+            "https://www.dippi.fun".parse::<HeaderValue>().unwrap(),
             "https://vela.monolithsystematic.com"
                 .parse::<HeaderValue>()
                 .unwrap(),
