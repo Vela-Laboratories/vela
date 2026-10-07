@@ -24,7 +24,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-008 Prove a USDC deposit credits the exact received amount.
 - [x] D-008A Credit the V3 self-deposit to its indexed wallet owner.
 - [x] D-008B Encode the exact V3 deposit calls in the browser.
-- [ ] D-009 Prove provider disagreement and reorganization containment.
+- [x] D-009 Prove provider disagreement and reorganization containment.
 - [x] D-010 Prove a two-wallet trade transfers ownership and fees atomically.
 - [ ] D-011 Run custody-to-liability reconciliation in the integrated flow.
 - [ ] D-012 Prove a deficit halts affected financial operations.
@@ -115,3 +115,10 @@ matcher, fills a two-wallet ETH/USDC trade, and checks customer ownership,
 fees, rebates, one trade journal, and the ledger balance projection. The test
 addresses use two URL names for one local Anvil process, so it does not prove
 independent RPC operation or hosted Base Sepolia behavior.
+
+The local PostgreSQL pipeline suite proves the D-009 containment paths:
+disagreeing provider logs stop before observation or checkpoint advancement;
+a contradiction in previously credited finalized history reverses the credit
+to pending and halts the asset; a one-provider audit disagreement leaves the
+prior credit untouched. These are deterministic provider simulations, not a
+hosted chain reorganization rehearsal.
