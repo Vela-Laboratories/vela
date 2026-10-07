@@ -50,7 +50,7 @@ control, record the gap rather than treating the control as complete.
 - [ ] D-026 Verify hosted database roles, schema, and connection limits.
 - [ ] D-027 Connect encrypted recovery export to an off-host target.
 - [x] D-028 Restore and verify a signed engine recovery bundle.
-- [ ] D-029 Rehearse a named-point PostgreSQL restore.
+- [x] D-029 Rehearse a named-point PostgreSQL restore.
 - [ ] D-030 Rehearse recovery with financial operations in flight.
 - [ ] D-031 Exercise operational alert delivery to a staging receiver.
 
@@ -144,6 +144,12 @@ The D-028 clean lost-directory test calls the operator-facing trusted-key
 restore command and verifies WAL shutdown and sequence after restoration.
 Periodic unclean bundles and post-signature changes are rejected in adjacent
 tests. This is local restore evidence, not an off-host durability proof.
+
+D-029 is a repository-level PostgreSQL 16 PITR rehearsal. At commit
+`0620702`, the [CI restore job](https://github.com/dippi-fun/exchange/actions/runs/37672370172/job/112967101379)
+restored to `vela_recovery_target` and verified that the pre-target row was
+present while the later write was absent. This does not qualify a managed
+provider or close D-026 and D-030.
 
 The pre-existing PostgreSQL withdrawal suite proves D-015's policy-approved
 authorization, guarded signing transition, immutable signature evidence, and
