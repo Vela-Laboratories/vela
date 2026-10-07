@@ -530,7 +530,7 @@ async fn http_auth_challenge(
                 .into_response()
         }
     };
-    match state.http_auth.challenge(&user) {
+    match state.http_auth.challenge(&user).await {
         Ok((nonce, message, expires_at_ms)) => (
             StatusCode::OK,
             Json(ApiResponse::ok(HttpAuthChallengeData {
@@ -546,6 +546,11 @@ async fn http_auth_challenge(
             Json(ApiResponse::<()>::err(
                 "authentication challenge rate limit exceeded",
             )),
+        )
+            .into_response(),
+        Err(crate::http_auth::AuthError::Storage) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err("authentication storage unavailable")),
         )
             .into_response(),
         Err(_) => (
@@ -593,6 +598,11 @@ async fn http_auth_session(
             )),
         )
             .into_response(),
+        Err(crate::http_auth::AuthError::Storage) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err("authentication storage unavailable")),
+        )
+            .into_response(),
         Err(_) => (
             StatusCode::UNAUTHORIZED,
             Json(ApiResponse::<()>::err("invalid authentication proof")),
@@ -605,12 +615,17 @@ async fn http_auth_revoke(headers: HeaderMap, State(state): State<Arc<AppState>>
     let authorization = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    match state.http_auth.revoke(authorization) {
+    match state.http_auth.revoke(authorization).await {
         Ok(()) => (
             StatusCode::OK,
             Json(ApiResponse::ok(serde_json::json!({
                 "revoked": true
             }))),
+        )
+            .into_response(),
+        Err(crate::http_auth::AuthorizationError::Storage) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse::<()>::err("authentication storage unavailable")),
         )
             .into_response(),
         Err(_) => (
@@ -621,12 +636,23 @@ async fn http_auth_revoke(headers: HeaderMap, State(state): State<Arc<AppState>>
     }
 }
 
-fn require_account_auth(headers: &HeaderMap, state: &AppState, user: &UserId) -> Option<Response> {
+async fn require_account_auth(
+    headers: &HeaderMap,
+    state: &AppState,
+    user: &UserId,
+) -> Option<Response> {
     let authorization = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    match state.http_auth.authorize(authorization, user) {
+    match state.http_auth.authorize(authorization, user).await {
         Ok(()) => None,
+        Err(crate::http_auth::AuthorizationError::Storage) => Some(
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("authentication storage unavailable")),
+            )
+                .into_response(),
+        ),
         Err(crate::http_auth::AuthorizationError::WrongAccount) => Some(
             (
                 StatusCode::FORBIDDEN,
@@ -1249,7 +1275,7 @@ async fn get_balances(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let raw_balances = if let Some(ledger) = state.ledger.as_ref() {
@@ -1306,7 +1332,7 @@ async fn get_deposits(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let transaction_hash = query.transaction_hash.as_deref();
@@ -1443,7 +1469,7 @@ async fn get_open_orders(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let open_order_ids = {
@@ -1510,7 +1536,7 @@ async fn get_account_fills(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
 
@@ -1567,7 +1593,7 @@ async fn get_order_by_client_id(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
 
@@ -2663,7 +2689,7 @@ async fn get_withdrawals(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let limit = query.limit.unwrap_or(25);
@@ -7010,7 +7036,7 @@ async fn list_account_algos(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let owner = user.to_hex().to_ascii_lowercase();
@@ -7076,7 +7102,7 @@ async fn get_algo_status(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &owner) {
+    if let Some(response) = require_account_auth(&headers, &state, &owner).await {
         return response;
     }
     (
@@ -7732,7 +7758,7 @@ async fn get_portfolio_handler(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let addr = user.to_hex().to_ascii_lowercase();
@@ -7839,7 +7865,7 @@ async fn get_portfolio_csv_handler(
                 .into_response()
         }
     };
-    if let Some(response) = require_account_auth(&headers, &state, &user) {
+    if let Some(response) = require_account_auth(&headers, &state, &user).await {
         return response;
     }
     let addr = user.to_hex().to_ascii_lowercase();

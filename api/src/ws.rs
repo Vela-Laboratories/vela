@@ -580,6 +580,7 @@ async fn handle_session_auth(
     if state
         .http_auth
         .authorize(Some(&authorization), &user)
+        .await
         .is_err()
     {
         let err = WsServerMessage::Error {

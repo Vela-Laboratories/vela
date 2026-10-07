@@ -34,7 +34,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-013 Add an opt-in testnet signer runtime.
 - [ ] D-014 Verify signer chain, vault, code, and authorization preconditions.
 - [x] D-015 Persist the policy approval to signing handoff.
-- [ ] D-016 Queue authorized transactions for controlled broadcast.
+- [x] D-016 Queue authorized transactions for controlled broadcast.
 - [ ] D-017 Bound relayer nonce and fee decisions.
 - [ ] D-018 Persist transaction submission and uncertain outcomes.
 - [x] D-019 Ingest trusted replacement candidates.
@@ -50,14 +50,14 @@ control, record the gap rather than treating the control as complete.
 - [ ] D-026 Verify hosted database roles, schema, and connection limits.
 - [ ] D-027 Connect encrypted recovery export to an off-host target.
 - [x] D-028 Restore and verify a signed engine recovery bundle.
-- [ ] D-029 Rehearse a named-point PostgreSQL restore.
+- [x] D-029 Rehearse a named-point PostgreSQL restore.
 - [ ] D-030 Rehearse recovery with financial operations in flight.
 - [ ] D-031 Exercise operational alert delivery to a staging receiver.
 
 ## Customer flow
 
-- [ ] D-032 Persist wallet sessions in a shared, revocation-capable store.
-- [ ] D-033 Propagate session revocation across API replicas.
+- [x] D-032 Persist wallet sessions in a shared, revocation-capable store.
+- [x] D-033 Propagate session revocation across API replicas.
 - [ ] D-034 Bound ingress authentication abuse.
 - [ ] D-035 Persist scoped and expiring delegated trading permissions.
 - [ ] D-036 Add emergency delegated-key revocation.
@@ -145,6 +145,12 @@ restore command and verifies WAL shutdown and sequence after restoration.
 Periodic unclean bundles and post-signature changes are rejected in adjacent
 tests. This is local restore evidence, not an off-host durability proof.
 
+D-029 is a repository-level PostgreSQL 16 PITR rehearsal. At commit
+`0620702`, the [CI restore job](https://github.com/dippi-fun/exchange/actions/runs/37672370172/job/112967101379)
+restored to `vela_recovery_target` and verified that the pre-target row was
+present while the later write was absent. This does not qualify a managed
+provider or close D-026 and D-030.
+
 The pre-existing PostgreSQL withdrawal suite proves D-015's policy-approved
 authorization, guarded signing transition, immutable signature evidence, and
 replay behavior. The opt-in withdrawal-worker suite proves D-019 through D-021:
@@ -153,3 +159,23 @@ is recorded; wrong sender nonce or provider disagreement fails closed; and
 finalized revert, drop, and post-expiry release remain distinct states. All 16
 ledger and 18 worker tests passed locally under the PostgreSQL harness. This
 does not supply the missing controlled broadcaster or a deployed withdrawal.
+
+D-016 stores one immutable broadcast intent per signed Base Sepolia V3
+authorization in the same serializable ledger transaction as the custody
+signature. Signature replay cannot duplicate the queue record. The queue is an
+intent boundary only; D-017 and D-018 must add controlled relayer decisions,
+submission, and uncertain-outcome handling before any worker may broadcast.
+The D-017 relayer decision helper now bounds a two-provider pending nonce and
+fee quote. An immutable exclusive nonce reservation is available in schema
+version 18, but the policy and persistence calls are not yet wired into an
+enabled broadcaster. D-017 remains open.
+Schema version 19 records exact prepared transaction bytes and one immutable
+accepted or uncertain submission result. The executable transaction decoder,
+provider adapter, and uncertain-result reconciliation remain D-018 work.
+
+Schema version 20 stores single-use HTTP wallet challenges and hashed bearer
+sessions in PostgreSQL when a ledger connection is configured. Authorization
+reads and revocation writes use the shared store, including WebSocket session
+authentication. A two-instance integration test proves cross-replica challenge
+consumption and immediate revocation visibility. Process-local fallback remains
+for development without a ledger; D-034 still covers ingress abuse controls.

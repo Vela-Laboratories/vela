@@ -1,15 +1,17 @@
 use bigdecimal::BigDecimal;
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use ledger::{
     ActivateGlobalWithdrawalHalt, ApproveWithdrawal, ComplianceDisposition,
     EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
     FinalizedWithdrawalRevert, JournalLegInput, Ledger, LedgerError, NewAccount, NewAsset,
-    PostTransaction, RecordDroppedWithdrawalAttempt, RecordObservedWithdrawalReplacement,
-    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, ReserveWithdrawal,
-    ResolveGlobalWithdrawalHalt, WithdrawalAuthorization, WithdrawalPolicyDisposition,
-    WithdrawalState,
+    PostTransaction, PrepareRelayerTransaction, RecordDroppedWithdrawalAttempt,
+    RecordObservedWithdrawalReplacement, RecordRelayerSubmissionResult,
+    RecordWithdrawalBroadcastAttempt, RecordWithdrawalSignature, RelayerSubmissionOutcome,
+    ReserveRelayerNonce, ReserveWithdrawal, ResolveGlobalWithdrawalHalt, WithdrawalAuthorization,
+    WithdrawalPolicyDisposition, WithdrawalState,
 };
 use serde_json::json;
+use sha3::{Digest, Keccak256};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -606,6 +608,30 @@ async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_saf
         .await
         .unwrap();
     assert_eq!(stored, replayed);
+    let queued: (Uuid, Uuid) = sqlx::query_as(
+        "SELECT authorization_id, signature_id FROM ledger_withdrawal_broadcast_queue WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .fetch_one(fixture.ledger.pool())
+    .await
+    .unwrap();
+    assert_eq!(queued, (authorization.id, stored.id));
+    let queue_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_withdrawal_broadcast_queue WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .fetch_one(fixture.ledger.pool())
+    .await
+    .unwrap();
+    assert_eq!(queue_count, 1);
+    assert!(sqlx::query(
+        "UPDATE ledger_withdrawal_broadcast_queue SET authorization_id = $2 WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .bind(authorization.id)
+    .execute(fixture.ledger.pool())
+    .await
+    .is_err());
     assert_eq!(
         fixture
             .ledger
@@ -1019,6 +1045,166 @@ fn broadcast_attempt(
         submitted_by: "withdrawal-broadcaster".to_owned(),
         submitted_at: Utc::now(),
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn relayer_nonce_reservation_is_exclusive_immutable_and_replay_safe(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (first, _, _) = fixture
+        .sign_withdrawal(301, 100_000, "withdrawal-policy.relayer", 600)
+        .await;
+    let (second, _, _) = fixture
+        .sign_withdrawal(302, 100_000, "withdrawal-policy.relayer-second", 600)
+        .await;
+    let command = ReserveRelayerNonce {
+        reservation_id: Uuid::new_v4(),
+        withdrawal_id: first.withdrawal_id,
+        sender_address: CUSTOMER.to_owned(),
+        primary_pending_nonce: 7,
+        secondary_pending_nonce: 7,
+        gas_limit: 100_000,
+        max_fee_per_gas_wei: 50,
+        max_priority_fee_per_gas_wei: 2,
+        maximum_cost_wei: 5_000_000,
+        primary_provider: "rpc-primary".to_owned(),
+        secondary_provider: "rpc-secondary".to_owned(),
+        allocated_by: "relayer:test".to_owned(),
+    };
+    let stored = fixture
+        .ledger
+        .reserve_relayer_nonce(&command)
+        .await
+        .unwrap();
+    assert_eq!(
+        stored,
+        fixture
+            .ledger
+            .reserve_relayer_nonce(&command)
+            .await
+            .unwrap()
+    );
+    let conflicting = ReserveRelayerNonce {
+        reservation_id: Uuid::new_v4(),
+        withdrawal_id: second.withdrawal_id,
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .reserve_relayer_nonce(&conflicting)
+        .await
+        .is_err());
+    let wrong_provider_nonce = ReserveRelayerNonce {
+        secondary_pending_nonce: 8,
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .reserve_relayer_nonce(&wrong_provider_nonce)
+        .await
+        .is_err());
+    assert!(
+        sqlx::query("DELETE FROM ledger_relayer_nonce_reservations WHERE id = $1")
+            .bind(stored.id)
+            .execute(fixture.ledger.pool())
+            .await
+            .is_err()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn relayer_submission_preserves_exact_bytes_and_uncertain_outcome(pool: PgPool) {
+    let fixture = Fixture::new(pool, 1_000_000).await;
+    let (withdrawal, _, _) = fixture
+        .sign_withdrawal(303, 100_000, "withdrawal-policy.submission", 600)
+        .await;
+    let reserved = fixture
+        .ledger
+        .reserve_relayer_nonce(&ReserveRelayerNonce {
+            reservation_id: Uuid::new_v4(),
+            withdrawal_id: withdrawal.withdrawal_id,
+            sender_address: CUSTOMER.to_owned(),
+            primary_pending_nonce: 9,
+            secondary_pending_nonce: 9,
+            gas_limit: 100_000,
+            max_fee_per_gas_wei: 50,
+            max_priority_fee_per_gas_wei: 2,
+            maximum_cost_wei: 5_000_000,
+            primary_provider: "rpc-primary".to_owned(),
+            secondary_provider: "rpc-secondary".to_owned(),
+            allocated_by: "relayer:test".to_owned(),
+        })
+        .await
+        .unwrap();
+    let bytes = vec![2, 4, 6, 8];
+    let command = PrepareRelayerTransaction {
+        prepared_id: Uuid::new_v4(),
+        reservation_id: reserved.id,
+        transaction_hash: format!("0x{}", hex::encode(Keccak256::digest(&bytes))),
+        signed_transaction: bytes,
+        prepared_by: "relayer:test".to_owned(),
+    };
+    let prepared = fixture
+        .ledger
+        .prepare_relayer_transaction(&command)
+        .await
+        .unwrap();
+    assert_eq!(
+        prepared,
+        fixture
+            .ledger
+            .prepare_relayer_transaction(&command)
+            .await
+            .unwrap()
+    );
+    assert_eq!(prepared.signed_transaction, command.signed_transaction);
+    let wrong_hash = PrepareRelayerTransaction {
+        transaction_hash: format!("0x{}", "00".repeat(32)),
+        ..command.clone()
+    };
+    assert!(fixture
+        .ledger
+        .prepare_relayer_transaction(&wrong_hash)
+        .await
+        .is_err());
+    let uncertain = RecordRelayerSubmissionResult {
+        prepared_id: prepared.id,
+        outcome: RelayerSubmissionOutcome::Uncertain,
+        provider_name: "rpc-primary".to_owned(),
+        provider_reference: None,
+        submitted_by: "relayer:test".to_owned(),
+        submitted_at: Utc::now().with_nanosecond(123_456_789).unwrap(),
+    };
+    let recorded = fixture
+        .ledger
+        .record_relayer_submission_result(&uncertain)
+        .await
+        .unwrap();
+    assert_eq!(recorded.outcome, "uncertain");
+    assert_eq!(
+        recorded,
+        fixture
+            .ledger
+            .record_relayer_submission_result(&uncertain)
+            .await
+            .unwrap()
+    );
+    let accepted = RecordRelayerSubmissionResult {
+        outcome: RelayerSubmissionOutcome::Accepted,
+        provider_reference: Some("rpc:acceptance".to_owned()),
+        ..uncertain
+    };
+    assert!(fixture
+        .ledger
+        .record_relayer_submission_result(&accepted)
+        .await
+        .is_err());
+    assert!(
+        sqlx::query("DELETE FROM ledger_relayer_prepared_transactions WHERE id = $1")
+            .bind(prepared.id)
+            .execute(fixture.ledger.pool())
+            .await
+            .is_err()
+    );
 }
 
 fn observed_replacement(

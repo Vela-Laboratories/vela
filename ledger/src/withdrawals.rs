@@ -1586,6 +1586,18 @@ impl Ledger {
         .bind(command.signed_at)
         .execute(&mut *tx)
         .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_withdrawal_broadcast_queue
+                (withdrawal_id, authorization_id, signature_id)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(command.withdrawal_id)
+        .bind(command.authorization_id)
+        .bind(command.signature_id)
+        .execute(&mut *tx)
+        .await?;
         insert_history(
             &mut tx,
             command.withdrawal_id,

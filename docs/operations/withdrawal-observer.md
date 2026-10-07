@@ -27,6 +27,40 @@ Do not treat a latest-head confirmation count as finality. The orchestration wor
 
 ## Broadcast attempts and replacement
 
+Schema version 17 adds `ledger_withdrawal_broadcast_queue`. Storing an approved
+Base Sepolia V3 custody signature inserts exactly one immutable queue record in
+the same ledger transaction. A failed queue insertion rolls back the signature
+and state transition. The queue references the withdrawal, authorization, and
+signature; it contains no relayer key or unsigned transaction and does not
+submit anything. Legacy signed authorizations are not silently backfilled into
+this queue. Operators must review them before any separate relay process acts.
+
+`withdrawal-worker::relayer_policy` now exposes a deterministic, separately
+tested decision over two provider quotes. It requires matching pending nonces,
+uses the higher base and priority fee quotes, checks arithmetic overflow, and
+rejects gas or total-cost ceilings. It has no runtime caller yet. A future
+relayer must use the exclusive nonce reservation and exact fee decision below,
+then durably record the signed transaction and uncertain submission outcomes
+before D-017 can close or broadcast can be enabled.
+
+Schema version 18 adds an immutable relayer nonce reservation keyed both by
+withdrawal and by `(chain, sender, nonce)`. The ledger rejects provider nonce
+disagreement, malformed sender addresses, zero or inconsistent fee decisions,
+and conflicting replays. The database independently requires a queued, signed,
+unexpired Base Sepolia authorization. Reservations cannot be deleted after an
+uncertain outcome. The policy and persistence boundaries still need an enabled
+worker that obtains two provider quotes and writes the reservation before it
+constructs or submits an exact transaction.
+
+Schema version 19 stores the exact signed transaction bytes and their keccak256
+hash before a network send, tied one-to-one to the nonce reservation. A single
+immutable submission result can then record provider acceptance or an uncertain
+response such as a timeout. Uncertain results do not release the nonce or
+authorize another transaction. This is persistence only: a future relayer must
+decode and independently verify the signed transaction against the approved
+authorization, submit it through a reviewed provider adapter, and reconcile
+uncertain results by exact transaction hash before D-018 can close.
+
 `Ledger::record_withdrawal_broadcast_attempt` stores provider acceptance of the first exact executable transaction. Each immutable attempt records its transaction hash, sender, sender nonce, destination vault, calldata hash, provider reference, submitter, and submission time.
 
 The first accepted transaction moves the projection to `broadcast`. Replacements use the separate `Ledger::record_observed_withdrawal_replacement` boundary. A supplied replacement hash must be observed independently by both providers with the same sender, Ethereum account nonce, vault destination, and authorization calldata hash as the latest attempt. The replacement and its immutable two-provider evidence commit atomically; a deferred database constraint rejects any replacement row without that evidence. An identical retry returns the existing attempt and conflicting evidence fails. Recording an attempt is evidence storage only. This repository does not contain an enabled runtime broadcaster.
