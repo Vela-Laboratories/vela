@@ -20,6 +20,9 @@ bytecode, and compares the key's derived address to `operator()` on the vault.
 The signing service then checks authorization expiry and immutable digest,
 recovers the produced secp256k1 signature against the configured public key,
 and stores the signature under the ledger's withdrawal state machine.
+The chain, vault, bytecode, and operator comparison is shared with a focused
+unit test covering mismatches. The database also requires an enabled V3
+capability before the binary reaches this comparison.
 
 This binary does not choose a relayer, submit a transaction, watch finality, or
 release a reservation. D-014 still requires an end-to-end preflight rehearsal

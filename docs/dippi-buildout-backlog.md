@@ -133,3 +133,5 @@ The D-013 on-demand signer is documented in
 [testnet custody signer operations](operations/testnet-custody-signer.md). Its
 local key adapter is restricted to `testnet-demo` on Base Sepolia, with a
 focused signer-boundary test. A hosted deployment preflight remains D-014.
+The shared D-014 preflight comparison now has negative tests for chain, vault,
+runtime code, and operator mismatches, but the deployment rehearsal is open.

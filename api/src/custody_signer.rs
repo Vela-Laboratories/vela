@@ -7,6 +7,7 @@ use ledger::{
     Ledger, LedgerError, RecordWithdrawalSignature, WithdrawalAuthorization,
     WithdrawalSignatureRecord,
 };
+use sha3::{Digest, Keccak256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -42,6 +43,52 @@ pub struct CustodySignerIdentity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustodySignature {
     pub signature: [u8; 65],
+}
+
+/// Check the on-chain deployment and operator before an opt-in testnet signer
+/// is allowed to advance an approved authorization to Signing.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_testnet_signer_preflight(
+    authorization_chain: i64,
+    authorization_vault: &str,
+    configured_chain: i64,
+    configured_vault: &str,
+    rpc_chain: u64,
+    pinned_runtime_hash: &str,
+    runtime_code: &[u8],
+    operator_word: &[u8],
+    signer_public_key: &[u8],
+) -> Result<(), CustodySignerError> {
+    if configured_chain != 84532
+        || authorization_chain != configured_chain
+        || !authorization_vault.eq_ignore_ascii_case(configured_vault)
+        || rpc_chain != configured_chain as u64
+    {
+        return Err(CustodySignerError::InvalidEvidence(
+            "authorization, signer, and RPC deployment differ".into(),
+        ));
+    }
+    if runtime_code.is_empty()
+        || !format!("0x{}", hex::encode(Keccak256::digest(runtime_code)))
+            .eq_ignore_ascii_case(pinned_runtime_hash)
+    {
+        return Err(CustodySignerError::InvalidEvidence(
+            "vault bytecode differs from immutable deployment registry".into(),
+        ));
+    }
+    let public_key = k256::ecdsa::VerifyingKey::from_sec1_bytes(signer_public_key)
+        .map_err(|_| CustodySignerError::InvalidEvidence("signer public key is malformed".into()))?
+        .to_encoded_point(false);
+    let address = Keccak256::digest(&public_key.as_bytes()[1..]);
+    if operator_word.len() != 32
+        || operator_word[..12].iter().any(|byte| *byte != 0)
+        || operator_word[12..] != address[12..]
+    {
+        return Err(CustodySignerError::InvalidEvidence(
+            "signer does not match the vault operator".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -320,6 +367,93 @@ mod tests {
             vault_address: format!("0x{}", "11".repeat(20)),
             expires_at: Utc::now() + chrono::Duration::minutes(5),
         }
+    }
+
+    #[test]
+    fn preflight_requires_registered_base_v3_code_and_matching_operator() {
+        let key = SigningKey::from_slice(&[9; 32]).unwrap();
+        let public_key = key.verifying_key().to_encoded_point(true);
+        let uncompressed = key.verifying_key().to_encoded_point(false);
+        let address = Keccak256::digest(&uncompressed.as_bytes()[1..]);
+        let mut operator_word = [0_u8; 32];
+        operator_word[12..].copy_from_slice(&address[12..]);
+        let runtime_code = [0x60_u8, 0x00, 0x60, 0x00];
+        let code_hash = format!("0x{}", hex::encode(Keccak256::digest(runtime_code)));
+        let vault = "0x1111111111111111111111111111111111111111";
+        let check = |authorization_chain,
+                     authorization_vault: &str,
+                     rpc_chain,
+                     pinned_hash: &str,
+                     code: &[u8],
+                     operator: &[u8]| {
+            verify_testnet_signer_preflight(
+                authorization_chain,
+                authorization_vault,
+                84532,
+                vault,
+                rpc_chain,
+                pinned_hash,
+                code,
+                operator,
+                public_key.as_bytes(),
+            )
+        };
+        assert!(check(
+            84532,
+            vault,
+            84532,
+            &code_hash,
+            &runtime_code,
+            &operator_word
+        )
+        .is_ok());
+        assert!(check(
+            11155111,
+            vault,
+            84532,
+            &code_hash,
+            &runtime_code,
+            &operator_word
+        )
+        .is_err());
+        assert!(check(
+            84532,
+            "0x2222222222222222222222222222222222222222",
+            84532,
+            &code_hash,
+            &runtime_code,
+            &operator_word
+        )
+        .is_err());
+        assert!(check(
+            84532,
+            vault,
+            8453,
+            &code_hash,
+            &runtime_code,
+            &operator_word
+        )
+        .is_err());
+        assert!(check(
+            84532,
+            vault,
+            84532,
+            &format!("0x{}", "00".repeat(32)),
+            &runtime_code,
+            &operator_word
+        )
+        .is_err());
+        assert!(check(84532, vault, 84532, &code_hash, &[], &operator_word).is_err());
+        operator_word[31] ^= 1;
+        assert!(check(
+            84532,
+            vault,
+            84532,
+            &code_hash,
+            &runtime_code,
+            &operator_word
+        )
+        .is_err());
     }
 
     #[tokio::test]
