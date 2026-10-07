@@ -46,7 +46,7 @@ control, record the gap rather than treating the control as complete.
 
 ## Staging and recovery
 
-- [ ] D-025 Document free-only staging topology and production-control gaps.
+- [x] D-025 Document free-only staging topology and production-control gaps.
 - [ ] D-026 Verify hosted database roles, schema, and connection limits.
 - [ ] D-027 Connect encrypted recovery export to an off-host target.
 - [ ] D-028 Restore and verify a signed engine recovery bundle.
@@ -135,3 +135,7 @@ local key adapter is restricted to `testnet-demo` on Base Sepolia, with a
 focused signer-boundary test. A hosted deployment preflight remains D-014.
 The shared D-014 preflight comparison now has negative tests for chain, vault,
 runtime code, and operator mismatches, but the deployment rehearsal is open.
+
+The [free-only staging boundary](operations/free-testnet-staging.md) records the
+current local evidence path, hosted testnet admission requirements, and
+production controls that remain unfulfilled.
