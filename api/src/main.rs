@@ -207,6 +207,13 @@ fn init_observability(mode: RuntimeMode) {
     }
 }
 
+fn listener_address(
+    host: &str,
+    port: u16,
+) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
+    Ok(std::net::SocketAddr::new(host.parse()?, port))
+}
+
 #[tokio::main]
 async fn main() {
     let runtime = api::runtime::RuntimeSettings::from_env()
@@ -494,8 +501,9 @@ async fn main() {
     let shutdown_state = Arc::clone(&state);
     let router = api::build_router(state);
 
-    let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let bind_host = std::env::var("VELA_BIND_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let addr = listener_address(&bind_host, port).expect("VELA_BIND_HOST must be an IP address");
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     tracing::info!("listening on {addr}");
 
     #[cfg(unix)]
@@ -594,6 +602,19 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolated_staging_binds_only_to_loopback() {
+        assert_eq!(
+            listener_address("127.0.0.1", 3002).unwrap().to_string(),
+            "127.0.0.1:3002"
+        );
+        assert_eq!(
+            listener_address("::1", 3002).unwrap().to_string(),
+            "[::1]:3002"
+        );
+        assert!(listener_address("not-an-ip", 3002).is_err());
+    }
 
     #[test]
     fn ledger_backed_testnet_has_no_synthetic_balances_or_orders() {
