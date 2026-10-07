@@ -187,7 +187,7 @@ export function twapSigningMessage(input: TwapInput): string {
   return JSON.stringify(['vela:algo:twap:v2', input.address.toLowerCase(), input.market, input.side, input.quantity, input.duration_secs, input.price_limit, slices, input.nonce])
 }
 
-export type AlgoStatus = 'Running' | 'Completed' | 'Incomplete' | 'Canceled' | 'Failed'
+export type AlgoStatus = 'Running' | 'Completed' | 'Incomplete' | 'Canceled' | 'Failed' | 'RecoveryRequired'
 export interface AlgoSnapshot {
   parent_id: number
   user: string

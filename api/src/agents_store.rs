@@ -178,6 +178,57 @@ impl AgentStore {
         Ok(true)
     }
 
+    /// Check an already reserved parent against current authority without consuming cap buckets.
+    pub async fn authorize_continuation(
+        &self,
+        master: &UserId,
+        agent: &UserId,
+        reserved_notional: u64,
+        now_ms: u64,
+        order: &OrderScopeCheck<'_>,
+    ) -> Result<(), AgentStoreError> {
+        let mut tx = self.pool.begin().await?;
+        self.lock(&mut tx, agent).await?;
+        let delegation = self
+            .read(&mut tx, agent)
+            .await?
+            .ok_or(AgentStoreError::Conflict("unknown agent"))?;
+        if delegation.master != *master
+            || delegation.revoked
+            || delegation.expires_at_ms <= now_ms
+            || reserved_notional > delegation.max_notional_per_order
+        {
+            return Err(AgentStoreError::Conflict(
+                "delegation does not authorize continuation",
+            ));
+        }
+        delegation
+            .scope
+            .check_order_static(order.market, order.side, order.order_type)
+            .map_err(AgentStoreError::Conflict)?;
+        for (seconds, cap) in [
+            (3600i64, delegation.scope.max_notional_per_hour),
+            (86400i64, delegation.scope.max_notional_per_day),
+        ] {
+            let Some(cap) = cap else { continue };
+            let bucket = now_ms / 1000 / seconds as u64;
+            let used: Option<String> = sqlx::query_scalar("SELECT notional::text FROM api_agent_notional_buckets WHERE namespace=$1 AND agent=$2 AND bucket_seconds=$3 AND bucket_id=$4::text::numeric")
+                .bind(&self.namespace).bind(agent.to_hex()).bind(seconds).bind(bucket.to_string()).fetch_optional(&mut *tx).await?;
+            let used: u128 = used
+                .as_deref()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| AgentStoreError::InvalidRecord)?;
+            if reserved_notional > cap || used > u128::from(cap) {
+                return Err(AgentStoreError::Conflict(
+                    "delegated continuation cap exceeded",
+                ));
+            }
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Serialize permission reads and cap consumption with revocations.
     /// Database failure rejects the delegation; no cached fallback is used.
     pub async fn authorize(

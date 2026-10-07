@@ -11,8 +11,8 @@ const DEPOSIT_USDC_ADDRESS = process.env.NEXT_PUBLIC_DEPOSIT_USDC_ADDRESS ?? ''
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export interface VerifiedDepositConfig {
-  chainId: 8453 | 84532
-  chainName: 'Base' | 'Base Sepolia'
+  chainId: 8453 | 84532 | 11155111
+  chainName: 'Base' | 'Base Sepolia' | 'Ethereum Sepolia'
   chainIdHex: string
   vaultAddress: string
   usdcAddress: string | null
@@ -37,18 +37,19 @@ export function resolveVerifiedDepositConfig(
   vaultAddress: string,
   usdcAddress: string,
 ): VerifiedDepositConfig | null {
-  if ((chainId !== 8453 && chainId !== 84532) || !isAddress(vaultAddress)) {
+  if ((chainId !== 8453 && chainId !== 84532 && chainId !== 11155111) || !isAddress(vaultAddress)) {
     return null
   }
+  const isEthereumSepolia = chainId === 11155111
   const isMainnet = chainId === 8453
   return {
     chainId,
-    chainName: isMainnet ? 'Base' : 'Base Sepolia',
+    chainName: isEthereumSepolia ? 'Ethereum Sepolia' : isMainnet ? 'Base' : 'Base Sepolia',
     chainIdHex: `0x${chainId.toString(16)}`,
     vaultAddress,
     usdcAddress: isAddress(usdcAddress) ? usdcAddress : null,
-    rpcUrl: isMainnet ? 'https://mainnet.base.org' : 'https://sepolia.base.org',
-    explorerUrl: isMainnet ? 'https://basescan.org' : 'https://sepolia.basescan.org',
+    rpcUrl: isEthereumSepolia ? 'https://ethereum-sepolia-rpc.publicnode.com' : isMainnet ? 'https://mainnet.base.org' : 'https://sepolia.base.org',
+    explorerUrl: isEthereumSepolia ? 'https://sepolia.etherscan.io' : isMainnet ? 'https://basescan.org' : 'https://sepolia.basescan.org',
   }
 }
 

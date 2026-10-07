@@ -3196,7 +3196,7 @@ export interface components {
             slices: number;
             started_at_ms: number;
             /** @enum {string} */
-            status: "Running" | "Completed" | "Incomplete" | "Canceled" | "Failed";
+            status: "Running" | "Completed" | "Incomplete" | "Canceled" | "Failed" | "RecoveryRequired";
             total_quantity: number;
             user: string;
         };

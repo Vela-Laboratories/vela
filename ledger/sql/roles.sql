@@ -16,6 +16,16 @@ BEGIN
 END
 $$;
 
+-- Managed Postgres administrators may have CREATEROLE without superuser.
+-- Explicit SET membership permits ownership transfer on PostgreSQL 16+.
+DO $$
+BEGIN
+    IF NOT pg_has_role(current_user,'vela_ledger_migrator','SET') THEN
+        EXECUTE format('GRANT vela_ledger_migrator TO %I WITH SET TRUE',current_user);
+    END IF;
+END
+$$;
+
 ALTER SCHEMA public OWNER TO vela_ledger_migrator;
 
 DO $$
@@ -169,3 +179,11 @@ GRANT UPDATE (
 -- New migrations must extend these grants deliberately. There are no broad
 -- writer default privileges because a newly added financial table must fail
 -- closed until its access pattern is reviewed.
+
+-- Algorithm authorization is immutable; writers advance projections only.
+REVOKE UPDATE, DELETE ON api_algo_events FROM vela_ledger_writer;
+REVOKE DELETE ON api_algo_parents, api_algo_children FROM vela_ledger_writer;
+GRANT UPDATE (filled_quantity,next_slice,cancel_requested,status,updated_at)
+    ON api_algo_parents TO vela_ledger_writer;
+GRANT UPDATE (state,filled_quantity,response_hash,updated_at)
+    ON api_algo_children TO vela_ledger_writer;

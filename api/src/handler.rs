@@ -6803,10 +6803,6 @@ async fn post_twap_algo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<crate::algo_request::TwapRequest>,
 ) -> impl IntoResponse {
-    if let Some(response) = reject_unjournaled_financial_route(&state, "TWAP parent execution") {
-        return response;
-    }
-
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => {
@@ -6820,8 +6816,6 @@ async fn post_twap_algo(
     if let Err(error) = body.validate() {
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(error))).into_response();
     }
-    let slices = body.slice_count();
-
     let quantity_tick = match body.market_tick(&state).await {
         Ok(tick) => tick,
         Err(error) => {
@@ -6832,10 +6826,7 @@ async fn post_twap_algo(
     // authorization event; individual child orders bypass sig verify
     // (they're synthesized internally and inherit this authorization).
     // Notional cap enforced against total quantity.
-    let notional_micro = body
-        .price_limit
-        .map(|price| crate::agents::order_notional_micro(price, body.quantity))
-        .unwrap_or(u64::MAX);
+    let notional_micro = crate::algos::authorized_parent_notional(body.price_limit, body.quantity);
     if body.signature_version != 2 {
         return (
             StatusCode::BAD_REQUEST,
@@ -6871,39 +6862,27 @@ async fn post_twap_algo(
         }
     };
 
-    // Reserve a nonce block for child orders — starts one above the
-    // client's supplied nonce so master↔child nonces don't collide.
-    if let Err(error) = crate::algos::reserve_parent_nonce(&state, &body.address, body.nonce) {
-        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err(error))).into_response();
-    }
-    let parent_id = crate::algos::next_parent_id();
-    let parent = std::sync::Arc::new(crate::algos::TwapParent {
-        parent_id,
-        authorized_signer,
-        user_address: body.address.to_lowercase(),
-        market: body.market.clone(),
-        side: body.side,
-        total_quantity: body.quantity,
-        filled_quantity: std::sync::atomic::AtomicU64::new(0),
-        price_limit: body.price_limit,
-        duration_secs: body.duration_secs,
-        slices,
-        quantity_tick,
-        started_at_ms: now_ms,
-        status: std::sync::Mutex::new(crate::algos::AlgoStatus::Running),
-        cancel_flag: std::sync::atomic::AtomicBool::new(false),
-        cancel_notify: tokio::sync::Notify::new(),
-        child_nonce_base: body.nonce + 1,
-        _phantom_signature: (),
-    });
-
+    let parent =
+        match crate::algos::admit_parent(&state, &body, authorized_signer, quantity_tick, now_ms)
+            .await
+        {
+            Ok(parent) => parent,
+            Err(error) => {
+                let status = if matches!(error, crate::algos_store::AlgoStoreError::Conflict(_)) {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                };
+                return (status, Json(ApiResponse::<()>::err(error.to_string()))).into_response();
+            }
+        };
+    let parent_id = parent.parent_id;
     state
         .algos
         .insert(parent_id, std::sync::Arc::clone(&parent));
-    tokio::spawn(crate::algos::run_twap_task(
-        Arc::clone(&state),
-        std::sync::Arc::clone(&parent),
-    ));
+    state
+        .algo_tasks
+        .spawn(Arc::clone(&state), std::sync::Arc::clone(&parent));
 
     let snapshot = crate::algos::TwapParentSnapshot::from(&parent);
     let user_hex = user.to_hex();
@@ -6934,12 +6913,19 @@ async fn cancel_algo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CancelAlgoBody>,
 ) -> impl IntoResponse {
-    let parent = match state.algos.get(&body.parent_id) {
-        Some(p) => Arc::clone(&*p),
-        None => {
+    let parent = match crate::algos::load_parent(&state, body.parent_id).await {
+        Ok(Some(parent)) => parent,
+        Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(ApiResponse::<()>::err("parent_id not found")),
+            )
+                .into_response()
+        }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("algorithm storage unavailable")),
             )
                 .into_response()
         }
@@ -6977,7 +6963,26 @@ async fn cancel_algo(
             .into_response();
     }
 
-    let canceled = parent.request_cancel();
+    let canceled = if let Some(store) = &state.algo_store {
+        let proof = serde_json::json!({"message":format!("vela:algo:cancel:{}:{}",body.parent_id,body.nonce),"signature":body.signature});
+        match store.cancel(body.parent_id, &body.address, proof).await {
+            Ok(changed) => {
+                if let Some(cached) = state.algos.get(&body.parent_id) {
+                    cached.request_cancel();
+                }
+                changed
+            }
+            Err(_) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err("algorithm cancellation unavailable")),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        parent.request_cancel()
+    };
     (
         StatusCode::OK,
         Json(ApiResponse::ok(serde_json::json!({
@@ -7007,12 +7012,32 @@ async fn list_account_algos(
         return response;
     }
     let owner = user.to_hex().to_ascii_lowercase();
-    let mut parents: Vec<_> = state
-        .algos
-        .iter()
-        .filter(|p| p.user_address == owner)
-        .map(|p| crate::algos::TwapParentSnapshot::from(&p))
-        .collect();
+    let mut parents = if let Some(store) = &state.algo_store {
+        match store.list(Some(&owner)).await.and_then(|rows| {
+            rows.iter()
+                .map(crate::algos::TwapParent::from_durable)
+                .collect::<Result<Vec<_>, _>>()
+        }) {
+            Ok(rows) => rows
+                .iter()
+                .map(|p| crate::algos::TwapParentSnapshot::from(p))
+                .collect::<Vec<_>>(),
+            Err(_) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ApiResponse::<()>::err("algorithm storage unavailable")),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        state
+            .algos
+            .iter()
+            .filter(|p| p.user_address == owner)
+            .map(|p| crate::algos::TwapParentSnapshot::from(&p))
+            .collect::<Vec<_>>()
+    };
     parents.sort_by_key(|p| std::cmp::Reverse(p.parent_id));
     (StatusCode::OK, Json(ApiResponse::ok(parents))).into_response()
 }
@@ -7022,30 +7047,43 @@ async fn get_algo_status(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    match state.algos.get(&parent_id) {
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::err("parent_id not found")),
-        )
-            .into_response(),
-        Some(p) => {
-            let owner = match UserId::from_hex(&p.user_address) {
-                Ok(owner) => owner,
-                Err(_) => {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ApiResponse::<()>::err("invalid stored owner")),
-                    )
-                        .into_response()
-                }
-            };
-            if let Some(response) = require_account_auth(&headers, &state, &owner) {
-                return response;
-            }
-            let snap = crate::algos::TwapParentSnapshot::from(&p);
-            (StatusCode::OK, Json(ApiResponse::ok(snap))).into_response()
+    let parent = match crate::algos::load_parent(&state, parent_id).await {
+        Ok(Some(parent)) => parent,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::<()>::err("parent_id not found")),
+            )
+                .into_response()
         }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::err("algorithm storage unavailable")),
+            )
+                .into_response()
+        }
+    };
+    let owner = match UserId::from_hex(&parent.user_address) {
+        Ok(owner) => owner,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<()>::err("invalid stored owner")),
+            )
+                .into_response()
+        }
+    };
+    if let Some(response) = require_account_auth(&headers, &state, &owner) {
+        return response;
     }
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(crate::algos::TwapParentSnapshot::from(
+            &parent,
+        ))),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------

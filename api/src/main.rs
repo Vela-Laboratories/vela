@@ -32,14 +32,14 @@ fn seed_markets(engine: &mut MatchingEngine) {
     }
 }
 
-fn initialize_fresh_engine(engine: &mut MatchingEngine, mode: RuntimeMode) {
+fn initialize_fresh_engine(engine: &mut MatchingEngine, mode: RuntimeMode, ledger_backed: bool) {
     if mode.is_production() {
         tracing::warn!("production started with empty engine state; no demo markets were seeded");
         return;
     }
 
     seed_markets(engine);
-    if mode.allows_demo_state() {
+    if mode.allows_demo_state() && !ledger_backed {
         seed_order_books(engine);
         tracing::info!("fresh testnet demo state seeded");
     } else {
@@ -207,6 +207,13 @@ fn init_observability(mode: RuntimeMode) {
     }
 }
 
+fn listener_address(
+    host: &str,
+    port: u16,
+) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
+    Ok(std::net::SocketAddr::new(host.parse()?, port))
+}
+
 #[tokio::main]
 async fn main() {
     let runtime = api::runtime::RuntimeSettings::from_env()
@@ -307,7 +314,7 @@ async fn main() {
         }
         Ok(None) => {
             snapshot_wal_sequence = 0;
-            initialize_fresh_engine(&mut engine, runtime.mode);
+            initialize_fresh_engine(&mut engine, runtime.mode, ledger.is_some());
         }
         Err(e) => {
             panic!("snapshot recovery validation failed: {e}");
@@ -459,7 +466,7 @@ async fn main() {
         tracing::warn!("OPERATOR_PRIVATE_KEY not set — anchor task disabled");
     }
 
-    if runtime.internal_mm_enabled() {
+    if runtime.internal_mm_enabled() && state.ledger.is_none() {
         let mm_order_tx = state.order_tx.clone();
         tokio::spawn(async move {
             api::mm::run_mm_bot(mm_order_tx).await;
@@ -494,8 +501,9 @@ async fn main() {
     let shutdown_state = Arc::clone(&state);
     let router = api::build_router(state);
 
-    let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let bind_host = std::env::var("VELA_BIND_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let addr = listener_address(&bind_host, port).expect("VELA_BIND_HOST must be an IP address");
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     tracing::info!("listening on {addr}");
 
     #[cfg(unix)]
@@ -520,6 +528,18 @@ async fn main() {
         _ = terminate => {
             tracing::info!("SIGTERM received, shutting down");
         }
+    }
+
+    // Finish in-flight children before the final snapshot. Sleeping schedules
+    // keep their durable Running state for the next leader to resume.
+    if !shutdown_state
+        .algo_tasks
+        .drain(std::time::Duration::from_secs(30))
+        .await
+    {
+        shutdown_state
+            .storage_health
+            .fence("algorithm_shutdown", "algorithm tasks did not drain");
     }
 
     // Stop the periodic publisher before creating the one final recovery
@@ -584,9 +604,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn isolated_staging_binds_only_to_loopback() {
+        assert_eq!(
+            listener_address("127.0.0.1", 3002).unwrap().to_string(),
+            "127.0.0.1:3002"
+        );
+        assert_eq!(
+            listener_address("::1", 3002).unwrap().to_string(),
+            "[::1]:3002"
+        );
+        assert!(listener_address("not-an-ip", 3002).is_err());
+    }
+
+    #[test]
+    fn ledger_backed_testnet_has_no_synthetic_balances_or_orders() {
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        initialize_fresh_engine(&mut engine, RuntimeMode::TestnetDemo, true);
+        assert!(!engine.markets.is_empty());
+        assert!(engine.balances.is_empty());
+        assert!(engine
+            .order_books
+            .values()
+            .all(|book| book.depth_bids(50).is_empty() && book.depth_asks(50).is_empty()));
+    }
+
+    #[test]
     fn production_fresh_start_has_no_seeded_state() {
         let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-        initialize_fresh_engine(&mut engine, RuntimeMode::Production);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Production, false);
 
         assert!(engine.balances.is_empty());
         assert!(engine.order_books.is_empty());
@@ -596,7 +641,7 @@ mod tests {
     #[test]
     fn development_has_markets_but_no_synthetic_financial_state() {
         let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-        initialize_fresh_engine(&mut engine, RuntimeMode::Development);
+        initialize_fresh_engine(&mut engine, RuntimeMode::Development, false);
 
         assert!(!engine.markets.is_empty());
         assert!(engine.balances.is_empty());

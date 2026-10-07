@@ -95,7 +95,8 @@
               "Completed",
               "Incomplete",
               "Canceled",
-              "Failed"
+              "Failed",
+              "RecoveryRequired"
             ],
             "type": "string"
           },

@@ -26,6 +26,7 @@ COPY benches/Cargo.toml       benches/Cargo.toml
 RUN mkdir -p api/src/bin engine/src engine/benches state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src/bin indexer/src/bin withdrawal-worker/src reconciliation-worker/src benches/benches \
     && echo 'fn main() {}' > api/src/main.rs \
     && echo 'fn main() {}' > api/src/bin/engine_recovery.rs \
+    && echo 'fn main() {}' > api/src/bin/testnet_custody_sign.rs \
     && for d in engine state types committer committee tee zkvm perp fix ledger; do echo '' > $d/src/lib.rs; done \
     && echo 'fn main() {}' > ledger/src/bin/migrate.rs \
     && echo 'fn main() {}' > ledger/src/bin/bootstrap.rs \
@@ -49,7 +50,7 @@ COPY . .
 RUN find api/src engine/src state/src types/src committer/src committee/src tee/src zkvm/src perp/src fix/src ledger/src indexer/src withdrawal-worker/src reconciliation-worker/src \
       -type f -exec touch {} + \
     && cargo build --release --bin api --bin engine-recovery --bin ledger-migrate --bin ledger-bootstrap --bin ledger-daily-report \
-      --bin deposit-indexer --bin deposit-indexer-register
+      --bin deposit-indexer --bin deposit-indexer-register --bin withdrawal-worker --bin reconciliation-worker --bin testnet-custody-sign
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -72,6 +73,10 @@ COPY --from=builder /app/target/release/ledger-bootstrap /usr/local/bin/ledger-b
 COPY --from=builder /app/target/release/ledger-daily-report /usr/local/bin/ledger-daily-report
 COPY --from=builder /app/target/release/deposit-indexer /usr/local/bin/deposit-indexer
 COPY --from=builder /app/target/release/deposit-indexer-register /usr/local/bin/deposit-indexer-register
+
+COPY --from=builder /app/target/release/testnet-custody-sign /usr/local/bin/testnet-custody-sign
+COPY --from=builder /app/target/release/withdrawal-worker /usr/local/bin/withdrawal-worker
+COPY --from=builder /app/target/release/reconciliation-worker /usr/local/bin/reconciliation-worker
 
 USER vela
 WORKDIR /app
