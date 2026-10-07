@@ -606,6 +606,30 @@ async fn authorization_and_signature_evidence_are_bound_immutable_and_replay_saf
         .await
         .unwrap();
     assert_eq!(stored, replayed);
+    let queued: (Uuid, Uuid) = sqlx::query_as(
+        "SELECT authorization_id, signature_id FROM ledger_withdrawal_broadcast_queue WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .fetch_one(fixture.ledger.pool())
+    .await
+    .unwrap();
+    assert_eq!(queued, (authorization.id, stored.id));
+    let queue_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_withdrawal_broadcast_queue WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .fetch_one(fixture.ledger.pool())
+    .await
+    .unwrap();
+    assert_eq!(queue_count, 1);
+    assert!(sqlx::query(
+        "UPDATE ledger_withdrawal_broadcast_queue SET authorization_id = $2 WHERE withdrawal_id = $1",
+    )
+    .bind(reservation.withdrawal_id)
+    .bind(authorization.id)
+    .execute(fixture.ledger.pool())
+    .await
+    .is_err());
     assert_eq!(
         fixture
             .ledger

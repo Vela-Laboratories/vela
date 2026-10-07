@@ -34,7 +34,7 @@ control, record the gap rather than treating the control as complete.
 - [x] D-013 Add an opt-in testnet signer runtime.
 - [ ] D-014 Verify signer chain, vault, code, and authorization preconditions.
 - [x] D-015 Persist the policy approval to signing handoff.
-- [ ] D-016 Queue authorized transactions for controlled broadcast.
+- [x] D-016 Queue authorized transactions for controlled broadcast.
 - [ ] D-017 Bound relayer nonce and fee decisions.
 - [ ] D-018 Persist transaction submission and uncertain outcomes.
 - [x] D-019 Ingest trusted replacement candidates.
@@ -159,3 +159,9 @@ is recorded; wrong sender nonce or provider disagreement fails closed; and
 finalized revert, drop, and post-expiry release remain distinct states. All 16
 ledger and 18 worker tests passed locally under the PostgreSQL harness. This
 does not supply the missing controlled broadcaster or a deployed withdrawal.
+
+D-016 stores one immutable broadcast intent per signed Base Sepolia V3
+authorization in the same serializable ledger transaction as the custody
+signature. Signature replay cannot duplicate the queue record. The queue is an
+intent boundary only; D-017 and D-018 must add controlled relayer decisions,
+submission, and uncertain-outcome handling before any worker may broadcast.
