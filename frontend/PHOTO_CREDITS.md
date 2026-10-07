@@ -10,4 +10,4 @@ The landing page uses original photographs from Unsplash, downloaded for local d
 
 ## Coming-soon footage
 
-The temporary splash page uses [Turquoise ocean background with foaming waves](https://mixkit.co/free-stock-video/turquoise-ocean-background-with-foaming-waves-2091/) from Mixkit. Both locally hosted resolutions are covered by the [Mixkit Stock Video Free License](https://mixkit.co/license/modal/videoFree/), which permits commercial website use.
+The temporary splash page uses [Playing at the beach](https://mixkit.co/free-stock-video/playing-at-the-beach-2174/) from Mixkit. The locally hosted desktop and mobile versions and the still poster are covered by the [Mixkit Stock Video Free License](https://mixkit.co/license/modal/videoFree/), which permits commercial website use without attribution.

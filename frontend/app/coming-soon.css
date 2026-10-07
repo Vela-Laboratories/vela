@@ -7,7 +7,7 @@
   overflow: hidden;
   padding: 48px 24px;
   color: #fff;
-  background: #116b7f url('/images/dippi-water.jpg') center / cover no-repeat;
+  background: #53c4ce url('/video/dippi-beach-poster.jpg') center / cover no-repeat;
   font-family: var(--font-dm-sans), sans-serif;
 }
 
@@ -15,7 +15,7 @@
   position: absolute;
   z-index: 1;
   inset: 0;
-  background: linear-gradient(180deg, rgba(6, 28, 40, .28), rgba(6, 28, 40, .39) 55%, rgba(6, 28, 40, .57));
+  background: linear-gradient(180deg, rgba(6, 45, 54, .08), rgba(6, 45, 54, .46) 40%, rgba(6, 45, 54, .48) 62%, rgba(6, 45, 54, .14));
   content: '';
 }
 
@@ -39,7 +39,7 @@
 
 .coming-soon__smile {
   display: inline-block;
-  margin-bottom: 28px;
+  margin-bottom: 30px;
   font-size: clamp(2.5rem, 4vw, 3.7rem);
   line-height: 1;
 }
@@ -54,70 +54,14 @@
   text-shadow: 0 2px 35px rgba(8, 31, 40, .16);
 }
 
-.coming-soon__links {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: clamp(32px, 4vw, 50px);
-}
-
-.coming-soon__links a {
-  display: inline-flex;
-  min-width: 128px;
-  min-height: 47px;
-  align-items: center;
-  justify-content: center;
-  gap: 11px;
-  padding: 9px 20px;
-  border: 1px solid rgba(255, 255, 255, .62);
-  border-radius: 999px;
-  color: #fff;
-  background: rgba(10, 42, 52, .24);
-  backdrop-filter: blur(16px);
-  font-size: .91rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background .2s ease, transform .2s ease;
-}
-
-.coming-soon__links a:hover {
-  background: rgba(255, 255, 255, .2);
-  transform: translateY(-2px);
-}
-
-.coming-soon__links a:focus-visible,
-.coming-soon__credit:focus-visible {
-  outline: 3px solid #f9de75;
-  outline-offset: 4px;
-}
-
-.coming-soon__links svg { width: 17px; height: 17px; }
-.coming-soon__web-icon { font-size: 18px; line-height: 1; }
-
-.coming-soon__credit {
-  position: absolute;
-  z-index: 2;
-  right: 25px;
-  bottom: 19px;
-  color: rgba(255, 255, 255, .72);
-  font-size: .68rem;
-  text-decoration: none;
-}
-
-.coming-soon__credit:hover { color: #fff; }
-
 @media (max-width: 640px) {
-  .coming-soon { padding: 32px 22px 70px; }
+  .coming-soon { padding: 32px 22px; }
   .coming-soon__content { margin-top: 0; }
   .coming-soon__smile { margin-bottom: 24px; }
   .coming-soon h1 { font-size: clamp(3.3rem, 13vw, 5.2rem); }
-  .coming-soon__links { gap: 9px; margin-top: 33px; }
-  .coming-soon__links a { min-width: 116px; padding-inline: 16px; }
-  .coming-soon__credit { right: 20px; bottom: 17px; }
+  .coming-soon__video { object-position: 42% center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .coming-soon__video { display: none; }
-  .coming-soon__links a { transition: none; }
 }
