@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -35,6 +39,7 @@ jobs:
   rust:
     name: Rust — build, test, clippy, fmt
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -59,14 +64,13 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-registry-v2-${{ hashFiles('Cargo.lock') }}
 
       - name: Format check
         run: cargo fmt --all -- --check
@@ -82,6 +86,9 @@ jobs:
 
       - name: Test (all features)
         run: cargo test --workspace --all-features
+
+      - name: Free test build artifacts
+        run: cargo clean
 
       - name: Clippy
         # `--all-targets` catches a lot of test-code style issues that

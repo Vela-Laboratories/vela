@@ -268,6 +268,121 @@ pub struct NewDeployment {
     pub start_block: i64,
 }
 
+/// Reviewed, nonsecret deployment evidence required before registry admission.
+/// On-chain code and RPC agreement are checked separately by the indexer.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeploymentManifest {
+    pub schema_version: u32,
+    pub id: Uuid,
+    pub chain_id: i64,
+    pub network: String,
+    pub vault_address: String,
+    pub deployment_version: String,
+    pub runtime_code_hash: String,
+    pub start_block: i64,
+    pub source_commit: String,
+    pub creation_bytecode_hash: String,
+    pub runtime_template_hash: String,
+    pub deposit_event_signature: String,
+    pub deposit_event_topic: String,
+}
+
+impl DeploymentManifest {
+    pub fn parse(bytes: &[u8]) -> Result<Self, IndexerError> {
+        let manifest: Self = serde_json::from_slice(bytes)
+            .map_err(|_| IndexerError::Config("invalid V3 deployment manifest JSON".to_owned()))?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub fn validate(&self) -> Result<(), IndexerError> {
+        validate_new_deployment(&self.registration())?;
+        if self.schema_version != 1
+            || self.start_block == 0
+            || !is_nonzero_hex_bytes(&self.source_commit, 32)
+            || !is_nonzero_hex_bytes(&self.creation_bytecode_hash, 32)
+            || !is_nonzero_hex_bytes(&self.runtime_template_hash, 32)
+            || self.deposit_event_signature != DEPOSIT_EVENT_SIGNATURE
+            || !self
+                .deposit_event_topic
+                .eq_ignore_ascii_case(DEPOSIT_EVENT_TOPIC)
+        {
+            return Err(IndexerError::Config(
+                "V3 deployment manifest identity, build hashes, or event ABI is invalid".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn registration(&self) -> NewDeployment {
+        NewDeployment {
+            id: self.id,
+            chain_id: self.chain_id,
+            network: self.network.clone(),
+            vault_address: self.vault_address.clone(),
+            deployment_version: self.deployment_version.clone(),
+            runtime_code_hash: self.runtime_code_hash.clone(),
+            start_block: self.start_block,
+        }
+    }
+}
+
+/// Fail registration before any registry write unless both RPC providers agree
+/// on the finalized chain and the deployed vault's pinned runtime code.
+pub async fn verify_deployment_rpc<P: Rpc, S: Rpc>(
+    manifest: &DeploymentManifest,
+    primary: &P,
+    secondary: &S,
+) -> Result<(), IndexerError> {
+    manifest.validate()?;
+    if primary.name().trim().is_empty()
+        || secondary.name().trim().is_empty()
+        || primary.name().eq_ignore_ascii_case(secondary.name())
+    {
+        return Err(IndexerError::Config(
+            "registration requires two distinct RPC provider names".to_owned(),
+        ));
+    }
+    let (first_chain, second_chain) = tokio::try_join!(primary.chain_id(), secondary.chain_id())?;
+    if first_chain != manifest.chain_id as u64 || second_chain != manifest.chain_id as u64 {
+        return Err(IndexerError::Config(
+            "RPC provider chain IDs do not match the reviewed deployment".to_owned(),
+        ));
+    }
+    let (first_finalized, second_finalized) =
+        tokio::try_join!(primary.block("finalized"), secondary.block("finalized"))?;
+    let common_number = min(first_finalized.number, second_finalized.number);
+    if common_number < manifest.start_block as u64 {
+        return Err(IndexerError::Config(
+            "vault deployment is not yet finalized at both RPC providers".to_owned(),
+        ));
+    }
+    let tag = quantity(common_number);
+    let (first_common, second_common) =
+        tokio::try_join!(primary.block(&tag), secondary.block(&tag))?;
+    if first_common.number != common_number
+        || second_common.number != common_number
+        || !first_common.hash.eq_ignore_ascii_case(&second_common.hash)
+    {
+        return Err(IndexerError::Config(
+            "RPC providers disagree on the common finalized block".to_owned(),
+        ));
+    }
+    let (first_code, second_code) = tokio::try_join!(
+        primary.code(&manifest.vault_address, common_number),
+        secondary.code(&manifest.vault_address, common_number)
+    )?;
+    let first_hash = code_hash(&first_code)?;
+    let second_hash = code_hash(&second_code)?;
+    if first_hash != second_hash || !first_hash.eq_ignore_ascii_case(&manifest.runtime_code_hash) {
+        return Err(IndexerError::Config(
+            "RPC vault bytecode does not match the reviewed deployment".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Checkpoint {
     next_block: u64,
@@ -675,13 +790,13 @@ impl IndexerStore {
 fn validate_new_deployment(input: &NewDeployment) -> Result<(), IndexerError> {
     let network_matches_chain = matches!(
         (input.chain_id, input.network.trim()),
-        (8453, "base") | (84532, "base-sepolia") | (11155111, "ethereum-sepolia")
+        (8453, "base") | (84532, "base-sepolia")
     );
     if !network_matches_chain
+        || input.id.is_nil()
         || input.network.trim().is_empty()
         || input.network.len() > 64
-        || input.deployment_version.trim().is_empty()
-        || input.deployment_version.len() > 64
+        || input.deployment_version.trim() != "v3"
         || input.start_block < 0
         || !is_hex_bytes(&input.vault_address, 20)
         || !is_hex_bytes(&input.runtime_code_hash, 32)
@@ -1067,6 +1182,10 @@ fn is_hex_bytes(value: &str, bytes: usize) -> bool {
         && value.as_bytes()[2..]
             .iter()
             .all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_nonzero_hex_bytes(value: &str, bytes: usize) -> bool {
+    is_hex_bytes(value, bytes) && value.as_bytes()[2..].iter().any(|byte| *byte != b'0')
 }
 
 fn safe_hash(value: &str) -> Option<String> {
@@ -1714,7 +1833,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
         let customer_lookup = AccountLookup {
             asset_code: asset.code.clone(),
             owner_type: "customer".to_owned(),
-            owner_reference: deposit.credited_account_id.clone(),
+            owner_reference: deposit.depositor.clone(),
             account_type: "customer_available".to_owned(),
         };
         let customer = self
@@ -1722,7 +1841,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ensure_accounts(&[AccountProvisionRequest {
                 asset_code: asset.code.clone(),
                 owner_type: "customer".to_owned(),
-                owner_reference: deposit.credited_account_id.clone(),
+                owner_reference: deposit.depositor.clone(),
                 account_type: "customer_available".to_owned(),
                 allow_negative: false,
             }])
@@ -1760,7 +1879,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
             .ledger
             .observe_deposit(&ObserveDeposit {
                 deposit_id,
-                customer_reference: deposit.credited_account_id.clone(),
+                customer_reference: deposit.depositor.clone(),
                 destination_account_id: customer.id,
                 asset_id: asset.id,
                 amount: deposit.amount.clone(),
@@ -1810,7 +1929,7 @@ impl<P: Rpc, S: Rpc> DepositIndexer<P, S> {
                 vault_address: self.deployment.vault_address.clone(),
                 vault_deposit_id: deposit.vault_deposit_id.clone(),
                 sender_address: deposit.depositor.clone(),
-                credited_account_reference: deposit.credited_account_id.clone(),
+                credited_account_reference: deposit.depositor.clone(),
                 asset_address: deposit.asset_address.clone(),
                 actual_amount: deposit.amount.clone(),
             };
@@ -2014,19 +2133,59 @@ mod tests {
     fn deployment_network_must_match_supported_chain() {
         let mut input = NewDeployment {
             id: Uuid::new_v4(),
-            chain_id: 11155111,
-            network: "ethereum-sepolia".to_owned(),
+            chain_id: 84532,
+            network: "base-sepolia".to_owned(),
             vault_address: format!("0x{}", "11".repeat(20)),
             deployment_version: "v3".to_owned(),
             runtime_code_hash: format!("0x{}", "22".repeat(32)),
             start_block: 0,
         };
         assert!(validate_new_deployment(&input).is_ok());
-        input.network = "base-sepolia".to_owned();
+        input.network = "ethereum-sepolia".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.chain_id = 11155111;
         assert!(validate_new_deployment(&input).is_err());
         input.chain_id = 1;
         input.network = "ethereum".to_owned();
         assert!(validate_new_deployment(&input).is_err());
+        input.chain_id = 8453;
+        input.network = "base".to_owned();
+        assert!(validate_new_deployment(&input).is_ok());
+        input.deployment_version = "v2".to_owned();
+        assert!(validate_new_deployment(&input).is_err());
+        input.deployment_version = "v3".to_owned();
+        input.id = Uuid::nil();
+        assert!(validate_new_deployment(&input).is_err());
+    }
+
+    #[test]
+    fn registry_manifest_binds_v3_source_and_deposit_abi() {
+        let mut manifest = DeploymentManifest {
+            schema_version: 1,
+            id: Uuid::new_v4(),
+            chain_id: 84532,
+            network: "base-sepolia".to_owned(),
+            vault_address: format!("0x{}", "11".repeat(20)),
+            deployment_version: "v3".to_owned(),
+            runtime_code_hash: format!("0x{}", "22".repeat(32)),
+            start_block: 1,
+            source_commit: format!("0x{}", "33".repeat(32)),
+            creation_bytecode_hash: format!("0x{}", "44".repeat(32)),
+            runtime_template_hash: format!("0x{}", "55".repeat(32)),
+            deposit_event_signature: DEPOSIT_EVENT_SIGNATURE.to_owned(),
+            deposit_event_topic: DEPOSIT_EVENT_TOPIC.to_owned(),
+        };
+        let encoded = serde_json::to_vec(&manifest).unwrap();
+        assert_eq!(DeploymentManifest::parse(&encoded).unwrap().id, manifest.id);
+
+        manifest.deposit_event_signature = "Deposited(address,uint256)".to_owned();
+        assert!(manifest.validate().is_err());
+        manifest.deposit_event_signature = DEPOSIT_EVENT_SIGNATURE.to_owned();
+        manifest.source_commit = format!("0x{}", "00".repeat(32));
+        assert!(manifest.validate().is_err());
+        manifest.source_commit = format!("0x{}", "33".repeat(32));
+        manifest.start_block = 0;
+        assert!(manifest.validate().is_err());
     }
 
     fn config() -> Config {

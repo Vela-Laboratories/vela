@@ -31,4 +31,8 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+api = { path = "../api" }
 axum = { workspace = true }
+engine = { workspace = true }
+reconciliation-worker = { path = "../reconciliation-worker" }
+types = { workspace = true }

@@ -1,8 +1,8 @@
 use bigdecimal::BigDecimal;
 use chrono::Utc;
 use ledger::{
-    Ledger, ObservedCustodyBalance, ReconciliationStatus, RecordReconciliationCycle,
-    RecordReconciliationFailure,
+    JournalLegInput, Ledger, ObservedCustodyBalance, PostTransaction, ReconciliationStatus,
+    RecordReconciliationCycle, RecordReconciliationFailure,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -229,6 +229,75 @@ async fn deficit_atomically_persists_full_asset_halt(pool: PgPool) {
         row,
         ("reconciliation_deficit".to_owned(), true, true, true, 1)
     );
+}
+
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn deficit_rejects_new_deposit_trade_and_withdrawal_journals(pool: PgPool) {
+    let fixture = fixture(pool.clone(), 100, -100).await;
+    let result = fixture
+        .ledger
+        .record_reconciliation_cycle(&command(&fixture, 99, 12))
+        .await
+        .unwrap();
+    assert_eq!(result.results[0].status, ReconciliationStatus::Deficit);
+
+    let accounts: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, account_type FROM ledger_accounts WHERE asset_id = $1 ORDER BY account_type",
+    )
+    .bind(fixture.asset_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let customer_id = accounts
+        .iter()
+        .find(|(_, kind)| kind == "customer_available")
+        .unwrap()
+        .0;
+    let custody_id = accounts
+        .iter()
+        .find(|(_, kind)| kind == "custody_vault")
+        .unwrap()
+        .0;
+
+    for operation in [
+        "deposit_credit",
+        "order_reservation",
+        "trade",
+        "withdrawal_reservation",
+    ] {
+        let id = Uuid::new_v4();
+        let error = fixture
+            .ledger
+            .post(&PostTransaction {
+                id,
+                operation_type: operation.to_owned(),
+                idempotency_key: format!("halted-{operation}-{id}"),
+                request_hash: [12; 32],
+                external_reference: None,
+                metadata: json!({"test_fixture": true}),
+                legs: vec![
+                    JournalLegInput {
+                        account_id: custody_id,
+                        amount: BigDecimal::from(-1),
+                    },
+                    JournalLegInput {
+                        account_id: customer_id,
+                        amount: BigDecimal::from(1),
+                    },
+                ],
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("asset operation is halted"),
+            "{operation}: {error}"
+        );
+    }
+    let journal_count: i64 = sqlx::query_scalar("SELECT count(*) FROM ledger_journal_transactions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(journal_count, 0);
 }
 
 #[sqlx::test(migrations = "../ledger/migrations")]

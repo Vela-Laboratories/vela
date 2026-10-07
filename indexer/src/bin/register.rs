@@ -1,25 +1,31 @@
-use indexer::{IndexerStore, NewDeployment};
+use indexer::{verify_deployment_rpc, DeploymentManifest, HttpRpc, IndexerStore};
 use ledger::Ledger;
-use std::{env, time::Duration};
+use reqwest::Url;
+use std::{env, fs, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = required("DATABASE_MIGRATOR_URL")?;
-    let deployment = NewDeployment {
-        id: required("VELA_INDEXER_DEPLOYMENT_ID")?
-            .parse()
-            .map_err(|_| "VELA_INDEXER_DEPLOYMENT_ID must be a UUID")?,
-        chain_id: required("VELA_CHAIN_ID")?
-            .parse()
-            .map_err(|_| "VELA_CHAIN_ID must be an integer")?,
-        network: required("VELA_INDEXER_NETWORK")?,
-        vault_address: required("VELA_CUSTODY_VAULT_ADDRESS")?,
-        deployment_version: required("VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION")?,
-        runtime_code_hash: required("VELA_CUSTODY_VAULT_CODE_HASH")?,
-        start_block: required("VELA_CUSTODY_VAULT_START_BLOCK")?
-            .parse()
-            .map_err(|_| "VELA_CUSTODY_VAULT_START_BLOCK must be a nonnegative integer")?,
-    };
+    let manifest_path = required("VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH")?;
+    let manifest = DeploymentManifest::parse(&fs::read(manifest_path)?)?;
+    let deployment = manifest.registration();
+
+    let primary_url = rpc_url("VELA_BASE_RPC_PRIMARY_URL")?;
+    let secondary_url = rpc_url("VELA_BASE_RPC_SECONDARY_URL")?;
+    if primary_url.origin() == secondary_url.origin() {
+        return Err("registration RPC providers must have distinct origins".into());
+    }
+    let primary = HttpRpc::new(
+        required("VELA_BASE_RPC_PRIMARY_NAME")?,
+        primary_url,
+        Duration::from_secs(5),
+    )?;
+    let secondary = HttpRpc::new(
+        required("VELA_BASE_RPC_SECONDARY_NAME")?,
+        secondary_url,
+        Duration::from_secs(5),
+    )?;
+    verify_deployment_rpc(&manifest, &primary, &secondary).await?;
 
     let ledger = Ledger::connect_with_options(
         &database_url,
@@ -44,4 +50,19 @@ fn required(name: &str) -> Result<String, Box<dyn std::error::Error>> {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| format!("{name} must be set").into())
+}
+
+fn rpc_url(name: &str) -> Result<Url, Box<dyn std::error::Error>> {
+    let value = required(name)?;
+    let url = Url::parse(&value).map_err(|_| format!("{name} must be a valid URL"))?;
+    let host = url.host_str().unwrap_or_default();
+    let loopback = host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1";
+    if host.is_empty()
+        || (url.scheme() != "https" && !(url.scheme() == "http" && loopback))
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(format!("{name} must be HTTPS or loopback HTTP without URL userinfo").into());
+    }
+    Ok(url)
 }

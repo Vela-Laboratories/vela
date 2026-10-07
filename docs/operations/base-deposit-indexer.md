@@ -16,6 +16,14 @@ The process credits only logs that satisfy all of these conditions:
 - the asset and custody counter-account already exist in the authoritative ledger;
 - the ledger accepts the idempotent observation, finality evidence, and atomic credit.
 
+The current V3 flow is self-deposit only. The indexer credits the indexed
+20-byte depositor wallet as the ledger customer owner; the 32-byte event
+account ID remains an audit marker. The matcher, private account routes, and
+withdrawal reservations all use that same wallet owner reference.
+The browser encodes `depositETH(bytes32)` and
+`depositToken(bytes32,address,uint256)` from the reviewed V3 ABI and rejects
+the incompatible Ethereum Sepolia vault in the verified-deposit flow.
+
 Any uncertainty stops credits. Safety failures are written to `ledger_indexer_halts`, and the monotonic PostgreSQL checkpoint advances only after the complete range is processed. A database lease prevents two workers from owning one deployment concurrently. A crash after a credit but before checkpoint advancement is safe because deposit and journal identities are deterministic and idempotent.
 
 The same worker continuously cycles a second checkpoint from the registered deployment block through the already-processed finalized range. Both providers must continue returning identical canonical logs. A missing or changed credited event activates an asset-wide halt before the ledger moves every still-available unit into `customer_pending`; a complete isolation becomes `reversed`, while any shortfall becomes `quarantined`. A newly appeared historical event also halts the affected asset because it is behind the monotonic forward checkpoint.
@@ -31,7 +39,7 @@ Deposited(bytes32 indexed depositId, address indexed depositor, bytes32 indexed 
 topic0: derive from the reviewed V3 ABI and deployment manifest; do not copy the legacy topic.
 ```
 
-The older Sepolia deployment documented in the project predates this event and is not compatible with the indexer. Deploy and audit the updated contract on Base Sepolia before registering it. Never reuse the old address or invent a deployment block or bytecode hash.
+The older Ethereum Sepolia deployment documented in the project predates this event and is not compatible with the indexer. Registration accepts only Base Sepolia or Base network identifiers with deployment version `v3` and a nonzero UUID. Deploy and audit the updated contract on Base Sepolia before registering it. Never reuse the old address or invent a deployment block or bytecode hash.
 
 After deployment, obtain the exact deployment block and hash the runtime bytecode returned by each provider. Keep RPC URLs out of shell history when practical.
 
@@ -44,19 +52,31 @@ The two hashes must match. Record the result as `VELA_CUSTODY_VAULT_CODE_HASH` i
 
 ## Controlled registration
 
-Run all migrations through 0007, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
+Run all current migrations, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
+
+Registration now reads one reviewed, nonsecret JSON manifest from
+`VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH`. It requires schema version 1, a
+nonzero deployment UUID, Base Sepolia or Base network identity, V3, an exact
+deposit event ABI and topic, a positive deployment block, and nonzero source,
+creation-bytecode, runtime-template, and deployed runtime-code hashes. The
+manifest's `source_commit` is the 32-byte constructor identity; the
+`creation_bytecode_hash` and `runtime_template_hash` come from
+`contracts/scripts/reproducible_build.sh` at the reviewed source commit.
+Compare the final `runtime_code_hash` with both RPC providers before approval.
+The registration command also checks two distinct RPC origins and provider
+names, matching chain IDs, the same common finalized block, and the pinned
+runtime code hash before it opens the migrator database connection. The
+manifest alone is not on-chain verification.
 
 For a local Base Sepolia rehearsal:
 
 ```sh
 DATABASE_MIGRATOR_URL=postgres://... \
-VELA_INDEXER_DEPLOYMENT_ID=00000000-0000-0000-0000-000000000000 \
-VELA_INDEXER_NETWORK=base-sepolia \
-VELA_CHAIN_ID=84532 \
-VELA_CUSTODY_VAULT_ADDRESS=0x... \
-VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION=v3 \
-VELA_CUSTODY_VAULT_CODE_HASH=0x... \
-VELA_CUSTODY_VAULT_START_BLOCK=123456 \
+VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH=/secure/ops/v3-base-sepolia.json \
+VELA_BASE_RPC_PRIMARY_NAME=provider-a \
+VELA_BASE_RPC_PRIMARY_URL=https://... \
+VELA_BASE_RPC_SECONDARY_NAME=provider-b \
+VELA_BASE_RPC_SECONDARY_URL=https://... \
 cargo run --locked --release -p indexer --bin deposit-indexer-register
 ```
 
@@ -68,7 +88,7 @@ Use the restricted writer credential, never the migrator credential:
 
 ```sh
 DATABASE_URL=postgres://... \
-VELA_INDEXER_DEPLOYMENT_ID=00000000-0000-0000-0000-000000000000 \
+VELA_INDEXER_DEPLOYMENT_ID=11111111-1111-4111-8111-111111111111 \
 VELA_BASE_RPC_PRIMARY_NAME=provider-a \
 VELA_BASE_RPC_PRIMARY_URL=https://... \
 VELA_BASE_RPC_SECONDARY_NAME=provider-b \

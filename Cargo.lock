@@ -1857,12 +1857,15 @@ dependencies = [
 name = "indexer"
 version = "0.1.0"
 dependencies = [
+ "api",
  "async-trait",
  "axum",
  "bigdecimal",
  "chrono",
+ "engine",
  "hex",
  "ledger",
+ "reconciliation-worker",
  "reqwest",
  "serde",
  "serde_json",
@@ -1872,6 +1875,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "types",
  "uuid",
 ]
 
