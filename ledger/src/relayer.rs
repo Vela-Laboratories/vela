@@ -179,7 +179,7 @@ impl Ledger {
                 || stored.provider_name != command.provider_name
                 || stored.provider_reference != command.provider_reference
                 || stored.submitted_by != command.submitted_by
-                || stored.submitted_at != command.submitted_at
+                || stored.submitted_at.timestamp_micros() != command.submitted_at.timestamp_micros()
             {
                 return Err(LedgerError::IdempotencyConflict);
             }

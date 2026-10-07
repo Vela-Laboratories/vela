@@ -1,5 +1,5 @@
 use bigdecimal::BigDecimal;
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use ledger::{
     ActivateGlobalWithdrawalHalt, ApproveWithdrawal, ComplianceDisposition,
     EvaluateWithdrawalPolicy, FinalizedWithdrawalExecution, FinalizedWithdrawalNonExecution,
@@ -1172,7 +1172,7 @@ async fn relayer_submission_preserves_exact_bytes_and_uncertain_outcome(pool: Pg
         provider_name: "rpc-primary".to_owned(),
         provider_reference: None,
         submitted_by: "relayer:test".to_owned(),
-        submitted_at: Utc::now(),
+        submitted_at: Utc::now().with_nanosecond(123_456_789).unwrap(),
     };
     let recorded = fixture
         .ledger
