@@ -1,25 +1,13 @@
-use indexer::{IndexerStore, NewDeployment};
+use indexer::{DeploymentManifest, IndexerStore};
 use ledger::Ledger;
-use std::{env, time::Duration};
+use std::{env, fs, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = required("DATABASE_MIGRATOR_URL")?;
-    let deployment = NewDeployment {
-        id: required("VELA_INDEXER_DEPLOYMENT_ID")?
-            .parse()
-            .map_err(|_| "VELA_INDEXER_DEPLOYMENT_ID must be a UUID")?,
-        chain_id: required("VELA_CHAIN_ID")?
-            .parse()
-            .map_err(|_| "VELA_CHAIN_ID must be an integer")?,
-        network: required("VELA_INDEXER_NETWORK")?,
-        vault_address: required("VELA_CUSTODY_VAULT_ADDRESS")?,
-        deployment_version: required("VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION")?,
-        runtime_code_hash: required("VELA_CUSTODY_VAULT_CODE_HASH")?,
-        start_block: required("VELA_CUSTODY_VAULT_START_BLOCK")?
-            .parse()
-            .map_err(|_| "VELA_CUSTODY_VAULT_START_BLOCK must be a nonnegative integer")?,
-    };
+    let manifest_path = required("VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH")?;
+    let manifest = DeploymentManifest::parse(&fs::read(manifest_path)?)?;
+    let deployment = manifest.registration();
 
     let ledger = Ledger::connect_with_options(
         &database_url,

@@ -46,17 +46,22 @@ The two hashes must match. Record the result as `VELA_CUSTODY_VAULT_CODE_HASH` i
 
 Run all current migrations, reapply `ledger/sql/roles.sql`, bootstrap ETH/USDC accounts, publish reviewed withdrawal-policy limits, and register the deployment with the migrator credential. The GitHub `Ledger Migration` workflow performs the schema and role steps in that order; policy publication remains an explicit operator action.
 
+Registration now reads one reviewed, nonsecret JSON manifest from
+`VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH`. It requires schema version 1, a
+nonzero deployment UUID, Base Sepolia or Base network identity, V3, an exact
+deposit event ABI and topic, a positive deployment block, and nonzero source,
+creation-bytecode, runtime-template, and deployed runtime-code hashes. The
+manifest's `source_commit` is the 32-byte constructor identity; the
+`creation_bytecode_hash` and `runtime_template_hash` come from
+`contracts/scripts/reproducible_build.sh` at the reviewed source commit.
+Compare the final `runtime_code_hash` with both RPC providers before approval.
+The manifest alone is not on-chain verification.
+
 For a local Base Sepolia rehearsal:
 
 ```sh
 DATABASE_MIGRATOR_URL=postgres://... \
-VELA_INDEXER_DEPLOYMENT_ID=11111111-1111-4111-8111-111111111111 \
-VELA_INDEXER_NETWORK=base-sepolia \
-VELA_CHAIN_ID=84532 \
-VELA_CUSTODY_VAULT_ADDRESS=0x... \
-VELA_CUSTODY_VAULT_DEPLOYMENT_VERSION=v3 \
-VELA_CUSTODY_VAULT_CODE_HASH=0x... \
-VELA_CUSTODY_VAULT_START_BLOCK=123456 \
+VELA_CUSTODY_DEPLOYMENT_MANIFEST_PATH=/secure/ops/v3-base-sepolia.json \
 cargo run --locked --release -p indexer --bin deposit-indexer-register
 ```
 

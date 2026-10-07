@@ -18,7 +18,7 @@ control, record the gap rather than treating the control as complete.
 
 ## Deposits, trading, and reconciliation
 
-- [ ] D-005 Validate V3 deployment manifests before registration.
+- [x] D-005 Validate V3 deployment manifests before registration.
 - [ ] D-006 Verify distinct RPC providers and pinned custody code at startup.
 - [ ] D-007 Prove an ETH deposit reaches the authoritative customer ledger.
 - [ ] D-008 Prove a USDC deposit credits the exact received amount.

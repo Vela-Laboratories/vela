@@ -268,6 +268,66 @@ pub struct NewDeployment {
     pub start_block: i64,
 }
 
+/// Reviewed, nonsecret deployment evidence required before registry admission.
+/// On-chain code and RPC agreement are checked separately by the indexer.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeploymentManifest {
+    pub schema_version: u32,
+    pub id: Uuid,
+    pub chain_id: i64,
+    pub network: String,
+    pub vault_address: String,
+    pub deployment_version: String,
+    pub runtime_code_hash: String,
+    pub start_block: i64,
+    pub source_commit: String,
+    pub creation_bytecode_hash: String,
+    pub runtime_template_hash: String,
+    pub deposit_event_signature: String,
+    pub deposit_event_topic: String,
+}
+
+impl DeploymentManifest {
+    pub fn parse(bytes: &[u8]) -> Result<Self, IndexerError> {
+        let manifest: Self = serde_json::from_slice(bytes)
+            .map_err(|_| IndexerError::Config("invalid V3 deployment manifest JSON".to_owned()))?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub fn validate(&self) -> Result<(), IndexerError> {
+        validate_new_deployment(&self.registration())?;
+        if self.schema_version != 1
+            || self.start_block == 0
+            || !is_nonzero_hex_bytes(&self.source_commit, 32)
+            || !is_nonzero_hex_bytes(&self.creation_bytecode_hash, 32)
+            || !is_nonzero_hex_bytes(&self.runtime_template_hash, 32)
+            || self.deposit_event_signature != DEPOSIT_EVENT_SIGNATURE
+            || !self
+                .deposit_event_topic
+                .eq_ignore_ascii_case(DEPOSIT_EVENT_TOPIC)
+        {
+            return Err(IndexerError::Config(
+                "V3 deployment manifest identity, build hashes, or event ABI is invalid".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn registration(&self) -> NewDeployment {
+        NewDeployment {
+            id: self.id,
+            chain_id: self.chain_id,
+            network: self.network.clone(),
+            vault_address: self.vault_address.clone(),
+            deployment_version: self.deployment_version.clone(),
+            runtime_code_hash: self.runtime_code_hash.clone(),
+            start_block: self.start_block,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Checkpoint {
     next_block: u64,
@@ -1067,6 +1127,10 @@ fn is_hex_bytes(value: &str, bytes: usize) -> bool {
         && value.as_bytes()[2..]
             .iter()
             .all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_nonzero_hex_bytes(value: &str, bytes: usize) -> bool {
+    is_hex_bytes(value, bytes) && value.as_bytes()[2..].iter().any(|byte| *byte != b'0')
 }
 
 fn safe_hash(value: &str) -> Option<String> {
@@ -2037,6 +2101,36 @@ mod tests {
         input.deployment_version = "v3".to_owned();
         input.id = Uuid::nil();
         assert!(validate_new_deployment(&input).is_err());
+    }
+
+    #[test]
+    fn registry_manifest_binds_v3_source_and_deposit_abi() {
+        let mut manifest = DeploymentManifest {
+            schema_version: 1,
+            id: Uuid::new_v4(),
+            chain_id: 84532,
+            network: "base-sepolia".to_owned(),
+            vault_address: format!("0x{}", "11".repeat(20)),
+            deployment_version: "v3".to_owned(),
+            runtime_code_hash: format!("0x{}", "22".repeat(32)),
+            start_block: 1,
+            source_commit: format!("0x{}", "33".repeat(32)),
+            creation_bytecode_hash: format!("0x{}", "44".repeat(32)),
+            runtime_template_hash: format!("0x{}", "55".repeat(32)),
+            deposit_event_signature: DEPOSIT_EVENT_SIGNATURE.to_owned(),
+            deposit_event_topic: DEPOSIT_EVENT_TOPIC.to_owned(),
+        };
+        let encoded = serde_json::to_vec(&manifest).unwrap();
+        assert_eq!(DeploymentManifest::parse(&encoded).unwrap().id, manifest.id);
+
+        manifest.deposit_event_signature = "Deposited(address,uint256)".to_owned();
+        assert!(manifest.validate().is_err());
+        manifest.deposit_event_signature = DEPOSIT_EVENT_SIGNATURE.to_owned();
+        manifest.source_commit = format!("0x{}", "00".repeat(32));
+        assert!(manifest.validate().is_err());
+        manifest.source_commit = format!("0x{}", "33".repeat(32));
+        manifest.start_block = 0;
+        assert!(manifest.validate().is_err());
     }
 
     fn config() -> Config {
