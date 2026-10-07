@@ -12,7 +12,7 @@ control, record the gap rather than treating the control as complete.
 ## Baseline
 
 - [x] D-001 Reconcile the live buildout backlog with the launch plan.
-- [ ] D-002 Add a local PostgreSQL 16 and chain integration harness.
+- [x] D-002 Add a local PostgreSQL 16 and chain integration harness.
 - [ ] D-003 Validate compatible V3 testnet runtime configuration.
 - [ ] D-004 Test the public holding-page route boundary.
 
@@ -84,3 +84,17 @@ control, record the gap rather than treating the control as complete.
   approval, funded market makers, and the written go/no-go review remain open
   until separately evidenced in the M8 package.
 - Mainnet deployment and real funds are outside this queue.
+
+## Local integration dependencies
+
+Run a command against fresh, loopback-only PostgreSQL 16 and Anvil instances:
+
+```sh
+./scripts/with_local_custody_deps.sh cargo test -p indexer --test pipeline
+```
+
+The harness applies ledger migrations, exports `DATABASE_URL`,
+`DATABASE_MIGRATOR_URL`, and `ANVIL_RPC_URL` to its child command, and stops
+both instances afterward. It requires local PostgreSQL 16, Foundry Anvil,
+Python 3, and Cargo. Its Anvil keys are deterministic test fixtures and never
+serve as hosted signer credentials.
