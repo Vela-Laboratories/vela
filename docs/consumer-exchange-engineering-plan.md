@@ -4,6 +4,7 @@
 **Initial scope:** Spot ETH/USDC only  
 **Current operating state:** Private repository, testnet only, no real funds  
 **Master backlog:** [Consumer exchange launch checklist](consumer-exchange-launch-checklist.md)
+**Current commit queue:** [Dippi testnet buildout](dippi-buildout-backlog.md)
 
 ## Objective
 
