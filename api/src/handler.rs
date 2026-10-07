@@ -6826,10 +6826,7 @@ async fn post_twap_algo(
     // authorization event; individual child orders bypass sig verify
     // (they're synthesized internally and inherit this authorization).
     // Notional cap enforced against total quantity.
-    let notional_micro = body
-        .price_limit
-        .map(|price| crate::agents::order_notional_micro(price, body.quantity))
-        .unwrap_or(u64::MAX);
+    let notional_micro = crate::algos::authorized_parent_notional(body.price_limit, body.quantity);
     if body.signature_version != 2 {
         return (
             StatusCode::BAD_REQUEST,

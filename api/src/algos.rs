@@ -92,6 +92,13 @@ pub fn next_parent_id() -> u64 {
     NEXT_PARENT_ID.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Use the same reserved notional at admission and on every continuation.
+pub fn authorized_parent_notional(price_limit: Option<u64>, quantity: u64) -> u64 {
+    price_limit
+        .map(|price| crate::agents::order_notional_micro(price, quantity))
+        .unwrap_or(u64::MAX)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlgoStatus {
     Running,
@@ -396,11 +403,7 @@ pub async fn run_twap_task(state: Arc<AppState>, parent: Arc<TwapParent>) {
             .authorize_continuation(
                 &user_id,
                 &parent.authorized_signer,
-                u64::try_from(
-                    u128::from(parent.total_quantity) * u128::from(parent.price_limit.unwrap_or(0))
-                        / u128::from(types::QUANTITY_SCALE),
-                )
-                .unwrap_or(u64::MAX),
+                authorized_parent_notional(parent.price_limit, parent.total_quantity),
                 wall_time_ms(),
                 &market,
                 parent.side,
@@ -604,6 +607,19 @@ pub async fn recover_durable(
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+
+    #[test]
+    fn continuation_uses_admission_notional_and_fails_closed_without_price() {
+        assert_eq!(
+            authorized_parent_notional(Some(2_000_000), 3_000_000),
+            6_000_000
+        );
+        assert_eq!(authorized_parent_notional(None, 3_000_000), u64::MAX);
+        assert_eq!(
+            authorized_parent_notional(Some(u64::MAX), u64::MAX),
+            u64::MAX
+        );
+    }
 
     #[tokio::test]
     async fn shutdown_wakes_waiting_schedules_and_waits_for_inflight_completion() {
