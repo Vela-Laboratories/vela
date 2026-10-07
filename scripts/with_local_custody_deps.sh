@@ -101,6 +101,6 @@ fi
 cargo run --quiet --locked -p ledger --bin ledger-migrate
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At \
   -c 'SELECT max(version) FROM _sqlx_migrations WHERE success' \
-  | grep -qx '19'
+  | grep -qx '20'
 
 "$@"

@@ -56,8 +56,8 @@ control, record the gap rather than treating the control as complete.
 
 ## Customer flow
 
-- [ ] D-032 Persist wallet sessions in a shared, revocation-capable store.
-- [ ] D-033 Propagate session revocation across API replicas.
+- [x] D-032 Persist wallet sessions in a shared, revocation-capable store.
+- [x] D-033 Propagate session revocation across API replicas.
 - [ ] D-034 Bound ingress authentication abuse.
 - [ ] D-035 Persist scoped and expiring delegated trading permissions.
 - [ ] D-036 Add emergency delegated-key revocation.
@@ -172,3 +172,10 @@ enabled broadcaster. D-017 remains open.
 Schema version 19 records exact prepared transaction bytes and one immutable
 accepted or uncertain submission result. The executable transaction decoder,
 provider adapter, and uncertain-result reconciliation remain D-018 work.
+
+Schema version 20 stores single-use HTTP wallet challenges and hashed bearer
+sessions in PostgreSQL when a ledger connection is configured. Authorization
+reads and revocation writes use the shared store, including WebSocket session
+authentication. A two-instance integration test proves cross-replica challenge
+consumption and immediate revocation visibility. Process-local fallback remains
+for development without a ledger; D-034 still covers ingress abuse controls.

@@ -1077,6 +1077,33 @@ async fn test_http_auth_challenge_is_single_use_and_session_is_revocable() {
     after_revoke.assert_status(axum::http::StatusCode::UNAUTHORIZED);
 }
 
+#[sqlx::test(migrations = "../ledger/migrations")]
+async fn shared_http_auth_replicas_see_sessions_and_revocations(pool: sqlx::PgPool) {
+    let first = api::http_auth::HttpAuth::new(types::RuntimeMode::Development, Some(pool.clone()));
+    let second = api::http_auth::HttpAuth::new(types::RuntimeMode::Development, Some(pool.clone()));
+    let (key, address) = wallet(1);
+    let user = types::UserId::from_hex(&address).unwrap();
+    let (nonce, message, _) = first.challenge(&user).await.unwrap();
+    let signature = sign_personal(&key, message.as_bytes());
+    let (token, _) = second
+        .create_session(&user, &nonce, &signature)
+        .await
+        .unwrap();
+    let bearer = format!("Bearer {token}");
+    assert!(first.authorize(Some(&bearer), &user).await.is_ok());
+    assert!(second
+        .create_session(&user, &nonce, &signature)
+        .await
+        .is_err());
+    second.revoke(Some(&bearer)).await.unwrap();
+    assert!(first.authorize(Some(&bearer), &user).await.is_err());
+    let stored_hash: Vec<u8> = sqlx::query_scalar("SELECT token_hash FROM api_http_auth_sessions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_ne!(stored_hash, hex::decode(token).unwrap());
+}
+
 #[tokio::test]
 async fn test_http_auth_challenge_issuance_is_rate_limited() {
     let server = test_server(engine_with_market());

@@ -92,6 +92,10 @@ REVOKE UPDATE, DELETE ON ledger_withdrawal_broadcast_attempts FROM vela_ledger_w
 REVOKE UPDATE, DELETE ON ledger_relayer_nonce_reservations FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_relayer_prepared_transactions FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_relayer_submission_results FROM vela_ledger_writer;
+REVOKE UPDATE ON api_http_auth_sessions FROM vela_ledger_writer;
+GRANT UPDATE (revoked_at_ms) ON api_http_auth_sessions TO vela_ledger_writer;
+GRANT DELETE ON api_http_auth_sessions TO vela_ledger_writer;
+GRANT DELETE ON api_http_auth_challenges TO vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_chain_observations FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_executions FROM vela_ledger_writer;
 REVOKE UPDATE, DELETE ON ledger_withdrawal_failure_releases FROM vela_ledger_writer;

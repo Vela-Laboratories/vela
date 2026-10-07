@@ -466,6 +466,10 @@ impl AppState {
                     leader.token(),
                 )
             });
+        let http_auth = http_auth::HttpAuth::new(
+            runtime_mode,
+            ledger.as_ref().map(|ledger| ledger.pool().clone()),
+        );
         let state = Arc::new(AppState {
             runtime_mode,
             ledger,
@@ -514,7 +518,7 @@ impl AppState {
             engine_leadership: leadership,
             recovery_replica,
             operational_health: operational_health::OperationalHealth::from_env(),
-            http_auth: http_auth::HttpAuth::new(runtime_mode),
+            http_auth,
             pending_encrypted: Arc::clone(&pending_encrypted),
             threshold_decryptor,
             committee_keys,

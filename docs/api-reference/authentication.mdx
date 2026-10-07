@@ -19,6 +19,11 @@ and CSV exports require an account-bound bearer session:
 Challenges are single-use and expire after five minutes. Sessions expire after 30
 minutes. Tokens are opaque and should remain in memory, not local storage. A session
 for one wallet receives `403` if it attempts to read another wallet's records.
+When the API has a PostgreSQL ledger connection, challenges and hashed session
+tokens are shared across replicas. A challenge issued by one replica can be
+consumed by another, and revocation takes effect on every replica's next
+authorization check. Database errors fail closed with `503`. Local development
+without a ledger uses process-local sessions.
 
 ## Signature Scheme
 
