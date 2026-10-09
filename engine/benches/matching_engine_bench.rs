@@ -179,6 +179,10 @@ fn setup_realistic_mm() -> (MatchingEngine, Vec<Request>) {
     }
 
     let num_initial = initial_orders.len();
+    assert_eq!(num_initial, num_mms as usize * MARKET_BASES.len() * 4);
+    // Build the request stream against a copy of the seeded book. Reusing only
+    // the initial IDs makes most cancels fail once the stream wraps around.
+    let mut validation_engine = engine.clone();
     let mut requests: Vec<Request> = Vec::with_capacity(10_000);
 
     for i in 0usize..4_900 {
@@ -187,14 +191,22 @@ fn setup_realistic_mm() -> (MatchingEngine, Vec<Request>) {
         let mid = mkid(MARKET_BASES[mi]);
 
         nonces[mm_i as usize] += 1;
-        requests.push(cancel_req(mm.clone(), order_id, nonces[mm_i as usize]));
+        let cancel = cancel_req(mm.clone(), order_id, nonces[mm_i as usize]);
+        let cancel_responses = validation_engine.process(cancel.clone(), 1);
+        assert!(
+            cancel_responses.iter().any(
+                |response| matches!(response, Response::OrderCanceled(canceled) if canceled.order_id == order_id)
+            ),
+            "MM cancellation {i} did not cancel its current order: {cancel_responses:?}"
+        );
+        requests.push(cancel);
 
         let new_price = match side {
             OrderSide::Bid => (990 + (i as u64 % 20)) * PRICE_SCALE,
             OrderSide::Ask => (1_210 + (i as u64 % 20)) * PRICE_SCALE,
         };
         nonces[mm_i as usize] += 1;
-        requests.push(post_req(
+        let repost = post_req(
             mm,
             mid,
             side,
@@ -202,13 +214,24 @@ fn setup_realistic_mm() -> (MatchingEngine, Vec<Request>) {
             new_price,
             QUANTITY_SCALE,
             nonces[mm_i as usize],
-        ));
+        );
+        let repost_responses = validation_engine.process(repost.clone(), 1);
+        let new_order_id = repost_responses
+            .iter()
+            .find_map(|response| match response {
+                Response::OrderPosted(posted) => Some(posted.order_id),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("MM repost {i} failed: {repost_responses:?}"));
+        initial_orders[i % num_initial].3 = new_order_id;
+        requests.push(repost);
     }
 
+    let mut taker_fills = 0usize;
     for i in 0usize..200 {
         let mid = mkid(MARKET_BASES[i % MARKET_BASES.len()]);
         nonces[0] += 1;
-        requests.push(post_req(
+        let taker_order = post_req(
             taker.clone(),
             mid,
             OrderSide::Bid,
@@ -216,8 +239,21 @@ fn setup_realistic_mm() -> (MatchingEngine, Vec<Request>) {
             2_000 * PRICE_SCALE,
             QUANTITY_SCALE,
             nonces[0],
-        ));
+        );
+        let taker_responses = validation_engine.process(taker_order.clone(), 1);
+        assert!(
+            !taker_responses
+                .iter()
+                .any(|response| matches!(response, Response::Error(_))),
+            "taker order {i} failed: {taker_responses:?}"
+        );
+        taker_fills += taker_responses
+            .iter()
+            .filter(|response| matches!(response, Response::OrderFilled(_)))
+            .count();
+        requests.push(taker_order);
     }
+    assert!(taker_fills > 0, "MM workload produced no fills");
 
     (engine, requests)
 }

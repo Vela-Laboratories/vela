@@ -18,6 +18,9 @@ market-order matching against a pre-populated book.
 - No ECDSA verification, no rate-limiting, no batch-dispatcher latency.
 - No disk, no network.  Numbers reflect the matching algorithm only.
 - Not comparable to end-to-end exchange performance.
+- Stateful groups in `matching.rs` have unvalidated cancellation outcomes and
+  some placeholder resting-order bookkeeping. Treat their current output as
+  diagnostic until the workload is corrected and rerun.
 
 **How to run:**
 
@@ -29,8 +32,9 @@ cargo bench --bench matching
 
 ## Tier 2 — End-to-end HTTP latency (`benches/e2e_http.rs`)
 
-**Scope:** Full request lifecycle: ECDSA signing → HTTP POST → API auth →
+**Scope:** HTTP request/response lifecycle: HTTP POST → API auth →
 rate-limit → batch-dispatcher window → engine lock → matching → response.
+Client-side request construction and ECDSA signing occur before the timer.
 
 **What it does NOT mock:**
 - Signature verification (real k256/secp256k1 ECDSA)
@@ -54,10 +58,19 @@ rate-limit → batch-dispatcher window → engine lock → matching → response
 Key pools are non-overlapping to prevent nonce conflicts.  Each key
 maintains a monotonically increasing per-address nonce.  Within S2 each
 task gets an exclusive slice of keys (~156 per task) to eliminate
-inter-task nonce collisions.
+inter-task nonce collisions. S2 inserts a 50 ms think interval after each
+request per client, keeping the number of resting orders per account bounded;
+it is a latency test at finite offered load, not a maximum-throughput test.
 
 Timing wraps `client.send().await` + `response.bytes().await` only.
 Request construction and signing happen before the timer starts.
+The harness records every measured attempt with its HTTP status (or status 0
+for a transport failure). Only successful responses enter latency percentiles;
+attempted, successful, and failed requests are reported separately. When
+`VELA_BENCH_RESULTS_DIR` is set, it saves each attempt and status in CSV.
+`scripts/run_benchmarks.sh` generates a temporary admin token and uses a
+5,000 ms engine-dispatch timeout for the HTTP suites. The timeout is recorded
+in run metadata and can be changed with `BENCH_DISPATCH_TIMEOUT_MS`.
 
 ### Warmup rationale
 
@@ -71,8 +84,8 @@ warmup, the first few thousand requests inflate p99 significantly.
 cargo bench --bench e2e_http
 ```
 
-Expected runtime: ~7.5 minutes (30 + 120 + 30 + 120 + burst ≈ 305 s
-plus setup).
+Expected runtime: at least 305 seconds (30 + 120 + 30 + 120 seconds,
+plus burst and setup).
 
 ---
 
@@ -82,14 +95,18 @@ plus setup).
 300 seconds.  Tests whether performance holds over time (no GC cliff, no
 lock-convoy, no memory runaway).
 
-**Workload mix (per MM agent, random each iteration):**
+**Branch weights (per MM agent, random each iteration):**
 
 | Weight | Operation |
 |---|---|
 | 60% | Cancel-repost: cancel a resting order, post a new limit at updated price |
 | 20% | New GTC limit: post both sides around mid-price |
 | 15% | Aggressive IOC: cross the spread by 5% to generate actual fills |
-|  5% | Balance query: `GET /account/:addr/balances` |
+|  5% | Public market query: `GET /markets` |
+
+If the resting-order queue is empty, a cancel-repost branch issues a new
+post instead. The percentages are branch probabilities, not observed HTTP
+operation shares.
 
 10,000 unique addresses (2,000 per MM), all pre-funded.  Each MM agent
 operates on 3–5 of the 11 markets (randomly selected at startup).
@@ -100,11 +117,15 @@ inspection of throughput stability.
 **Memory tracking:** RSS sampled at t=0, t=150 s, t=300 s via
 `/proc/self/status` (Linux) or `ps -o rss=` (macOS).
 
+The sustained harness reports attempted, successful, and failed HTTP
+operations separately. Its latency is time to response headers for successful
+requests, not matcher-only time. With `VELA_BENCH_RESULTS_DIR` set, it saves
+successful request latencies and five-second throughput buckets as CSV.
+
 **Honest caveats:**
-- The throughput drop observed around t=120 s in steady state is
-  expected: once each MM's resting-order queue fills, cancel-repost
-  dominates (2 HTTP round-trips instead of 1 for a new post), halving
-  raw request count while preserving the same trading activity.
+- Cancel-repost uses two HTTP requests when a resting order is available,
+  while the empty-queue fallback uses one. Inspect the measured buckets and
+  success rate before interpreting a throughput change.
 - `127.0.0.1` loopback.  No real network latency.
 - No consensus.
 
@@ -118,40 +139,17 @@ Expected runtime: ~5.5 minutes (setup + 300 s run).
 
 ---
 
-## Credible comparisons
+## Historical comparisons (not current evidence)
 
-### Table 1 — Engine-layer isolation (methodology-equivalent)
+The values below come from the May 2026 benchmark notes. The workload and
+success checks have since changed, and the hardware differs across projects.
+Do not use these tables as current Dippi results or as a measured speedup.
 
-Both engines measured in isolation: no consensus, no networking, no signature
-verification on the hot path.  The only confound is hardware.
-
-| Engine | Hardware | Throughput ceiling |
-|---|---|---|
-| **Vela** | Apple M3 | **2,500,000 ops/sec** |
-| Pulse | Apple M2 Pro | 125,000 ops/sec |
-
-These are the **most credible cross-engine figures** in this document.
-
-### Table 2 — System-level reference (not directly comparable)
-
-Hyperliquid's published figures include HyperBFT consensus, real networking,
-and production-grade validation pipelines.  They are listed here as context.
-
-| Metric | Hyperliquid (published) |
-|---|---|
-| Execution layer ceiling | 200,000 ops/sec |
-| Consensus throughput (theoretical) | >1,000,000 ops/sec |
-| End-to-end p50 (colocated) | 200 ms |
-| End-to-end p99 (colocated) | 900 ms |
-
-**Vela has no comparable system-level figure yet.**  A consensus-inclusive
-benchmark (real networking, HyperBFT-equivalent round-trips, production
-signature verification) will be published as a separate document once a
-consensus layer exists.
-
-Placing Vela's engine-isolation throughput (2.5M ops/sec) next to
-Hyperliquid's system-level throughput (200k ops/sec) in the same table is
-misleading.  The numbers measure different things.  Do not do this.
+The earlier Vela-versus-Pulse ratio lacks matched hardware and validated
+request outcomes. The Hyperliquid figures use a different system boundary.
+Neither comparison establishes a Dippi speedup. See `BENCHMARKS.md` for the
+archived values and their provenance; the new technical report uses only
+measurements with an explicit workload and timing boundary.
 
 ---
 

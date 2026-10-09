@@ -89,7 +89,33 @@ impl MarketShards {
         // Readers cannot observe speculative order-book or balance changes, and
         // other writers cannot be lost when the proposal is published.
         let mut committed_user_state = shards.user_state.write().await;
-        let mut shard_ids: Vec<MarketId> = shards.shards.keys().cloned().collect();
+        // Only markets named by this batch can change. Avoid cloning and
+        // locking every unrelated book on the durable proposal path.
+        let mut shard_ids: Vec<MarketId> = Vec::new();
+        for item in &pending {
+            let market_id = match &item.request {
+                Request::PostOrder(request) => Some(&request.market),
+                Request::CancelOrder(request) => request
+                    .order_id
+                    .and_then(|id| committed_user_state.order_to_market.get(&id))
+                    .or_else(|| {
+                        request
+                            .client_order_id
+                            .as_ref()
+                            .and_then(|client_order_id| {
+                                committed_user_state
+                                    .client_order_to_market
+                                    .get(&(request.user.clone(), client_order_id.clone()))
+                            })
+                    }),
+                Request::Deposit(_) | Request::Withdrawal(_) => None,
+            };
+            if let Some(market_id) = market_id {
+                if shards.shards.contains_key(market_id) && !shard_ids.contains(market_id) {
+                    shard_ids.push(market_id.clone());
+                }
+            }
+        }
         shard_ids.sort_by(|left, right| left.0.cmp(&right.0));
         let mut committed_shards = Vec::with_capacity(shard_ids.len());
         for market_id in &shard_ids {
@@ -143,16 +169,18 @@ impl MarketShards {
             }));
         }
 
-        let proposed_user_guard = proposed_user_state.read().await;
-        let effects = if committer.requires_financial_effects() {
-            FinancialEffectSet::between(
-                &committed_user_state,
-                &proposed_user_guard,
-                &batch_result.responses,
-                batch_result.batch_size,
-            )
-        } else {
-            Ok(None)
+        let effects = {
+            let proposed_user_guard = proposed_user_state.read().await;
+            if committer.requires_financial_effects() {
+                FinancialEffectSet::between(
+                    &committed_user_state,
+                    &proposed_user_guard,
+                    &batch_result.responses,
+                    batch_result.batch_size,
+                )
+            } else {
+                Ok(None)
+            }
         };
         let commit_result = match effects {
             Ok(effects) => {
@@ -179,18 +207,19 @@ impl MarketShards {
                 .collect();
             batch_result.responses = proposed_responses.iter().flatten().cloned().collect();
         } else {
-            *committed_user_state = proposed_user_guard.clone();
+            let mut proposed_user_guard = proposed_user_state.write().await;
+            std::mem::swap(&mut *committed_user_state, &mut *proposed_user_guard);
+            drop(proposed_user_guard);
             for (market_id, committed_shard) in &mut committed_shards {
-                let proposed_shard = proposed_shards
+                let mut proposed_shard = proposed_shards
                     .shards
                     .get(market_id)
                     .expect("proposal contains every committed shard")
                     .lock()
                     .await;
-                committed_shard.engine = proposed_shard.engine.clone();
+                std::mem::swap(&mut committed_shard.engine, &mut proposed_shard.engine);
             }
         }
-        drop(proposed_user_guard);
 
         for ((responder, _), responses) in deliveries.into_iter().zip(proposed_responses) {
             let _ = responder.send(responses);
@@ -290,11 +319,19 @@ impl MarketShards {
             // Sub-pass 1c/1d: validate PostOrders and Cancels against snapshot.
             // Track in-batch reservations to prevent cross-market double-spend.
             let mut reserved: EngineMap<(UserId, AssetId), u64> = EngineMap::default();
+            let mut accepted_nonces: EngineMap<UserId, types::NonceWindow> = EngineMap::default();
 
             for (idx, (request, ts, _responder, _proof)) in pending_items.iter().enumerate() {
                 match request {
                     Request::PostOrder(req) => {
-                        match us.phase1_check_balance(req, *ts, &reserved, &bal_arc, &meta_arc) {
+                        match us.phase1_check_balance(
+                            req,
+                            *ts,
+                            &reserved,
+                            &bal_arc,
+                            &meta_arc,
+                            &mut accepted_nonces,
+                        ) {
                             Ok((order_id, spend_asset, order_notional)) => {
                                 *reserved.entry((req.user.clone(), spend_asset)).or_insert(0) +=
                                     order_notional;
@@ -310,19 +347,21 @@ impl MarketShards {
                             }
                         }
                     }
-                    Request::CancelOrder(req) => match us.phase1_cancel_validate(req) {
-                        Ok((order_id, market_id)) => {
-                            per_market.entry(market_id).or_default().push((
-                                order_id,
-                                request.clone(),
-                                *ts,
-                                idx,
-                            ));
+                    Request::CancelOrder(req) => {
+                        match us.phase1_cancel_validate(req, &mut accepted_nonces) {
+                            Ok((order_id, market_id)) => {
+                                per_market.entry(market_id).or_default().push((
+                                    order_id,
+                                    request.clone(),
+                                    *ts,
+                                    idx,
+                                ));
+                            }
+                            Err(e) => {
+                                phase1_responses.push((idx, vec![Response::Error(e.into())]));
+                            }
                         }
-                        Err(e) => {
-                            phase1_responses.push((idx, vec![Response::Error(e.into())]));
-                        }
-                    },
+                    }
                     _ => {} // Deposits/withdrawals handled above
                 }
             }
@@ -345,6 +384,7 @@ impl MarketShards {
                 let shard_arc = shards.shards.get(&market_id).cloned();
                 let bal_arc = Arc::clone(&bal_arc);
                 let meta_arc = Arc::clone(&meta_arc);
+                let snap_fees = snap_fees.clone();
                 let market_id_clone = market_id.clone();
 
                 async move {
@@ -378,6 +418,13 @@ impl MarketShards {
                     };
 
                     let mut shard = shard_arc.lock().await;
+
+                    // These maps contain only changes from this batch. The
+                    // shared snapshot supplies untouched keys, and subsequent
+                    // orders in this shard see the current-batch changes first.
+                    shard.engine.balances.clear();
+                    shard.engine.metadata.clear();
+                    shard.engine.fee_balances = snap_fees;
 
                     // Inject snapshot so the engine uses UserState balances/metadata
                     // as its base for DeltaBuffer lookups.
