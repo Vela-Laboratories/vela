@@ -1,5 +1,11 @@
 # Vela Performance Benchmarks
 
+> **Historical snapshot.** The May 2026 measurements below predate the
+> current Dippi code and the October 2026 benchmark-harness corrections.
+> They are retained for provenance and must not be presented as current
+> performance. Use `BENCH_REPEATS=3 bash scripts/run_benchmarks.sh` for a
+> fresh run with archived metadata and raw samples.
+
 > **Measurement date:** 2026-05-20  
 > **Platform:** macOS Darwin 25.1.0, Apple Silicon  
 > **Engine version:** 0.2.0  

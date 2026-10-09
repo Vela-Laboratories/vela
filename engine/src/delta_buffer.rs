@@ -1,5 +1,38 @@
 use crate::EngineMap;
+use std::hash::Hash;
 use types::{AssetId, Balance, MarketId, Order, OrderId, Quantity, UserId, UserMetadata};
+
+/// Read the current shard's changes before falling back to the shared batch snapshot.
+/// A shard keeps only keys it touched in this batch, so stale values from an
+/// earlier market dispatch cannot be mistaken for new financial effects.
+pub trait StateLookup<K, V> {
+    fn lookup(&self, key: &K) -> Option<&V>;
+}
+
+impl<K: Eq + Hash, V> StateLookup<K, V> for EngineMap<K, V> {
+    fn lookup(&self, key: &K) -> Option<&V> {
+        self.get(key)
+    }
+}
+
+pub struct ShardLookup<'a, K, V> {
+    current: &'a EngineMap<K, V>,
+    snapshot: Option<&'a EngineMap<K, V>>,
+}
+
+impl<'a, K, V> ShardLookup<'a, K, V> {
+    pub fn new(current: &'a EngineMap<K, V>, snapshot: Option<&'a EngineMap<K, V>>) -> Self {
+        Self { current, snapshot }
+    }
+}
+
+impl<K: Eq + Hash, V> StateLookup<K, V> for ShardLookup<'_, K, V> {
+    fn lookup(&self, key: &K) -> Option<&V> {
+        self.current
+            .get(key)
+            .or_else(|| self.snapshot.and_then(|snapshot| snapshot.get(key)))
+    }
+}
 
 #[derive(Debug, Clone)]
 enum DeltaEntry {
@@ -41,11 +74,11 @@ impl DeltaBuffer {
         &self,
         user: &UserId,
         asset: &AssetId,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) -> Balance {
         self.balance_overlay
             .get(&(user.clone(), *asset))
-            .or_else(|| base.get(&(user.clone(), *asset)))
+            .or_else(|| base.lookup(&(user.clone(), *asset)))
             .cloned()
             .unwrap_or_else(|| Balance {
                 user: user.clone(),
@@ -65,7 +98,7 @@ impl DeltaBuffer {
         user: &UserId,
         asset: &AssetId,
         amount: u64,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) {
         let mut bal = self.get_balance(user, asset, base);
         bal.available += amount;
@@ -77,7 +110,7 @@ impl DeltaBuffer {
         user: &UserId,
         asset: &AssetId,
         amount: u64,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) {
         let mut bal = self.get_balance(user, asset, base);
         bal.locked = bal.locked.saturating_sub(amount);
@@ -89,7 +122,7 @@ impl DeltaBuffer {
         user: &UserId,
         asset: &AssetId,
         amount: u64,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) {
         let mut bal = self.get_balance(user, asset, base);
         bal.available = bal.available.saturating_sub(amount);
@@ -101,7 +134,7 @@ impl DeltaBuffer {
         user: &UserId,
         asset: &AssetId,
         amount: u64,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) {
         let mut bal = self.get_balance(user, asset, base);
         bal.available = bal.available.saturating_sub(amount);
@@ -114,7 +147,7 @@ impl DeltaBuffer {
         user: &UserId,
         asset: &AssetId,
         amount: u64,
-        base: &EngineMap<(UserId, AssetId), Balance>,
+        base: &impl StateLookup<(UserId, AssetId), Balance>,
     ) {
         let mut bal = self.get_balance(user, asset, base);
         bal.locked = bal.locked.saturating_sub(amount);
@@ -125,11 +158,11 @@ impl DeltaBuffer {
     pub fn get_metadata(
         &self,
         user: &UserId,
-        base: &EngineMap<UserId, UserMetadata>,
+        base: &impl StateLookup<UserId, UserMetadata>,
     ) -> UserMetadata {
         self.metadata_overlay
             .get(user)
-            .or_else(|| base.get(user))
+            .or_else(|| base.lookup(user))
             .cloned()
             .unwrap_or_else(|| UserMetadata {
                 user: user.clone(),

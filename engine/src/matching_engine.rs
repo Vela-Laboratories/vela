@@ -1,3 +1,4 @@
+use crate::delta_buffer::{ShardLookup, StateLookup};
 use crate::ofi::{
     ToxicityScorer, CREDIT_PENALTY_DURATION_US, CREDIT_PENALTY_MULTIPLIER,
     TOXICITY_PENALTY_THRESHOLD,
@@ -91,6 +92,11 @@ impl MatchingEngine {
     fn get_metadata(&self, user: &UserId) -> UserMetadata {
         self.metadata
             .get(user)
+            .or_else(|| {
+                self.snapshot_metadata
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.get(user))
+            })
             .cloned()
             .unwrap_or_else(|| UserMetadata {
                 user: user.clone(),
@@ -158,8 +164,7 @@ impl MatchingEngine {
             return vec![];
         }
 
-        let bal_base: &EngineMap<(UserId, AssetId), Balance> =
-            self.snapshot_balances.as_deref().unwrap_or(&self.balances);
+        let bal_base = ShardLookup::new(&self.balances, self.snapshot_balances.as_deref());
 
         let mut candidates: Vec<ExpiryCandidate> = meta
             .iter_order_ids()
@@ -203,7 +208,7 @@ impl MatchingEngine {
                 OrderSide::Ask => (market.base, remaining),
             };
             delta.record_remove(market_id, oid);
-            delta.unlock_to_available(user, &cancel_asset, unlock_amount, bal_base);
+            delta.unlock_to_available(user, &cancel_asset, unlock_amount, &bal_base);
             meta.remove_order_id(oid);
             meta.total_quoted_notional = meta.total_quoted_notional.saturating_sub(notional);
             responses.push(Response::OrderCanceled(OrderCanceledResponse {
@@ -265,12 +270,10 @@ impl MatchingEngine {
             }
         }
 
-        let meta_base: &EngineMap<UserId, UserMetadata> =
-            self.snapshot_metadata.as_deref().unwrap_or(&self.metadata);
-        let bal_base: &EngineMap<(UserId, AssetId), Balance> =
-            self.snapshot_balances.as_deref().unwrap_or(&self.balances);
+        let meta_base = ShardLookup::new(&self.metadata, self.snapshot_metadata.as_deref());
+        let bal_base = ShardLookup::new(&self.balances, self.snapshot_balances.as_deref());
 
-        let mut meta = delta.get_metadata(&req.user, meta_base);
+        let mut meta = delta.get_metadata(&req.user, &meta_base);
         if !meta.nonce_window.accept(req.nonce) {
             return Err(VelaError::InvalidNonce);
         }
@@ -280,7 +283,7 @@ impl MatchingEngine {
             OrderSide::Ask => (market.base, market.quote),
         };
 
-        let spend_balance = delta.get_balance(&req.user, &spend_asset, bal_base);
+        let spend_balance = delta.get_balance(&req.user, &spend_asset, &bal_base);
 
         let order_notional = match req.side {
             OrderSide::Bid => CreditSystem::compute_notional(req.price, req.quantity),
@@ -313,7 +316,7 @@ impl MatchingEngine {
         // settle from locked funds, and the unused reservation is released
         // below. Without this step a marketable taker could receive assets
         // while its available spend balance remained unchanged.
-        delta.lock_available(&req.user, &spend_asset, order_notional, bal_base);
+        delta.lock_available(&req.user, &spend_asset, order_notional, &bal_base);
 
         let mut order = Order {
             id: order_id,
@@ -353,7 +356,7 @@ impl MatchingEngine {
                 &req.user,
                 &spend_asset,
                 order_notional.saturating_sub(filled_spend),
-                bal_base,
+                &bal_base,
             );
             order.status = OrderStatus::Canceled;
             delta.set_metadata(meta);
@@ -404,7 +407,7 @@ impl MatchingEngine {
             let unused_reservation = order_notional
                 .saturating_sub(filled_spend)
                 .saturating_sub(resting_spend);
-            delta.unlock_to_available(&req.user, &spend_asset, unused_reservation, bal_base);
+            delta.unlock_to_available(&req.user, &spend_asset, unused_reservation, &bal_base);
             order.status = if total_filled > 0 {
                 OrderStatus::PartiallyFilled
             } else {
@@ -419,7 +422,7 @@ impl MatchingEngine {
                 &req.user,
                 &spend_asset,
                 order_notional.saturating_sub(filled_spend),
-                bal_base,
+                &bal_base,
             );
             order.status = if total_filled >= req.quantity {
                 OrderStatus::Filled
@@ -459,8 +462,7 @@ impl MatchingEngine {
         market: &Market,
         delta: &mut DeltaBuffer,
     ) -> Result<(Vec<Fill>, Vec<OrderCanceledResponse>, bool), VelaError> {
-        let meta_base: &EngineMap<UserId, UserMetadata> =
-            self.snapshot_metadata.as_deref().unwrap_or(&self.metadata);
+        let meta_base = ShardLookup::new(&self.metadata, self.snapshot_metadata.as_deref());
 
         let book = match self.order_books.get(&order.market) {
             Some(b) => b,
@@ -521,7 +523,7 @@ impl MatchingEngine {
                                 resting,
                                 market,
                                 delta,
-                                meta_base,
+                                &meta_base,
                                 &mut stp_cancels,
                             );
                             continue;
@@ -531,7 +533,7 @@ impl MatchingEngine {
                                 resting,
                                 market,
                                 delta,
-                                meta_base,
+                                &meta_base,
                                 &mut stp_cancels,
                             );
                             taker_canceled_by_stp = true;
@@ -544,7 +546,7 @@ impl MatchingEngine {
                                     resting,
                                     market,
                                     delta,
-                                    meta_base,
+                                    &meta_base,
                                     &mut stp_cancels,
                                 );
                                 taker_remaining -= resting_remaining;
@@ -557,7 +559,7 @@ impl MatchingEngine {
                                     resting,
                                     market,
                                     delta,
-                                    meta_base,
+                                    &meta_base,
                                     &mut stp_cancels,
                                 );
                                 taker_canceled_by_stp = true;
@@ -576,8 +578,8 @@ impl MatchingEngine {
                 // The maker's tier applies to maker_fee only, and the
                 // taker's tier to taker_fee only, so both sides get the
                 // benefit of their own volume tier independently.
-                let taker_meta_for_fee = delta.get_metadata(&order.user, meta_base);
-                let maker_meta_for_fee = delta.get_metadata(&resting.user, meta_base);
+                let taker_meta_for_fee = delta.get_metadata(&order.user, &meta_base);
+                let maker_meta_for_fee = delta.get_metadata(&resting.user, &meta_base);
                 let (maker_bps, _) = if maker_meta_for_fee.fee_tier == 0 {
                     (market.maker_fee_bps, market.taker_fee_bps)
                 } else {
@@ -630,7 +632,7 @@ impl MatchingEngine {
                 let is_bid_maker = resting.side == OrderSide::Bid;
                 if fully_consumed {
                     delta.record_remove(order.market.clone(), resting.id);
-                    let mut maker_meta = delta.get_metadata(&resting.user, meta_base);
+                    let mut maker_meta = delta.get_metadata(&resting.user, &meta_base);
                     maker_meta.remove_order_id(resting.id);
                     let resting_notional =
                         CreditSystem::compute_notional(resting.price, resting.remaining_quantity());
@@ -644,7 +646,7 @@ impl MatchingEngine {
                     delta.set_metadata(maker_meta);
                 } else {
                     delta.record_partial_fill(order.market.clone(), resting.id, fill_qty);
-                    let mut maker_meta = delta.get_metadata(&resting.user, meta_base);
+                    let mut maker_meta = delta.get_metadata(&resting.user, &meta_base);
                     maker_meta.total_quoted_notional = maker_meta
                         .total_quoted_notional
                         .saturating_sub(CreditSystem::compute_notional(resting.price, fill_qty));
@@ -693,7 +695,7 @@ impl MatchingEngine {
 
         if order.side == OrderSide::Ask {
             for maker_user in &affected_makers {
-                let mut maker_meta = delta.get_metadata(maker_user, meta_base);
+                let mut maker_meta = delta.get_metadata(maker_user, &meta_base);
                 let maker_deposited = maker_meta.actual_collateral;
 
                 let open_orders: Vec<(OrderId, u64)> = maker_meta
@@ -732,14 +734,14 @@ impl MatchingEngine {
                             let notional = CreditSystem::compute_notional(o.price, remaining);
                             let unlock_amt = CreditSystem::compute_notional(o.price, remaining);
 
-                            let bal_base_inner: &EngineMap<(UserId, AssetId), Balance> =
-                                self.snapshot_balances.as_deref().unwrap_or(&self.balances);
+                            let bal_base_inner =
+                                ShardLookup::new(&self.balances, self.snapshot_balances.as_deref());
                             delta.record_remove(o.market.clone(), oid);
                             delta.unlock_to_available(
                                 maker_user,
                                 &market.quote,
                                 unlock_amt,
-                                bal_base_inner,
+                                &bal_base_inner,
                             );
                             maker_meta.remove_order_id(oid);
                             maker_meta.total_quoted_notional =
@@ -779,11 +781,10 @@ impl MatchingEngine {
         resting: &Order,
         market: &Market,
         delta: &mut DeltaBuffer,
-        meta_base: &EngineMap<UserId, UserMetadata>,
+        meta_base: &impl StateLookup<UserId, UserMetadata>,
         cancels: &mut Vec<OrderCanceledResponse>,
     ) {
-        let bal_base: &EngineMap<(UserId, AssetId), Balance> =
-            self.snapshot_balances.as_deref().unwrap_or(&self.balances);
+        let bal_base = ShardLookup::new(&self.balances, self.snapshot_balances.as_deref());
 
         let remaining = resting.remaining_quantity();
         let notional = CreditSystem::compute_notional(resting.price, remaining);
@@ -793,7 +794,7 @@ impl MatchingEngine {
         };
 
         delta.record_remove(resting.market.clone(), resting.id);
-        delta.unlock_to_available(&resting.user, &unlock_asset, unlock_amt, bal_base);
+        delta.unlock_to_available(&resting.user, &unlock_asset, unlock_amt, &bal_base);
 
         let mut maker_meta = delta.get_metadata(&resting.user, meta_base);
         maker_meta.remove_order_id(resting.id);
@@ -811,68 +812,66 @@ impl MatchingEngine {
     }
 
     fn apply_fill_balances(&self, fill: &Fill, market: &Market, delta: &mut DeltaBuffer) {
-        let bal_base: &EngineMap<(UserId, AssetId), Balance> =
-            self.snapshot_balances.as_deref().unwrap_or(&self.balances);
-        let meta_base: &EngineMap<UserId, UserMetadata> =
-            self.snapshot_metadata.as_deref().unwrap_or(&self.metadata);
+        let bal_base = ShardLookup::new(&self.balances, self.snapshot_balances.as_deref());
+        let meta_base = ShardLookup::new(&self.metadata, self.snapshot_metadata.as_deref());
         let fill_notional = CreditSystem::compute_notional(fill.price, fill.quantity);
 
         match fill.side {
             OrderSide::Bid => {
-                delta.debit_locked(&fill.taker, &market.quote, fill_notional, bal_base);
-                delta.credit_available(&fill.taker, &market.base, fill.quantity, bal_base);
+                delta.debit_locked(&fill.taker, &market.quote, fill_notional, &bal_base);
+                delta.credit_available(&fill.taker, &market.base, fill.quantity, &bal_base);
                 if fill.taker_fee > 0 {
                     delta.debit_available(
                         &fill.taker,
                         &market.quote,
                         fill.taker_fee as u64,
-                        bal_base,
+                        &bal_base,
                     );
                 }
-                delta.debit_locked(&fill.maker, &market.base, fill.quantity, bal_base);
-                delta.credit_available(&fill.maker, &market.quote, fill_notional, bal_base);
+                delta.debit_locked(&fill.maker, &market.base, fill.quantity, &bal_base);
+                delta.credit_available(&fill.maker, &market.quote, fill_notional, &bal_base);
                 if fill.maker_fee < 0 {
                     delta.credit_available(
                         &fill.maker,
                         &market.quote,
                         fill.maker_fee.unsigned_abs(),
-                        bal_base,
+                        &bal_base,
                     );
                 } else if fill.maker_fee > 0 {
                     delta.debit_available(
                         &fill.maker,
                         &market.quote,
                         fill.maker_fee as u64,
-                        bal_base,
+                        &bal_base,
                     );
                 }
             }
             OrderSide::Ask => {
-                delta.debit_locked(&fill.taker, &market.base, fill.quantity, bal_base);
-                delta.credit_available(&fill.taker, &market.quote, fill_notional, bal_base);
+                delta.debit_locked(&fill.taker, &market.base, fill.quantity, &bal_base);
+                delta.credit_available(&fill.taker, &market.quote, fill_notional, &bal_base);
                 if fill.taker_fee > 0 {
                     delta.debit_available(
                         &fill.taker,
                         &market.quote,
                         fill.taker_fee as u64,
-                        bal_base,
+                        &bal_base,
                     );
                 }
-                delta.debit_locked(&fill.maker, &market.quote, fill_notional, bal_base);
-                delta.credit_available(&fill.maker, &market.base, fill.quantity, bal_base);
+                delta.debit_locked(&fill.maker, &market.quote, fill_notional, &bal_base);
+                delta.credit_available(&fill.maker, &market.base, fill.quantity, &bal_base);
                 if fill.maker_fee < 0 {
                     delta.credit_available(
                         &fill.maker,
                         &market.quote,
                         fill.maker_fee.unsigned_abs(),
-                        bal_base,
+                        &bal_base,
                     );
                 } else if fill.maker_fee > 0 {
                     delta.debit_available(
                         &fill.maker,
                         &market.quote,
                         fill.maker_fee as u64,
-                        bal_base,
+                        &bal_base,
                     );
                 }
             }
@@ -883,9 +882,9 @@ impl MatchingEngine {
 
         if let Some(ref_user) = fill.referral_recipient.as_ref() {
             if fill.referral_fee > 0 {
-                delta.credit_available(ref_user, &market.quote, fill.referral_fee, bal_base);
+                delta.credit_available(ref_user, &market.quote, fill.referral_fee, &bal_base);
                 delta.add_exchange_fee(market.quote.as_str(), -(fill.referral_fee as i64));
-                let mut ref_meta = delta.get_metadata(ref_user, meta_base);
+                let mut ref_meta = delta.get_metadata(ref_user, &meta_base);
                 ref_meta.ref_earnings = ref_meta.ref_earnings.saturating_add(fill.referral_fee);
                 delta.set_metadata(ref_meta);
             }
@@ -964,11 +963,18 @@ impl MatchingEngine {
 
     fn unlock_balance(&mut self, user: &UserId, asset: &AssetId, amount: u64) {
         let key = (user.clone(), *asset);
-        let bal = self.balances.entry(key).or_insert_with(|| Balance {
-            user: user.clone(),
-            asset: *asset,
-            available: 0,
-            locked: 0,
+        let previous = self
+            .snapshot_balances
+            .as_ref()
+            .and_then(|snapshot| snapshot.get(&key))
+            .cloned();
+        let bal = self.balances.entry(key).or_insert_with(|| {
+            previous.unwrap_or_else(|| Balance {
+                user: user.clone(),
+                asset: *asset,
+                available: 0,
+                locked: 0,
+            })
         });
         bal.locked = bal.locked.saturating_sub(amount);
         bal.available += amount;
@@ -1060,8 +1066,8 @@ impl MatchingEngine {
     }
 
     /// Inject shared balance/metadata snapshots for sharded dispatch.
-    /// When set, the engine uses these as the base for all DeltaBuffer lookups
-    /// instead of self.balances / self.metadata.
+    /// When set, the engine reads current-batch changes first and then falls
+    /// back to the shared snapshot for untouched balance and metadata keys.
     pub fn set_snapshot(
         &mut self,
         balances: Option<Arc<EngineMap<(UserId, AssetId), Balance>>>,

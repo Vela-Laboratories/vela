@@ -344,11 +344,10 @@ impl AppState {
         let mut shards_builder = MarketShards::new(Arc::clone(&user_state_arc));
         for (market_id, market) in &engine.markets {
             let mut shard_engine = MatchingEngine::new(engine.fee_config.clone(), 5.0);
-            // Copy over everything from the main engine for this market
+            // Shared balances and metadata live in UserState. A shard keeps
+            // only its current-batch changes and reads other keys from the
+            // dispatch snapshot.
             shard_engine.add_market(market.clone());
-            shard_engine.balances = engine.balances.clone();
-            shard_engine.metadata = engine.metadata.clone();
-            shard_engine.fee_balances = engine.fee_balances.clone();
             shard_engine.set_next_order_id(engine.next_order_id());
             // Copy order book for this market
             if let Some(book) = engine.order_books.get(market_id) {

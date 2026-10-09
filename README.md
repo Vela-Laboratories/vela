@@ -18,24 +18,19 @@ or enforceable forced inclusion. Do not use real funds.
 
 ## Performance
 
-Benchmarked on Apple M3. Methodology matches Pulse's published benchmark:
-10 markets at capacity, 50 market makers, 1 taker, 98% cancel/2% fill.
+> **Historical benchmark snapshot (May 2026).** These figures have not been
+> reproduced against the current Dippi code. The workload and HTTP success
+> checks were corrected in October 2026; a fresh, archived run is required
+> before citing current performance. See [`BENCHMARKS.md`](BENCHMARKS.md).
 
-| Metric | Vela (M3) | Pulse (M2 Pro) | Hyperliquid (published)¹ |
-|--------|-----------|----------------|--------------------------|
-| Match latency (p50) | **0.38 μs** | 7.92 μs | N/A |
-| Match latency (p99) | **0.38 μs** | N/A | N/A |
-| Match latency (p99.9) | **0.92 μs** | N/A | N/A |
-| Throughput (engine) | **2,500,000 ops/sec** | 125,000 ops/sec | 200,000 ops/sec (exec. ceiling)¹ |
-| End-to-end p50 (1 client) | 16.9 ms (loopback)² | N/A | 200 ms (colocated)¹ |
-| End-to-end p99 (1 client) | 19.9 ms (loopback)² | N/A | 900 ms (colocated)¹ |
-| FOK rollback (CoW) | **841 ns** | N/A | N/A |
-| Fee calculation overhead | **~0.2 μs** | N/A | N/A |
-| vs. Pulse | **20.8× faster** | baseline | N/A |
-
-> **Disclaimer:** Vela engine benchmarks measure the isolated matching layer only (no network transit, no BFT consensus). Hyperliquid's published figures include HyperBFT consensus and network overhead for colocated clients. Vela does not currently have a consensus layer. End-to-end figures are in-process loopback measurements. Hyperliquid's 200k ops/sec ceiling is self-reported and execution-bottlenecked per their own documentation. All comparisons should be interpreted as execution-layer vs. execution-layer, not full-system vs. full-system.
->
-> ¹ Hyperliquid figures from official Hyperliquid documentation. The 200 ms / 900 ms latency figures include HyperBFT consensus round-trips; the 200k ops/sec figure is the self-reported execution-layer ceiling.  ² Measured over `127.0.0.1` loopback — no real network hop. See [`docs/benchmarks.md`](docs/benchmarks.md) for full methodology.
+The May 2026 numbers remain in [`BENCHMARKS.md`](BENCHMARKS.md) and
+[`docs/benchmarks.md`](docs/benchmarks.md) for provenance. Their workload
+validation, hardware, and system boundaries do not support a current Dippi
+performance claim or a cross-exchange speedup. The updated technical report
+in [`paper/dippi-technical-report.tex`](paper/dippi-technical-report.tex)
+separates validated in-process matching, loopback HTTP, sustained HTTP load,
+and the financial commit path. Read its measurement boundary and failure
+counts with each new result.
 
 ---
 
@@ -292,8 +287,8 @@ cargo test
 ### Benchmarks
 
 ```bash
-bash scripts/run_benchmarks.sh
-# Criterion HTML report: engine/target/criterion/report/index.html
+BENCH_REPEATS=3 bash scripts/run_benchmarks.sh
+# Results and run metadata: benchmark-results/<run-id>/
 ```
 
 ### Contracts

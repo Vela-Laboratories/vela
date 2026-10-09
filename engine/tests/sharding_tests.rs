@@ -2,8 +2,8 @@ use engine::{MarketShards, MatchingEngine, UserState};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use types::{
-    AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
-    Request, UserId,
+    AssetId, CancelOrderRequest, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType,
+    PostOrderRequest, Request, UserId,
 };
 
 fn make_user(id: u8) -> UserId {
@@ -55,6 +55,88 @@ async fn deposit(user_state: &Arc<RwLock<UserState>>, user: UserId, asset: &str,
     };
     let mut us = user_state.write().await;
     us.phase1_deposit(&req);
+}
+
+#[tokio::test]
+async fn diagnostic_idle_shard_must_not_change_other_users_balance() {
+    use engine::{BatchMetrics, BatchedRequest};
+
+    let (shards, state) = build_shards(&["ETH-USDC", "BTC-USDC"]).await;
+    let alice = make_user(1);
+    let bob = make_user(2);
+    deposit(&state, alice.clone(), "USDC", 1_000 * types::PRICE_SCALE).await;
+    deposit(&state, bob.clone(), "USDC", 1_000 * types::PRICE_SCALE).await;
+
+    for (user, market, nonce) in [
+        (alice.clone(), "ETH-USDC", 1),
+        (alice.clone(), "BTC-USDC", 2),
+        (bob, "ETH-USDC", 1),
+    ] {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let request = BatchedRequest {
+            request: Request::PostOrder(PostOrderRequest {
+                user,
+                market: MarketId(market.to_string()),
+                side: OrderSide::Bid,
+                order_type: OrderType::GoodTillCanceled,
+                price: 100 * types::PRICE_SCALE,
+                quantity: types::QUANTITY_SCALE,
+                nonce,
+                client_order_id: None,
+                signature: vec![],
+                stp: Default::default(),
+                min_quantity: None,
+                display_quantity: None,
+            }),
+            ts: 1,
+            responder: sender,
+            decryption_proof: None,
+        };
+        MarketShards::dispatch_sharded_batch(
+            Arc::clone(&shards),
+            vec![request],
+            std::time::Instant::now(),
+            BatchMetrics::new(),
+        )
+        .await;
+        let responses = receiver.await.unwrap();
+        assert!(
+            responses
+                .iter()
+                .any(|r| matches!(r, types::Response::OrderPosted(_))),
+            "{responses:?}"
+        );
+        let alice_balance = state
+            .read()
+            .await
+            .get_balance(&alice, &AssetId::from_str("USDC"));
+        eprintln!(
+            "after {market}: alice available={} locked={}",
+            alice_balance.available, alice_balance.locked
+        );
+    }
+
+    let balance = state
+        .read()
+        .await
+        .get_balance(&alice, &AssetId::from_str("USDC"));
+    let btc_shard = shards
+        .shards
+        .get(&MarketId("BTC-USDC".to_string()))
+        .unwrap();
+    let btc_guard = btc_shard.lock().await;
+    assert_eq!(
+        btc_guard.engine.order_books[&MarketId("BTC-USDC".to_string())]
+            .all_orders()
+            .len(),
+        1
+    );
+    eprintln!(
+        "diagnostic final available={} locked={}",
+        balance.available, balance.locked
+    );
+    assert_eq!(balance.available, 800 * types::PRICE_SCALE);
+    assert_eq!(balance.locked, 200 * types::PRICE_SCALE);
 }
 
 /// Test 1: Cross-market isolation.
@@ -234,6 +316,145 @@ async fn test_cross_market_balance_constraint() {
         (ok1 && err2) || (ok2 && err1),
         "Exactly one of the two 600-USDC orders on different markets should fail. ok1={ok1}, ok2={ok2}, err1={err1}, err2={err2}"
     );
+}
+
+#[tokio::test]
+async fn same_nonce_cannot_post_in_two_markets_in_one_batch() {
+    use engine::{BatchMetrics, BatchedRequest};
+
+    let (shards, state) = build_shards(&["ETH-USDC", "BTC-USDC"]).await;
+    let user = make_user(3);
+    deposit(&state, user.clone(), "USDC", 1_000 * types::PRICE_SCALE).await;
+
+    let mut requests = Vec::new();
+    let mut receivers = Vec::new();
+    for market in ["ETH-USDC", "BTC-USDC"] {
+        let (responder, receiver) = tokio::sync::oneshot::channel();
+        requests.push(BatchedRequest {
+            request: Request::PostOrder(PostOrderRequest {
+                user: user.clone(),
+                market: MarketId(market.to_owned()),
+                side: OrderSide::Bid,
+                order_type: OrderType::GoodTillCanceled,
+                price: 100 * types::PRICE_SCALE,
+                quantity: types::QUANTITY_SCALE,
+                nonce: 1,
+                client_order_id: None,
+                signature: vec![],
+                stp: Default::default(),
+                min_quantity: None,
+                display_quantity: None,
+            }),
+            ts: 1,
+            responder,
+            decryption_proof: None,
+        });
+        receivers.push(receiver);
+    }
+
+    MarketShards::dispatch_sharded_batch(
+        Arc::clone(&shards),
+        requests,
+        std::time::Instant::now(),
+        BatchMetrics::new(),
+    )
+    .await;
+
+    let first = receivers.remove(0).await.unwrap();
+    let second = receivers.remove(0).await.unwrap();
+    assert!(first
+        .iter()
+        .any(|r| matches!(r, types::Response::OrderPosted(_))));
+    assert!(second.iter().any(|r| matches!(
+        r,
+        types::Response::Error(error) if error.code == types::ErrorCode::InvalidNonce
+    )));
+    let balance = state
+        .read()
+        .await
+        .get_balance(&user, &AssetId::from_str("USDC"));
+    assert_eq!(balance.available, 900 * types::PRICE_SCALE);
+    assert_eq!(balance.locked, 100 * types::PRICE_SCALE);
+}
+
+#[tokio::test]
+async fn cancel_uses_its_market_shard_and_releases_snapshot_balance() {
+    use engine::{BatchMetrics, BatchedRequest};
+
+    let (shards, state) = build_shards(&["ETH-USDC", "BTC-USDC"]).await;
+    let user = make_user(4);
+    deposit(&state, user.clone(), "USDC", 1_000 * types::PRICE_SCALE).await;
+    let (post_sender, post_receiver) = tokio::sync::oneshot::channel();
+    let post = BatchedRequest {
+        request: Request::PostOrder(PostOrderRequest {
+            user: user.clone(),
+            market: MarketId("BTC-USDC".to_owned()),
+            side: OrderSide::Bid,
+            order_type: OrderType::GoodTillCanceled,
+            price: 100 * types::PRICE_SCALE,
+            quantity: types::QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: None,
+            signature: vec![],
+            stp: Default::default(),
+            min_quantity: None,
+            display_quantity: None,
+        }),
+        ts: 1,
+        responder: post_sender,
+        decryption_proof: None,
+    };
+    MarketShards::dispatch_sharded_batch(
+        Arc::clone(&shards),
+        vec![post],
+        std::time::Instant::now(),
+        BatchMetrics::new(),
+    )
+    .await;
+    let order_id = post_receiver
+        .await
+        .unwrap()
+        .iter()
+        .find_map(|response| match response {
+            types::Response::OrderPosted(posted) => Some(posted.order_id),
+            _ => None,
+        })
+        .unwrap();
+
+    let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
+    let cancel = BatchedRequest {
+        request: Request::CancelOrder(CancelOrderRequest {
+            user: user.clone(),
+            order_id: Some(order_id),
+            client_order_id: None,
+            nonce: 2,
+            signature: vec![],
+        }),
+        ts: 2,
+        responder: cancel_sender,
+        decryption_proof: None,
+    };
+    MarketShards::dispatch_sharded_batch(
+        Arc::clone(&shards),
+        vec![cancel],
+        std::time::Instant::now(),
+        BatchMetrics::new(),
+    )
+    .await;
+    assert!(cancel_receiver
+        .await
+        .unwrap()
+        .iter()
+        .any(|response| matches!(
+            response,
+            types::Response::OrderCanceled(canceled) if canceled.order_id == order_id
+        )));
+    let balance = state
+        .read()
+        .await
+        .get_balance(&user, &AssetId::from_str("USDC"));
+    assert_eq!(balance.available, 1_000 * types::PRICE_SCALE);
+    assert_eq!(balance.locked, 0);
 }
 
 /// Test 3: Concurrent fill ordering.

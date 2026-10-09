@@ -4,11 +4,11 @@
 /// Samples throughput every 5 seconds to produce a 60-point time series that
 /// shows whether throughput is stable, degrading, or a short burst artifact.
 ///
-/// Workload composition (per task, randomized each iteration):
-///   60%  cancel-repost cycle (cancel a resting order, repost at new price)
+/// Branch weights (per task, randomized each iteration):
+///   60%  cancel-repost cycle (or a new post when no resting order exists)
 ///   20%  new limit GTC post (both sides, spread around mid)
 ///   15%  aggressive IOC fill (crosses the spread — generates actual fills)
-///    5%  balance query (GET /account/:addr/balances — monitoring traffic)
+///    5%  public market query (GET /markets — monitoring traffic)
 ///
 /// All MM agents use the real HTTP stack.  No engine or dispatcher access is
 /// bypassed.  Signature verification, rate limiting (set very high for this
@@ -16,10 +16,10 @@
 ///
 /// Memory usage is sampled at t=0, t=150s, t=300s using process inspection.
 ///
-/// Compare with Hyperliquid's published ceiling:
-///   200,000 ops/sec (execution-bottlenecked; consensus theoretically >1M ops/sec
-///   per Hyperliquid docs)
 use std::collections::VecDeque;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -325,6 +325,7 @@ fn rss_mb() -> u64 {
 // ---------------------------------------------------------------------------
 
 struct Counters {
+    attempted_ops: AtomicU64,
     total_ops: AtomicU64,
     total_fills: AtomicU64,
     match_lat_ns: std::sync::Mutex<Vec<u64>>,
@@ -333,6 +334,7 @@ struct Counters {
 impl Counters {
     fn new() -> Arc<Self> {
         Arc::new(Counters {
+            attempted_ops: AtomicU64::new(0),
             total_ops: AtomicU64::new(0),
             total_fills: AtomicU64::new(0),
             match_lat_ns: std::sync::Mutex::new(Vec::with_capacity(100_000)),
@@ -373,14 +375,12 @@ async fn mm_task(
     let orders_url = format!("{}/orders", base_url);
     let cancel_url = format!("{}/orders/cancel", base_url);
 
+    let run_start = run_end - Duration::from_secs(RUN_SECS);
     while Instant::now() < run_end {
         let roll: u8 = rng.gen_range(0..100);
 
-        let bucket_idx = {
-            let elapsed = run_end.duration_since(Instant::now()).as_secs();
-            let elapsed_from_start = RUN_SECS.saturating_sub(elapsed);
-            (elapsed_from_start / BUCKET_SECS) as usize
-        };
+        let elapsed = Instant::now().duration_since(run_start).as_secs();
+        let bucket_idx = (elapsed.min(RUN_SECS - 1) / BUCKET_SECS) as usize;
 
         // ── 60%: cancel-repost ──────────────────────────────────────────────
         if roll < 60 {
@@ -389,6 +389,7 @@ async fn mm_task(
                 nonces[cancel_ki] += 1;
                 let cancel_body = sign_cancel(kp, oid, nonces[cancel_ki]);
 
+                counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
                 let t0 = Instant::now();
                 let resp = client
                     .post(&cancel_url)
@@ -428,6 +429,7 @@ async fn mm_task(
                     nonces[ki],
                 );
 
+                counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
                 let t0 = Instant::now();
                 if let Ok(resp) = client
                     .post(&orders_url)
@@ -479,6 +481,7 @@ async fn mm_task(
                     ms.qty,
                     nonces[ki],
                 );
+                counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
                 let t0 = Instant::now();
                 if let Ok(resp) = client
                     .post(&orders_url)
@@ -533,6 +536,7 @@ async fn mm_task(
                 ms.qty,
                 nonces[ki],
             );
+            counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
             let t0 = Instant::now();
             if let Ok(resp) = client
                 .post(&orders_url)
@@ -585,6 +589,7 @@ async fn mm_task(
                 ms.qty,
                 nonces[ki],
             );
+            counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
             let t0 = Instant::now();
             if let Ok(resp) = client
                 .post(&orders_url)
@@ -611,12 +616,12 @@ async fn mm_task(
             }
             ki = (ki + 1) % KEYS_PER_MM;
         }
-        // ── 5%: balance query ───────────────────────────────────────────────
+        // ── 5%: public market-data query ────────────────────────────────────
         else {
-            let kp = &keypairs[key_start + ki];
-            let balance_url = format!("{}/account/{}/balances", base_url, kp.address);
+            let market_data_url = format!("{}/markets", base_url);
+            counters.attempted_ops.fetch_add(1, Ordering::Relaxed);
             let t0 = Instant::now();
-            if let Ok(resp) = client.get(&balance_url).send().await {
+            if let Ok(resp) = client.get(&market_data_url).send().await {
                 let lat_ns = t0.elapsed().as_nanos() as u64;
                 if resp.status().is_success() {
                     let _ = resp.bytes().await;
@@ -780,6 +785,7 @@ async fn run() {
     // -----------------------------------------------------------------------
     // Compute statistics
     // -----------------------------------------------------------------------
+    let attempted_ops = counters.attempted_ops.load(Ordering::Relaxed);
     let total_ops = counters.total_ops.load(Ordering::Relaxed);
     let total_fills = counters.total_fills.load(Ordering::Relaxed);
     let fill_rate = if total_ops > 0 {
@@ -822,6 +828,23 @@ async fn run() {
     let stddev_ops_s = stddev_tput / BUCKET_SECS as f64;
 
     let mut match_lat: Vec<u64> = counters.match_lat_ns.lock().unwrap().clone();
+    if let Ok(dir) = std::env::var("VELA_BENCH_RESULTS_DIR") {
+        std::fs::create_dir_all(&dir).expect("create benchmark results directory");
+        let mut latency_file = File::create(Path::new(&dir).join("sustained_http_latency_ns.csv"))
+            .expect("create raw latency file");
+        writeln!(latency_file, "latency_ns").expect("write raw latency header");
+        for latency in &match_lat {
+            writeln!(latency_file, "{latency}").expect("write raw latency sample");
+        }
+        let mut buckets_file = File::create(Path::new(&dir).join("sustained_buckets.csv"))
+            .expect("create raw bucket file");
+        writeln!(buckets_file, "elapsed_seconds,successful_operations")
+            .expect("write raw bucket header");
+        for (i, count) in bucket_vals.iter().enumerate() {
+            writeln!(buckets_file, "{},{}", (i as u64 + 1) * BUCKET_SECS, count)
+                .expect("write raw bucket");
+        }
+    }
     match_lat.sort_unstable();
     let n_lat = match_lat.len();
     let (p50_lat, p99_lat) = if n_lat > 0 {
@@ -836,8 +859,13 @@ async fn run() {
     // Print
     // -----------------------------------------------------------------------
     println!();
-    println!("=== VELA SUSTAINED THROUGHPUT (Tier 3, {}s) ===", RUN_SECS);
-    println!("Total orders processed:      {}", total_ops);
+    println!("=== DIPPI SUSTAINED THROUGHPUT (Tier 3, {}s) ===", RUN_SECS);
+    println!("Attempted HTTP operations:   {}", attempted_ops);
+    println!("Successful HTTP operations:  {}", total_ops);
+    println!(
+        "Failed HTTP operations:      {}",
+        attempted_ops.saturating_sub(total_ops)
+    );
     println!("Total fills:                 {}", total_fills);
     println!("Fill rate:                   {:.2}%", fill_rate);
     println!(
@@ -851,8 +879,8 @@ async fn run() {
     println!("Mean throughput:             {:.0} ops/sec", mean_ops_s);
     println!("Throughput std deviation:    {:.0} ops/sec", stddev_ops_s);
     println!("Throughput stability:        {:.1}% (mean/peak)", stability);
-    println!("p50 match latency:           {} µs", p50_lat / 1_000);
-    println!("p99 match latency:           {} µs", p99_lat / 1_000);
+    println!("p50 HTTP response-header latency: {} µs", p50_lat / 1_000);
+    println!("p99 HTTP response-header latency: {} µs", p99_lat / 1_000);
     println!("Memory at t=0:               {} MB", mem_t0);
     println!("Memory at t=150s:            {} MB", mem_t150_val);
     println!("Memory at t=300s:            {} MB", mem_t300);
@@ -865,12 +893,4 @@ async fn run() {
         let t = (i as u64 + 1) * BUCKET_SECS;
         println!("t={:>4}s: {:>8} {}", t, ops_s, bar(ops_s, max_bar, 40));
     }
-
-    println!();
-    println!("HYPERLIQUID BASELINE: 200,000 ops/sec ceiling (documented design figure,");
-    println!("execution-bottlenecked per Hyperliquid docs; consensus theoretically");
-    println!(">1M ops/sec per Hyperliquid technical documentation).");
-    println!();
-    println!("NOTE: Both Vela and Hyperliquid figures are in-process / single-datacenter.");
-    println!("Vela has no BFT consensus; Hyperliquid's 200k is with HyperBFT enabled.");
 }

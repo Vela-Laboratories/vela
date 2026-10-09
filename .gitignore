@@ -1,8 +1,11 @@
 /target
+/benchmark-results/
+/paper/render/
 # Cargo.lock is committed — this workspace ships a binary crate (`api`)
 # and Fly builds against a reproducible lock file. If you split off a
 # library crate, add its own local .gitignore.
 *.log
+*.blg
 *.prof
 flamegraph.svg
 profile.json.gz

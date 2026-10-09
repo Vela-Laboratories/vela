@@ -1,0 +1,311 @@
+{
+  "engine": {
+    "exploratory_matching_group_counts": [
+      30,
+      30,
+      30
+    ],
+    "metadata": "UTC start: 2026-10-09T00:37:51Z\nSource ref: d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14\nSource status: extracted source archive\nBenchmark-source diff SHA-256: not applicable to source archive\nBase Git HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10849e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod-CPU3C-16vCPU-32GB\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 3\nSuites: engine matching\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n",
+    "rate_median_across_repeats": 1185063.4259751565,
+    "rate_range_across_repeats": [
+      1162465.7700184053,
+      1226341.7887565307
+    ],
+    "validated_realistic_mm": [
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 8079823.556666667,
+          "upper_bound": 8244105.756666666
+        },
+        "criterion_mean_ns_per_10000": 8154333.556666665,
+        "in_process_operations_per_second": 1226341.7887565307,
+        "mean_ns_per_operation": 815.4333556666664,
+        "repeat": "repeat-1"
+      },
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 8327579.159666667,
+          "upper_bound": 8555316.813916666
+        },
+        "criterion_mean_ns_per_10000": 8438366.910000004,
+        "in_process_operations_per_second": 1185063.4259751565,
+        "mean_ns_per_operation": 843.8366910000004,
+        "repeat": "repeat-2"
+      },
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 8447747.455749996,
+          "upper_bound": 8765720.348166667
+        },
+        "criterion_mean_ns_per_10000": 8602403.836666666,
+        "in_process_operations_per_second": 1162465.7700184053,
+        "mean_ns_per_operation": 860.2403836666666,
+        "repeat": "repeat-3"
+      }
+    ]
+  },
+  "http_repeats": [
+    {
+      "http": {
+        "burst_1000": {
+          "attempts": 1000,
+          "failures": 0,
+          "status_counts": {
+            "200": 1000
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 342030818,
+          "success_latency_ns_p99": 391755778,
+          "success_latency_ns_p999": 471047773,
+          "successes": 1000
+        },
+        "concurrent_32": {
+          "attempts": 41567,
+          "failures": 0,
+          "status_counts": {
+            "200": 41567
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 34695784,
+          "success_latency_ns_p99": 78375280,
+          "success_latency_ns_p999": 661230031,
+          "successes": 41567
+        },
+        "single": {
+          "attempts": 3649,
+          "failures": 0,
+          "status_counts": {
+            "200": 3649
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 27302033,
+          "success_latency_ns_p99": 99010922,
+          "success_latency_ns_p999": 615986688,
+          "successes": 3649
+        }
+      },
+      "repeat": "repeat-1",
+      "source_run": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T000155Z-d5b52c78bce4"
+    },
+    {
+      "http": {
+        "burst_1000": {
+          "attempts": 1000,
+          "failures": 0,
+          "status_counts": {
+            "200": 1000
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 339630036,
+          "success_latency_ns_p99": 419591403,
+          "success_latency_ns_p999": 427550952,
+          "successes": 1000
+        },
+        "concurrent_32": {
+          "attempts": 39847,
+          "failures": 0,
+          "status_counts": {
+            "200": 39847
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 35880441,
+          "success_latency_ns_p99": 115775369,
+          "success_latency_ns_p999": 1051669514,
+          "successes": 39847
+        },
+        "single": {
+          "attempts": 3880,
+          "failures": 0,
+          "status_counts": {
+            "200": 3880
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 27604943,
+          "success_latency_ns_p99": 64878031,
+          "success_latency_ns_p999": 119938471,
+          "successes": 3880
+        }
+      },
+      "repeat": "repeat-1",
+      "source_run": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T001108Z-d5b52c78bce4"
+    },
+    {
+      "http": {
+        "burst_1000": {
+          "attempts": 1000,
+          "failures": 0,
+          "status_counts": {
+            "200": 1000
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 330033563,
+          "success_latency_ns_p99": 412632307,
+          "success_latency_ns_p999": 417644564,
+          "successes": 1000
+        },
+        "concurrent_32": {
+          "attempts": 37433,
+          "failures": 0,
+          "status_counts": {
+            "200": 37433
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 35671551,
+          "success_latency_ns_p99": 146733094,
+          "success_latency_ns_p999": 2594500958,
+          "successes": 37433
+        },
+        "single": {
+          "attempts": 3531,
+          "failures": 0,
+          "status_counts": {
+            "200": 3531
+          },
+          "success_fraction": 1.0,
+          "success_latency_ns_p50": 30700857,
+          "success_latency_ns_p99": 65327910,
+          "success_latency_ns_p999": 1022881353,
+          "successes": 3531
+        }
+      },
+      "repeat": "repeat-2",
+      "source_run": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T001108Z-d5b52c78bce4"
+    }
+  ],
+  "http_summary": {
+    "burst_1000": {
+      "attempts": 3000,
+      "failures": 0,
+      "median_repeat_p50_ns": 339630036,
+      "median_repeat_p99_ns": 412632307,
+      "repeat_p50_range_ns": [
+        330033563,
+        342030818
+      ],
+      "repeat_p99_range_ns": [
+        391755778,
+        419591403
+      ],
+      "repetitions": 3,
+      "successes": 3000
+    },
+    "concurrent_32": {
+      "attempts": 118847,
+      "failures": 0,
+      "median_repeat_p50_ns": 35671551,
+      "median_repeat_p99_ns": 115775369,
+      "repeat_p50_range_ns": [
+        34695784,
+        35880441
+      ],
+      "repeat_p99_range_ns": [
+        78375280,
+        146733094
+      ],
+      "repetitions": 3,
+      "successes": 118847
+    },
+    "single": {
+      "attempts": 11060,
+      "failures": 0,
+      "median_repeat_p50_ns": 27604943,
+      "median_repeat_p99_ns": 65327910,
+      "repeat_p50_range_ns": [
+        27302033,
+        30700857
+      ],
+      "repeat_p99_range_ns": [
+        64878031,
+        99010922
+      ],
+      "repetitions": 3,
+      "successes": 11060
+    }
+  },
+  "run_metadata": {
+    "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T000155Z-d5b52c78bce4": "UTC start: 2026-10-09T00:01:55Z\nSource ref: d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14\nSource status: extracted source archive\nBenchmark-source diff SHA-256: not applicable to source archive\nBase Git HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10849e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod-CPU3C-16vCPU-32GB\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 1\nSuites: e2e_http\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n",
+    "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T001108Z-d5b52c78bce4": "UTC start: 2026-10-09T00:11:08Z\nSource ref: d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14\nSource status: extracted source archive\nBenchmark-source diff SHA-256: not applicable to source archive\nBase Git HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10849e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod-CPU3C-16vCPU-32GB\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 2\nSuites: e2e_http\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n",
+    "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T002116Z-d5b52c78bce4": "UTC start: 2026-10-09T00:21:16Z\nSource ref: d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14\nSource status: extracted source archive\nBenchmark-source diff SHA-256: not applicable to source archive\nBase Git HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10849e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod-CPU3C-16vCPU-32GB\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 3\nSuites: sustained_throughput\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n",
+    "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T003751Z-d5b52c78bce4": "UTC start: 2026-10-09T00:37:51Z\nSource ref: d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14\nSource status: extracted source archive\nBenchmark-source diff SHA-256: not applicable to source archive\nBase Git HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10849e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod-CPU3C-16vCPU-32GB\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 3\nSuites: engine matching\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n"
+  },
+  "source_archive_sha256": "d5b52c78bce4c760d4b2f43fd333ab39ebd99ef13ca95ef1c7faa41fe7d43f14",
+  "sustained_repeats": [
+    {
+      "attempts": 48704,
+      "bucket_count": 60,
+      "bucket_success_sum": 45312,
+      "buckets_match_successes": true,
+      "failures": 3392,
+      "fills": 4327,
+      "maximum_5s_bucket_operations_per_second": 179.6,
+      "mean_successful_operations_per_second": 151.04,
+      "minimum_5s_bucket_operations_per_second": 58.6,
+      "rss_mb_t0": 93,
+      "rss_mb_t150": 1177,
+      "rss_mb_t300": 1177,
+      "source_repeat": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T002116Z-d5b52c78bce4/repeat-1",
+      "success_header_latency_ns_p50": 26554637,
+      "success_header_latency_ns_p99": 81847166,
+      "successes": 45312,
+      "zero_throughput_buckets": 0
+    },
+    {
+      "attempts": 46771,
+      "bucket_count": 60,
+      "bucket_success_sum": 43514,
+      "buckets_match_successes": true,
+      "failures": 3257,
+      "fills": 4161,
+      "maximum_5s_bucket_operations_per_second": 170.8,
+      "mean_successful_operations_per_second": 145.04666666666665,
+      "minimum_5s_bucket_operations_per_second": 69.8,
+      "rss_mb_t0": 93,
+      "rss_mb_t150": 932,
+      "rss_mb_t300": 1017,
+      "source_repeat": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T002116Z-d5b52c78bce4/repeat-2",
+      "success_header_latency_ns_p50": 28226525,
+      "success_header_latency_ns_p99": 80009445,
+      "successes": 43514,
+      "zero_throughput_buckets": 0
+    },
+    {
+      "attempts": 53511,
+      "bucket_count": 60,
+      "bucket_success_sum": 49748,
+      "buckets_match_successes": true,
+      "failures": 3763,
+      "fills": 4815,
+      "maximum_5s_bucket_operations_per_second": 190.4,
+      "mean_successful_operations_per_second": 165.82666666666665,
+      "minimum_5s_bucket_operations_per_second": 130.8,
+      "rss_mb_t0": 93,
+      "rss_mb_t150": 1289,
+      "rss_mb_t300": 1301,
+      "source_repeat": "benchmark-results/cloud-rebenchmark-20261008/full/dippi-rebench/benchmark-results/20261009T002116Z-d5b52c78bce4/repeat-3",
+      "success_header_latency_ns_p50": 24690620,
+      "success_header_latency_ns_p99": 67406666,
+      "successes": 49748,
+      "zero_throughput_buckets": 0
+    }
+  ],
+  "sustained_summary": {
+    "all_bucket_sums_match": true,
+    "attempts": 148986,
+    "end_rss_mb_range": [
+      1017,
+      1301
+    ],
+    "failures": 10412,
+    "fills": 13303,
+    "repetitions": 3,
+    "success_rate_range_per_second": [
+      145.04666666666665,
+      165.82666666666665
+    ],
+    "successes": 138574,
+    "zero_throughput_buckets": 0
+  }
+}

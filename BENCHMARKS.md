@@ -1,5 +1,11 @@
 # Vela Exchange — Benchmark Methodology
 
+> **Historical results:** The figures below were recorded in May 2026 and
+> have not been reproduced against the current Dippi code. The benchmark
+> workload and HTTP success checks were corrected in October 2026. Do not
+> cite the old values as current results; use a new evidence run from
+> `scripts/run_benchmarks.sh`.
+
 ## Hardware
 
 Apple M3 (arm64)
@@ -8,7 +14,9 @@ Apple M3 (arm64)
 
 Benchmarks use [Criterion.rs](https://github.com/bheisler/criterion.rs) with 100 samples per benchmark and HTML reports.
 
-The `realistic_mm_workload` benchmark mirrors Pulse's published design:
+The historical `realistic_mm_workload` was intended to approximate a
+market-maker cancel/repost mix. Workload equivalence to Pulse has not been
+established for the corrected request stream:
 - 10 order book markets, each filled to 100 orders per side (50 MMs × 2 orders per side)
 - 50 market maker accounts, 1 taker account
 - Pre-generated 10,000 engine requests:
@@ -19,7 +27,7 @@ The `realistic_mm_workload` benchmark mirrors Pulse's published design:
 
 Isolated benchmarks (post, cancel, fill, FOK, nonce, credit, fee) each measure a single `engine.process()` call using `iter_batched(PerIteration)` to create fresh engine state before each measurement without including setup in the timed window.
 
-## Phase 2 improvements measured
+## Historical Phase 2 measurements
 
 | Feature | Measured impact |
 |---------|----------------|
@@ -28,7 +36,7 @@ Isolated benchmarks (post, cancel, fill, FOK, nonce, credit, fee) each measure a
 | Credit auto-cancel | Full oldest-order eviction + new order post: 4.10 μs |
 | Fee calculation | ~0.4 μs overhead vs zero-fee fill (3.81 μs vs 3.43 μs) |
 
-## Phase 3 hot-path optimizations (2026-05-20)
+## Historical Phase 3 hot-path optimizations (2026-05-20)
 
 Three targeted changes to reduce metadata-clone overhead on the 98% non-fill path:
 
@@ -42,13 +50,13 @@ Three targeted changes to reduce metadata-clone overhead on the 98% non-fill pat
 > path were completed in a subsequent correctness pass (post-2026-05-20).  The component
 > benchmark numbers above reflect the updated code.
 
-## Results
+## Historical results (not reproduced on the current code)
 
 > **Scope caveat:** The `realistic_mm_workload` figure (0.38 µs / 2.5M ops/sec) measures
 > only `engine.process()` in a single thread.  It excludes network transit, ECDSA signature
 > verification, JSON serialization, the 500 µs batch-dispatch window, WAL I/O, and DA
-> submission.  The representative end-to-end figure is the Tier-2 loopback result:
-> **p50 = 16.9 ms, throughput ≈ 59 ops/sec** (single client, `127.0.0.1`).
+> submission. The old Tier-2 loopback result was **p50 = 16.9 ms, about
+> 59 ops/sec** (single client, `127.0.0.1`); it is not a current system figure.
 
 Measured 2026-05-20 on Apple M3.
 
@@ -68,13 +76,15 @@ Measured 2026-05-20 on Apple M3.
 | `component_breakdown/nonce_window_accept` | 19.5 ns | — |
 | `component_breakdown/engine_process_post_order` | 1.95 μs | — |
 
-### vs. Pulse (reference open-source DEX engine, measured on Apple M2 Pro)
+### Old Pulse comparison (different hardware and unvalidated workload equivalence)
 
 | Metric | Vela Phase 3 (M3) | Pulse (M2 Pro) |
 |--------|-------------------|----------------|
 | Full loop latency (p50) | 0.38 μs | 7.92 μs |
 | Throughput | 2.5M ops/sec | 125k ops/sec |
-| Relative speedup | **20.8×** | baseline |
+
+The old ratio is not a defensible speedup claim because the machines and
+request-outcome validation differ. The new report does not use it.
 
 ### Remaining hot-path costs (for future work)
 
@@ -85,8 +95,8 @@ The largest remaining costs on the cancel/re-quote path are:
 ### Running benchmarks
 
 ```bash
-bash scripts/run_benchmarks.sh
-# HTML report: engine/target/criterion/report/index.html
+BENCH_REPEATS=3 bash scripts/run_benchmarks.sh
+# Logs, metadata, raw HTTP samples, and Criterion artifacts: benchmark-results/<run-id>/
 ```
 
 Or directly:
