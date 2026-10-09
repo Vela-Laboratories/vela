@@ -1,0 +1,235 @@
+{
+  "engine": {
+    "exploratory_matching_group_counts": [
+      30,
+      30,
+      30
+    ],
+    "metadata": "UTC start: 2026-10-08T22:18:49Z\nGit HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nGit status:\n M .gitignore\n M BENCHMARKS.md\n M README.md\n M benches/README.md\n M benches/benches/e2e_http.rs\n M benches/benches/sustained_throughput.rs\n M docs/benchmarks.md\n M engine/benches/matching_engine_bench.rs\n M scripts/run_benchmarks.sh\nBenchmark-source diff SHA-256: (stdin)= 5606bc8d2f07fcd9e41051c27dfbf467ee0074bf43aceabb1baebb7cbd62e0ed\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10855e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod cpu3c 16 vCPU 32 GB; AMD EPYC 9754 host\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 3\nSuites: engine matching\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\n",
+    "rate_median_across_repeats": 1244755.0100449368,
+    "rate_range_across_repeats": [
+      1212524.2919390127,
+      1258416.9479735412
+    ],
+    "validated_realistic_mm": [
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 7921001.905916664,
+          "upper_bound": 7976853.1315
+        },
+        "criterion_mean_ns_per_10000": 7946491.833333331,
+        "in_process_operations_per_second": 1258416.9479735412,
+        "mean_ns_per_operation": 794.6491833333331,
+        "repeat": "repeat-1"
+      },
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 7999769.143499998,
+          "upper_bound": 8071247.221499997
+        },
+        "criterion_mean_ns_per_10000": 8033709.379999998,
+        "in_process_operations_per_second": 1244755.0100449368,
+        "mean_ns_per_operation": 803.3709379999998,
+        "repeat": "repeat-2"
+      },
+      {
+        "criterion_mean_95pct_ci_ns_per_10000": {
+          "confidence_level": 0.95,
+          "lower_bound": 8199125.561833336,
+          "upper_bound": 8297661.80641667
+        },
+        "criterion_mean_ns_per_10000": 8247257.450000002,
+        "in_process_operations_per_second": 1212524.2919390127,
+        "mean_ns_per_operation": 824.7257450000002,
+        "repeat": "repeat-3"
+      }
+    ]
+  },
+  "http": {
+    "metadata": "UTC start: 2026-10-08T22:53:16Z\nGit HEAD: 940f3a48fe413fa83ff997fa3d6a770ac9488df8\nGit status:\n M .gitignore\n M BENCHMARKS.md\n M README.md\n M benches/README.md\n M benches/benches/e2e_http.rs\n M benches/benches/sustained_throughput.rs\n M docs/benchmarks.md\n M engine/benches/matching_engine_bench.rs\n M scripts/run_benchmarks.sh\nBenchmark-source diff SHA-256: (stdin)= 811dc4740aaaa0a4d426b593b89d59ba4983514af5db92063e27ef308251b391\nOS: Linux 5.15.0-94-generic x86_64\nCPU: AMD EPYC 9754 128-Core Processor\nAvailable logical CPUs: 16\nHost logical CPUs: 256\nHost memory bytes: 8.10855e+11\nCgroup CPU quota: -1/100000\nCgroup memory limit bytes: 32000000000\nRental allocation: Runpod cpu3c 16 vCPU 32 GB; AMD EPYC 9754 host\nRust: rustc 1.99.0 (b940084d7 2026-09-28)\nCargo: cargo 1.99.0 (5f94df478 2026-08-27)\nRepeats: 3\nSuites: e2e_http sustained_throughput\nBuild profile: bench (fat LTO, one codegen unit)\nLoopback HTTP: 127.0.0.1\nHTTP dispatch timeout ms: 5000\nHTTP admin token: ephemeral per suite, never saved\n",
+    "repeats": [
+      {
+        "http": {
+          "burst_1000": {
+            "attempts": 1000,
+            "failures": 0,
+            "status_counts": {
+              "200": 1000
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 2125514521,
+            "success_latency_ns_p99": 3282827946,
+            "success_latency_ns_p999": 3316118186,
+            "successes": 1000
+          },
+          "concurrent_32": {
+            "attempts": 5323,
+            "failures": 456,
+            "status_counts": {
+              "200": 4867,
+              "400": 456
+            },
+            "success_fraction": 0.9143340221679505,
+            "success_latency_ns_p50": 490832482,
+            "success_latency_ns_p99": 592447255,
+            "success_latency_ns_p999": 744614073,
+            "successes": 4867
+          },
+          "single": {
+            "attempts": 623,
+            "failures": 0,
+            "status_counts": {
+              "200": 623
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 182340895,
+            "success_latency_ns_p99": 288886732,
+            "success_latency_ns_p999": 2307358793,
+            "successes": 623
+          }
+        },
+        "repeat": "repeat-1",
+        "sustained": {
+          "attempts": 6338,
+          "bucket_count": 60,
+          "bucket_success_sum": 5988,
+          "buckets_match_successes": true,
+          "failures": 350,
+          "fills": 446,
+          "maximum_5s_bucket_operations_per_second": 21.8,
+          "mean_successful_operations_per_second": 19.96,
+          "minimum_5s_bucket_operations_per_second": 7.8,
+          "rss_mb_t0": 496,
+          "rss_mb_t150": 9537,
+          "rss_mb_t300": 9943,
+          "success_header_latency_ns_p50": 232632630,
+          "success_header_latency_ns_p99": 498701001,
+          "successes": 5988,
+          "zero_throughput_buckets": 0
+        }
+      },
+      {
+        "http": {
+          "burst_1000": {
+            "attempts": 1000,
+            "failures": 0,
+            "status_counts": {
+              "200": 1000
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 2191978057,
+            "success_latency_ns_p99": 3432075847,
+            "success_latency_ns_p999": 3433814141,
+            "successes": 1000
+          },
+          "concurrent_32": {
+            "attempts": 5792,
+            "failures": 1243,
+            "status_counts": {
+              "200": 4549,
+              "400": 1243
+            },
+            "success_fraction": 0.7853936464088398,
+            "success_latency_ns_p50": 529785812,
+            "success_latency_ns_p99": 1441335259,
+            "success_latency_ns_p999": 3827488990,
+            "successes": 4549
+          },
+          "single": {
+            "attempts": 637,
+            "failures": 0,
+            "status_counts": {
+              "200": 637
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 184103728,
+            "success_latency_ns_p99": 299923610,
+            "success_latency_ns_p999": 345973343,
+            "successes": 637
+          }
+        },
+        "repeat": "repeat-2",
+        "sustained": {
+          "attempts": 6275,
+          "bucket_count": 60,
+          "bucket_success_sum": 5928,
+          "buckets_match_successes": true,
+          "failures": 347,
+          "fills": 439,
+          "maximum_5s_bucket_operations_per_second": 22.0,
+          "mean_successful_operations_per_second": 19.76,
+          "minimum_5s_bucket_operations_per_second": 13.6,
+          "rss_mb_t0": 497,
+          "rss_mb_t150": 10733,
+          "rss_mb_t300": 11349,
+          "success_header_latency_ns_p50": 237368706,
+          "success_header_latency_ns_p99": 482983040,
+          "successes": 5928,
+          "zero_throughput_buckets": 0
+        }
+      },
+      {
+        "http": {
+          "burst_1000": {
+            "attempts": 1000,
+            "failures": 0,
+            "status_counts": {
+              "200": 1000
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 2048681416,
+            "success_latency_ns_p99": 3287287138,
+            "success_latency_ns_p999": 3289438049,
+            "successes": 1000
+          },
+          "concurrent_32": {
+            "attempts": 5824,
+            "failures": 221,
+            "status_counts": {
+              "200": 5603,
+              "400": 221
+            },
+            "success_fraction": 0.9620535714285714,
+            "success_latency_ns_p50": 493102042,
+            "success_latency_ns_p99": 643797092,
+            "success_latency_ns_p999": 669375802,
+            "successes": 5603
+          },
+          "single": {
+            "attempts": 642,
+            "failures": 0,
+            "status_counts": {
+              "200": 642
+            },
+            "success_fraction": 1.0,
+            "success_latency_ns_p50": 183239478,
+            "success_latency_ns_p99": 274590464,
+            "success_latency_ns_p999": 342677870,
+            "successes": 642
+          }
+        },
+        "repeat": "repeat-3",
+        "sustained": {
+          "attempts": 6323,
+          "bucket_count": 60,
+          "bucket_success_sum": 5976,
+          "buckets_match_successes": true,
+          "failures": 347,
+          "fills": 444,
+          "maximum_5s_bucket_operations_per_second": 22.2,
+          "mean_successful_operations_per_second": 19.92,
+          "minimum_5s_bucket_operations_per_second": 6.6,
+          "rss_mb_t0": 497,
+          "rss_mb_t150": 9722,
+          "rss_mb_t300": 10927,
+          "success_header_latency_ns_p50": 233735306,
+          "success_header_latency_ns_p99": 460277059,
+          "successes": 5976,
+          "zero_throughput_buckets": 0
+        }
+      }
+    ]
+  }
+}
