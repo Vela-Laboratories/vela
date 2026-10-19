@@ -1,7 +1,7 @@
 # Vela Exchange — Benchmark Methodology
 
 > **Historical results:** The figures below were recorded in May 2026 and
-> have not been reproduced against the current Dippi code. The benchmark
+> have not been reproduced against the current Vela code. The benchmark
 > workload and HTTP success checks were corrected in October 2026. Do not
 > cite the old values as current results; use a new evidence run from
 > `scripts/run_benchmarks.sh`.

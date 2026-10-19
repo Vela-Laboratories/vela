@@ -62,9 +62,9 @@ export default function UnifiedRouteRail() {
   const pathname = usePathname()
 
   return <aside className="unified-route-rail">
-    <div className="unified-route-rail__heading"><span>dippi.fun</span><strong>Your workspace</strong><small>Public beta · Sepolia</small></div>
+    <div className="unified-route-rail__heading"><span>Vela Exchange</span><strong>Your workspace</strong><small>Research preview · Sepolia</small></div>
     <div className="unified-route-rail__notice"><i>◆</i><div><strong>Testnet environment</strong><span>No real funds or production custody</span></div></div>
-    <nav aria-label="Dippi workspace navigation">
+    <nav aria-label="Vela workspace navigation">
       {ROUTE_GROUPS.map((group) => <section key={group.label}><h2>{group.label}</h2>{group.links.map((link) => <Link key={link.href} href={link.href} className={isActive(pathname, link.href) ? 'is-active' : ''} aria-current={isActive(pathname, link.href) ? 'page' : undefined}><i>{link.glyph}</i><span>{link.label}</span></Link>)}</section>)}
     </nav>
     <footer><span><i />Reference services</span><strong>Operational</strong></footer>

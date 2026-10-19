@@ -306,7 +306,7 @@ export default function DepositPage() {
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           DEPOSIT FUNDS
         </p>
-        <p className="dippi-funding-page__intro">Add testnet funds to explore the Dippi sandbox. Check the credit type and network before continuing.</p>
+        <p className="dippi-funding-page__intro">Add testnet funds to explore the Vela sandbox. Check the credit type and network before continuing.</p>
 
         <div
           className="dippi-funding-notice mb-6"

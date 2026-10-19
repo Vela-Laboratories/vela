@@ -205,7 +205,7 @@ export default function BatchDetailPage() {
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
             <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', margin: 0 }}>
-              Dippi — Batch Explorer
+              Vela — Batch Explorer
             </p>
             <span style={{ fontFamily: IN, fontSize: '9px', color: '#20c98a', border: '1px solid #20c98a', padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               Finalized

@@ -29,10 +29,10 @@ export default function HomePage() {
       </section>
 
       <section className="dip-intro" aria-labelledby="dip-intro-title">
-        <span className="dip-kicker">WELCOME TO DIPPI.FUN</span>
+        <span className="dip-kicker">WELCOME TO VELA</span>
         <div>
           <h2 id="dip-intro-title">A little curiosity<br />goes a long way.</h2>
-          <p>Markets can be serious. Exploring them doesn&apos;t have to be. Dippi gives you a place to look around, learn the rhythm, and try the mechanics on testnet.</p>
+          <p>Markets can be serious. Exploring them doesn&apos;t have to be. Vela gives you a place to look around, learn the rhythm, and try the mechanics on testnet.</p>
         </div>
       </section>
 
@@ -42,7 +42,7 @@ export default function HomePage() {
           <Link href="/markets">All markets <span aria-hidden="true">↗</span></Link>
         </div>
         <HomeMarkets />
-        <p className="dip-radar__note">Prices shown are Binance Spot references. Dippi orders use a separate synthetic Sepolia testnet book.</p>
+        <p className="dip-radar__note">Prices shown are Binance Spot references. Vela orders use a separate synthetic Sepolia testnet book.</p>
       </section>
 
       <section className="dip-story" aria-labelledby="dip-story-title">
@@ -88,7 +88,7 @@ export default function HomePage() {
       </section>
 
       <footer className="dip-footer">
-        <div><strong>😁 dippi.fun</strong><span>Explore freely. Trade on testnet.</span></div>
+        <div><strong>Vela Exchange</strong><span>Explore freely. Trade on testnet.</span></div>
         <nav aria-label="Footer"><Link href="/docs">Docs</Link><Link href="/status">Status</Link><Link href="/transparency">Transparency</Link></nav>
         <p>Photos: <a href="https://unsplash.com/photos/person-about-to-dive-on-swimming-pool-eQfMpQ3WcVY" target="_blank" rel="noopener noreferrer">Emilio Garcia</a>, <a href="https://unsplash.com/photos/two-friends-jump-into-the-lake-on-a-sunny-day-qPSpg2YHL9o" target="_blank" rel="noopener noreferrer">Bailey Burton</a>, and <a href="https://unsplash.com/photos/sunlight-reflects-on-the-surface-of-a-blue-swimming-pool-HltUVQgeaZ0" target="_blank" rel="noopener noreferrer">Cuvii</a> / Unsplash.</p>
       </footer>

@@ -44,11 +44,11 @@ const CANNOT_DO = [
 const COMMITMENTS = [
   {
     title: 'FAIR MATCHING',
-    body: 'Orders are matched in strict price-time priority. We do not front-run orders, preference any user, or execute trades not submitted by users. The matching engine is open source and verifiable at github.com/dippi-fun/exchange.',
+    body: 'Orders are matched in strict price-time priority. We do not front-run orders, preference any user, or execute trades not submitted by users. The matching engine is open source and verifiable at github.com/Vela-Laboratories/vela.',
   },
   {
     title: 'FULL RESERVES',
-    body: 'Vela holds 100% of user funds in the VelaSettlement smart contract on Ethereum. We never lend, rehypothecate, or use user deposits for any purpose. Verifiable in real time at dippi.fun/transparency.',
+    body: 'Vela holds 100% of user funds in the VelaSettlement smart contract on Ethereum. We never lend, rehypothecate, or use user deposits for any purpose. Verifiable in real time at the transparency page.',
   },
   {
     title: 'EMERGENCY EXIT',
@@ -90,7 +90,7 @@ export default function OperatorPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Dippi — Operator Disclosure
+            Vela — Operator Disclosure
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '48px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
@@ -123,7 +123,7 @@ export default function OperatorPage() {
             ['FOUNDER', 'Arya Somu'],
             ['CONTACT', 'arya@monolithsystematic.com'],
             ['WEBSITE', 'monolithsystematic.com'],
-            ['GITHUB', 'github.com/dippi-fun/exchange'],
+            ['GITHUB', 'github.com/Vela-Laboratories/vela'],
             ['WHITE PAPER', 'ssrn.com/abstract=6579199'],
           ].map(([label, value]) => (
             <div key={label} style={{ background: '#211e2b', padding: '20px 24px' }}>
@@ -294,7 +294,7 @@ export default function OperatorPage() {
           <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.2)', margin: 0 }}>
             Want to be listed? Register your MM wallet at{' '}
             <a href="/market-makers/register" style={{ color: 'rgba(232,234,240,0.4)', textDecoration: 'underline' }}>
-              dippi.fun/market-makers/register
+              /market-makers/register
             </a>
           </p>
         </div>

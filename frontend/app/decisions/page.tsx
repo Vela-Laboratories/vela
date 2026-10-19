@@ -75,7 +75,7 @@ export default function DecisionsPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Dippi — Governance
+            Vela — Governance
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '52px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
@@ -86,7 +86,7 @@ export default function DecisionsPage() {
             </span>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.4)', maxWidth: '540px', marginTop: '20px' }}>
-            Material decisions about Dippi are published here before they take effect, signed by the operator wallet. Decisions affecting fees or markets are announced at least 14 days in advance.
+            Material decisions about Vela are published here before they take effect, signed by the operator wallet. Decisions affecting fees or markets are announced at least 14 days in advance.
           </p>
         </div>
       </div>

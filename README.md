@@ -2,15 +2,15 @@
 
 A high-performance spot-exchange research preview built by [Monolith Systematic LLC](https://monolithsystematic.com).
 
-**Live:** [dippi.fun](https://dippi.fun) · **Docs:** [monolithsystematicllc.mintlify.app](https://monolithsystematicllc.mintlify.app) · **White Paper:** [SSRN 6579199](https://ssrn.com/abstract=6579199)
+**Repository:** [Vela-Laboratories/vela](https://github.com/Vela-Laboratories/vela) · **White Paper:** [SSRN 6579199](https://ssrn.com/abstract=6579199)
 
 ---
 
 ## Overview
 
 Vela is a central limit order book (CLOB) spot-exchange research system.
-Orders are wallet-signed and matching is deterministic, but the current
-public beta is a Sepolia demo. It does not have an authoritative production
+Orders are wallet-signed and matching is deterministic. The Sepolia demo was a
+research preview. It does not have an authoritative production
 ledger, reconciled custody, real SP1 proofs, an on-chain fraud-proof verifier,
 or enforceable forced inclusion. Do not use real funds.
 
@@ -19,13 +19,13 @@ or enforceable forced inclusion. Do not use real funds.
 ## Performance
 
 > **Historical benchmark snapshot (May 2026).** These figures have not been
-> reproduced against the current Dippi code. The workload and HTTP success
+> reproduced against the current Vela code. The workload and HTTP success
 > checks were corrected in October 2026; a fresh, archived run is required
 > before citing current performance. See [`BENCHMARKS.md`](BENCHMARKS.md).
 
 The May 2026 numbers remain in [`BENCHMARKS.md`](BENCHMARKS.md) and
 [`docs/benchmarks.md`](docs/benchmarks.md) for provenance. Their workload
-validation, hardware, and system boundaries do not support a current Dippi
+validation, hardware, and system boundaries do not support a current Vela
 performance claim or a cross-exchange speedup. The updated technical report
 in [`paper/dippi-technical-report.tex`](paper/dippi-technical-report.tex)
 separates validated in-process matching, loopback HTTP, sustained HTTP load,
@@ -54,7 +54,7 @@ The batch dispatcher coalesces multiple orders into a single engine lock acquisi
 ```
 ┌─────────────────────────────────────────────┐
 │              Next.js Frontend               │
-│                dippi.fun                    │
+│             Vela research UI                │
 └────────────────────┬────────────────────────┘
                      │ HTTP / WebSocket / FIX
 ┌────────────────────▼────────────────────────┐
@@ -96,7 +96,7 @@ Vela exposes research and testnet telemetry for inspection:
 | Batch explorer | Locally produced batch records and keccak256 state roots; public data availability is not yet guaranteed |
 | Verification research UI | Inspect local commitments and report discrepancies; no on-chain challenge enforcement |
 
-All live at [dippi.fun/transparency](https://dippi.fun/transparency).
+These features are documented in the research UI; the project is no longer under active development.
 
 ---
 
@@ -261,7 +261,7 @@ Sign via MetaMask `personal_sign`. Prices/quantities in fixed-point (×1,000,000
 ### Engine
 
 ```bash
-git clone https://github.com/arpjw/vela
+git clone https://github.com/Vela-Laboratories/vela
 cd vela
 cargo build --release --bin api
 SNAPSHOT_DIR=./data cargo run --release --bin api
@@ -349,7 +349,7 @@ vela/
 
 ## Project Status
 
-Currently a **testnet demo** on Ethereum Sepolia. Do not use real funds. Engine
+This project is a **testnet research demo** on Ethereum Sepolia and is no longer under active development. Do not use real funds. Engine
 credits are not production custody balances, withdrawals are not backed by a
 durable reservation workflow, and proof/forced-inclusion enforcement is not live.
 

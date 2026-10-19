@@ -29,7 +29,7 @@ pub fn openapi_spec() -> serde_json::Value {
         "info": {
             "title": "Vela Exchange API",
             "version": "0.4.0",
-            "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/dippi-fun/exchange for source and https://dippi.fun for live beta.",
+            "description": "HTTP + WebSocket API for the Vela verifiable spot DEX. See https://github.com/Vela-Laboratories/vela for source.",
             "contact": { "email": "asomu@ucsd.edu" }
         },
         "servers": [

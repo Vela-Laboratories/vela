@@ -690,7 +690,7 @@ function ReferralSection({ address }: { address: string }) {
   const [refInput, setRefInput] = useState('')
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
-  const fullLink = `https://dippi.fun?ref=${address}`
+  const referralPath = `/?ref=${address}`
 
   useEffect(() => {
     getReferral(address).then((res) => {
@@ -699,7 +699,7 @@ function ReferralSection({ address }: { address: string }) {
   }, [address])
 
   function handleCopy() {
-    navigator.clipboard.writeText(fullLink).then(() => {
+    navigator.clipboard.writeText(new URL(referralPath, window.location.origin).toString()).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -740,7 +740,7 @@ function ReferralSection({ address }: { address: string }) {
           <div className="text-[10px] text-brown uppercase tracking-[0.1em] mb-2">Your referral link</div>
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs text-ink bg-vellum px-3 py-2 flex-1 truncate">
-              {`dippi.fun?ref=${truncateAddr(address)}`}
+              {`/?ref=${truncateAddr(address)}`}
             </span>
             <button
               type="button"

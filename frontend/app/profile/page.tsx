@@ -108,7 +108,7 @@ function ProfileMarketRail({ markets, onCollapse }: { markets: ReferenceMarket[]
     <nav className="terminal-rail-tabs terminal-rail-tabs--primary" aria-label="Exchange navigation"><Link href="/status"><i>●</i>Status</Link><Link href="/markets/BTC-USDC">Markets</Link><Link href="/leaderboard">Leaders</Link><span className="is-active">Profile</span><button type="button" aria-label="Collapse market rail" onClick={onCollapse}><ProfileIcon name="collapse" /></button></nav>
     <label className="terminal-rail-search"><ProfileIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search assets" /></label>
     <div className="terminal-rail-filters">{(['watchlist', 'all', 'movers', 'volume'] as const).map((item) => <button key={item} type="button" className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'All markets' : item}</button>)}</div>
-    <div className="terminal-rail-insight"><span>◆</span><p><strong>Live reference data</strong><small>Binance pricing · Dippi testnet book</small></p><i>↗</i></div>
+    <div className="terminal-rail-insight"><span>◆</span><p><strong>Live reference data</strong><small>Binance pricing · Vela testnet book</small></p><i>↗</i></div>
     <div className="terminal-market-list-head"><span>Markets</span><span>Price / 24h</span></div>
     <div className="terminal-market-list" role="list">{pairs.map((pair) => {
       const market = byId[pair]
@@ -138,7 +138,7 @@ function ConnectProfile({ onConnect, isConnected }: { onConnect: () => Promise<s
 
 function TraderRail({ leaderboard, currentAddress }: { leaderboard: LeaderboardData | null; currentAddress?: string }) {
   const traders = leaderboard?.top_traders.slice(0, 9) ?? []
-  return <aside className="profile-trader-rail"><header><div><span>Testnet network</span><h2>Active traders</h2></div><Link href="/leaderboard">View all</Link></header><p>Ranked by reported Dippi testnet volume. No social following or performance endorsement is implied.</p><div className="profile-trader-list">{traders.length === 0 ? <div className="profile-trader-empty">Leaderboard activity will appear here as trades settle.</div> : traders.map((trader, index) => {
+  return <aside className="profile-trader-rail"><header><div><span>Testnet network</span><h2>Active traders</h2></div><Link href="/leaderboard">View all</Link></header><p>Ranked by reported Vela testnet volume. No social following or performance endorsement is implied.</p><div className="profile-trader-list">{traders.length === 0 ? <div className="profile-trader-empty">Leaderboard activity will appear here as trades settle.</div> : traders.map((trader, index) => {
     const isCurrent = currentAddress?.toLowerCase() === trader.address.toLowerCase()
     return <div className={`profile-trader${isCurrent ? ' is-current' : ''}`} key={trader.address}><div className="profile-trader__avatar">{trader.address.slice(2, 4).toUpperCase()}</div><div><strong>{isCurrent ? 'You' : `${trader.address.slice(0, 6)}…${trader.address.slice(-4)}`}</strong><span>{trader.fill_count} fills · {formatCompact(toNumber(trader.volume_usdc))} USDC</span></div><b>#{index + 1}</b></div>
   })}</div><section><span>Account safety</span><strong>Wallet-authenticated data</strong><p>Private account requests require a signed, short-lived Vela session. This page never asks for a seed phrase.</p><Link href="/transparency">Review system boundaries</Link></section></aside>

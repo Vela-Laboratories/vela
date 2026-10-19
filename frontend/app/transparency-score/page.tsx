@@ -213,7 +213,7 @@ export default function TransparencyScorePage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.25em', color: 'rgba(232,234,240,0.3)', marginBottom: '20px' }}>
-            Dippi — Transparency Standard
+            Vela — Transparency Standard
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '64px', color: '#f8f5ee', display: 'block', lineHeight: 1 }} className="text-5xl lg:text-[64px]">
@@ -339,7 +339,7 @@ export default function TransparencyScorePage() {
               Dispute a rating →
             </a>
             <a
-              href="https://github.com/dippi-fun/exchange"
+              href="https://github.com/Vela-Laboratories/vela"
               target="_blank"
               rel="noopener noreferrer"
               style={{

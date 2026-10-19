@@ -1,67 +1,54 @@
 .coming-soon {
-  position: relative;
-  isolation: isolate;
   display: grid;
   min-height: 100svh;
   place-items: center;
-  overflow: hidden;
   padding: 48px 24px;
-  color: #fff;
-  background: #53c4ce url('/video/dippi-beach-poster-1080.jpg') center / cover no-repeat;
+  color: #f5f5f2;
+  background: radial-gradient(circle at 70% 25%, #234852, transparent 42%), #101d23;
   font-family: var(--font-dm-sans), sans-serif;
 }
 
-.coming-soon::after {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(6, 45, 54, .08), rgba(6, 45, 54, .46) 40%, rgba(6, 45, 54, .48) 62%, rgba(6, 45, 54, .14));
-  content: '';
-}
-
-.coming-soon__video {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-}
-
 .coming-soon__content {
-  position: relative;
-  z-index: 2;
-  width: min(100%, 1200px);
-  margin-top: -3vh;
+  width: min(100%, 960px);
   text-align: center;
 }
 
-.coming-soon__smile {
-  display: inline-block;
-  margin-bottom: 30px;
-  font-size: clamp(2.5rem, 4vw, 3.7rem);
-  line-height: 1;
+.coming-soon__mark {
+  display: inline-grid;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 32px;
+  place-items: center;
+  border: 1px solid #7497a0;
+  border-radius: 12px;
+  font-size: 2.5rem;
+  font-weight: 700;
 }
 
 .coming-soon h1 {
   margin: 0;
-  font-size: clamp(3.6rem, 8.2vw, 8.5rem);
+  font-size: clamp(3.5rem, 9vw, 7rem);
   font-weight: 500;
-  letter-spacing: -.07em;
-  line-height: 1.02;
-  text-wrap: balance;
-  text-shadow: 0 2px 35px rgba(8, 31, 40, .16);
+  letter-spacing: -.06em;
+  line-height: 1.05;
 }
 
-@media (max-width: 640px) {
-  .coming-soon { padding: 32px 22px; }
-  .coming-soon__content { margin-top: 0; }
-  .coming-soon__smile { margin-bottom: 24px; }
-  .coming-soon h1 { font-size: clamp(3.3rem, 13vw, 5.2rem); }
-  .coming-soon__video { object-position: 42% center; }
+.coming-soon p {
+  margin: 24px 0 36px;
+  color: #b7c8cb;
+  font-size: clamp(1rem, 2vw, 1.25rem);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .coming-soon__video { display: none; }
+.coming-soon a {
+  display: inline-block;
+  padding: 13px 20px;
+  border: 1px solid #7497a0;
+  border-radius: 6px;
+  color: #f5f5f2;
+  text-decoration: none;
+}
+
+.coming-soon a:hover,
+.coming-soon a:focus-visible {
+  background: #234852;
 }

@@ -1,23 +1,11 @@
 export default function ComingSoon() {
   return (
     <main className="coming-soon">
-      <video
-        className="coming-soon__video"
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="metadata"
-        poster="/video/dippi-beach-poster-1080.jpg"
-        aria-hidden="true"
-      >
-        <source src="/video/dippi-beach-mobile-1080.mp4" type="video/mp4" media="(max-width: 640px)" />
-        <source src="/video/dippi-beach-1080.mp4" type="video/mp4" />
-      </video>
-
       <div className="coming-soon__content">
-        <span className="coming-soon__smile" aria-hidden="true">😁</span>
-        <h1>dippi.fun is coming soon</h1>
+        <span className="coming-soon__mark" aria-hidden="true">V</span>
+        <h1>Vela Exchange</h1>
+        <p>Testnet exchange research. Development has concluded.</p>
+        <a href="https://github.com/Vela-Laboratories/vela">View the repository ↗</a>
       </div>
     </main>
   )

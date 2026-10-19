@@ -143,11 +143,11 @@ Expected runtime: ~5.5 minutes (setup + 300 s run).
 
 The values below come from the May 2026 benchmark notes. The workload and
 success checks have since changed, and the hardware differs across projects.
-Do not use these tables as current Dippi results or as a measured speedup.
+Do not use these tables as current Vela results or as a measured speedup.
 
 The earlier Vela-versus-Pulse ratio lacks matched hardware and validated
 request outcomes. The Hyperliquid figures use a different system boundary.
-Neither comparison establishes a Dippi speedup. See `BENCHMARKS.md` for the
+Neither comparison establishes a Vela speedup. See `BENCHMARKS.md` for the
 archived values and their provenance; the new technical report uses only
 measurements with an explicit workload and timing boundary.
 

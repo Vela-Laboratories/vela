@@ -781,7 +781,7 @@ export default function AnalyticsPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Dippi — Market Analytics
+            Vela — Market Analytics
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '48px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
@@ -957,7 +957,7 @@ export default function AnalyticsPage() {
         </div>
 
         <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,234,240,0.35)', marginTop: '20px' }}>
-          All analytics are computed from the live Vela order book and trade history. Methodology is open source at github.com/dippi-fun/exchange.
+          All analytics are computed from the live Vela order book and trade history. Methodology is open source at github.com/Vela-Laboratories/vela.
         </p>
 
         <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid rgba(232,234,240,0.07)' }}>

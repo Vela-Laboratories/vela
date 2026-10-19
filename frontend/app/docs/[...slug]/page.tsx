@@ -278,12 +278,12 @@ function Subtitle({ children }: { children: ReactNode }) {
 function WhatIsVela() {
   return (
     <>
-      <H1>What is Dippi?</H1>
+      <H1>What is Vela?</H1>
       <Subtitle>A public Sepolia testnet trading sandbox powered by the Vela matching engine.</Subtitle>
 
       <H2>Explore the market</H2>
       <P>
-        Dippi lets you browse spot markets, inspect reference charts and synthetic testnet order
+        Vela lets you browse spot markets, inspect reference charts and synthetic testnet order
         books, and try wallet-signed orders. Binance Spot prices are used for reference data only.
         Orders use a separate Sepolia demo book, so reference prices are not executable quotes.
       </P>
@@ -304,7 +304,7 @@ function WhatIsVela() {
 
       <H2>Current limits</H2>
       <Warning>
-        Dippi is a Sepolia demo. Do not use real funds. It does not have an authoritative production
+        Vela is a Sepolia demo. Do not use real funds. It does not have an authoritative production
         ledger, reconciled custody, real SP1 proofs, an on-chain fraud-proof verifier, or enforceable
         forced inclusion. The technical pages in these docs include designs and research that are
         not deployed as customer protections.
@@ -2584,15 +2584,15 @@ function Faq() {
     <>
       <H1>Frequently Asked Questions</H1>
 
-      <H3>Is Dippi live?</H3>
+      <H3>Is Vela live?</H3>
       <P>
-        Dippi is a public Sepolia testnet demo with 16 configured USDC spot markets.
+        Vela is a public Sepolia testnet demo with 16 configured USDC spot markets.
         It is not a production exchange and does not support real funds.
       </P>
 
       <H3>Are deposits safe?</H3>
       <P>
-        Dippi is a testnet demo. Do not use real funds. The beta does not have an authoritative
+        Vela is a testnet demo. Do not use real funds. The beta does not have an authoritative
         production ledger or reconciled custody, and the contract alone is not a solvency guarantee.
       </P>
 
@@ -2611,7 +2611,7 @@ function Faq() {
 
       <H3>Is the source code available?</H3>
       <P>
-        Yes. Vela is MIT licensed and available at <strong>github.com/dippi-fun/exchange</strong>.
+        Yes. Vela is MIT licensed and available at <strong>github.com/Vela-Laboratories/vela</strong>.
       </P>
 
       <H3>What is the white paper?</H3>
@@ -2646,7 +2646,7 @@ function Faq() {
 
       <H3>How do I report a bug?</H3>
       <P>
-        Open an issue on the Vela GitHub repository at <strong>github.com/dippi-fun/exchange</strong>. For
+        Open an issue on the Vela GitHub repository at <strong>github.com/Vela-Laboratories/vela</strong>. For
         security vulnerabilities, contact the team through private channels before public disclosure.
       </P>
 

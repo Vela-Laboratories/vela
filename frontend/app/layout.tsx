@@ -36,15 +36,14 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://dippi.fun'),
-  title: { default: 'dippi.fun is coming soon', template: '%s | dippi.fun' },
-  description: 'dippi.fun is coming soon.',
+  metadataBase: new URL('https://vela.monolithsystematic.com'),
+  title: { default: 'Vela Exchange', template: '%s | Vela Exchange' },
+  description: 'Vela Exchange testnet research archive.',
   icons: { icon: '/icon.svg' },
   openGraph: {
-    title: 'dippi.fun is coming soon',
-    description: 'dippi.fun is coming soon.',
-    url: 'https://dippi.fun',
-    siteName: 'dippi.fun',
+    title: 'Vela Exchange',
+    description: 'Vela Exchange testnet research archive.',
+    siteName: 'Vela Exchange',
     type: 'website',
   },
   twitter: { card: 'summary_large_image' },

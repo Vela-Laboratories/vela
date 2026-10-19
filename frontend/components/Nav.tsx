@@ -178,7 +178,7 @@ function MobileMenu({
   return (
     <div className="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation">
       <div className="mobile-nav__header">
-        <Link href="/" onClick={onClose} className="dippi-wordmark" aria-label="Dippi home"><span className="dippi-wordmark__emoji" aria-hidden="true">😁</span>dippi<span className="dippi-wordmark__suffix">.fun</span></Link>
+        <Link href="/" onClick={onClose} className="dippi-wordmark" aria-label="Vela home">Vela</Link>
         <button type="button" onClick={onClose} className="icon-button" aria-label="Close menu">×</button>
       </div>
 
@@ -269,7 +269,7 @@ export default function Nav() {
     <>
       <header className={`app-nav${usesTerminalShell ? ' app-nav--terminal' : ''}`}>
         <div className="app-nav__inner">
-          <Link href="/" className="dippi-wordmark" aria-label="Dippi home"><span className="dippi-wordmark__emoji" aria-hidden="true">😁</span>dippi<span className="dippi-wordmark__suffix">.fun</span></Link>
+          <Link href="/" className="dippi-wordmark" aria-label="Vela home">Vela</Link>
 
           {!usesTerminalShell ? <nav className="app-nav__primary" aria-label="Primary navigation">
             {PRIMARY_LINKS.map(({ href, label, match }) => (

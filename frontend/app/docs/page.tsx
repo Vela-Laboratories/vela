@@ -3,7 +3,7 @@ import Link from 'next/link'
 const SECTIONS = [
   {
     title: 'Introduction',
-    description: 'Meet Dippi and learn about the Vela engine behind the testnet beta.',
+    description: 'Meet Vela and learn about the Vela engine behind the testnet beta.',
     href: '/docs/introduction/what-is-vela',
   },
   {
@@ -38,7 +38,7 @@ const SECTIONS = [
   },
   {
     title: 'FAQ',
-    description: "Frequently asked questions about Dippi's public beta.",
+    description: "Frequently asked questions about Vela's public beta.",
     href: '/docs/faq',
   },
 ]
@@ -56,7 +56,7 @@ export default function DocsIndex() {
           lineHeight: 1.2,
         }}
       >
-        Dippi documentation
+        Vela documentation
       </h1>
       <p
         style={{
@@ -69,7 +69,7 @@ export default function DocsIndex() {
           maxWidth: '560px',
         }}
       >
-        Dippi is a Sepolia testnet trading sandbox powered by the Vela matching engine.
+        Vela is a Sepolia testnet trading sandbox powered by the Vela matching engine.
         Explore the current beta, its limits, and the underlying research architecture.
         Do not use real funds or assume production custody or verification guarantees.
       </p>

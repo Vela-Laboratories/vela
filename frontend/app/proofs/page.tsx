@@ -117,7 +117,7 @@ export default function ProofsPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '640px' }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.25)', margin: '0 0 24px' }}>
-            Dippi — ZK Proof System
+            Vela — ZK Proof System
           </p>
           <h1 style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: 'clamp(32px, 5vw, 52px)', color: '#f8f5ee', margin: '0 0 4px', lineHeight: 1.15 }}>
             Proof pipeline status.

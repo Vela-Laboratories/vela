@@ -64,7 +64,7 @@ export default function RegisterMMPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Dippi — Market Makers
+            Vela — Market Makers
           </p>
           <span style={{ fontFamily: PF, fontWeight: 700, fontSize: '40px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
             Register as a Market Maker
@@ -82,7 +82,7 @@ export default function RegisterMMPage() {
               <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#f8f5ee', margin: '0 0 8px' }}>Registered.</p>
               <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(232,234,240,0.6)', margin: 0 }}>
                 You will appear on{' '}
-                <a href="/operator" style={{ color: '#f8f5ee' }}>dippi.fun/operator</a>
+                <a href="/operator" style={{ color: '#f8f5ee' }}>Operator disclosure</a>
               </p>
             </div>
           </div>

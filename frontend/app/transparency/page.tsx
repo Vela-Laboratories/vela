@@ -158,7 +158,7 @@ export default function TransparencyPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,234,240,0.3)', marginBottom: '16px' }}>
-            Dippi — Public Transparency
+            Vela — Public Transparency
           </p>
           <div>
             <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#f8f5ee', display: 'block', lineHeight: 1.1 }}>
@@ -372,7 +372,7 @@ export default function TransparencyPage() {
             Every trade. Unfiltered.
           </h2>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,234,240,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
-            Testnet fills reported by the Dippi engine are displayed here. No anonymization. No aggregation. Every counterparty, every price, every timestamp.
+            Testnet fills reported by the Vela engine are displayed here. No anonymization. No aggregation. Every counterparty, every price, every timestamp.
           </p>
 
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(232,234,240,0.07)', marginBottom: '0', overflowX: 'auto' }}>
@@ -476,7 +476,7 @@ export default function TransparencyPage() {
           Every order has a permanent record.
         </h2>
         <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(232,234,240,0.45)', maxWidth: '500px', marginBottom: '28px' }}>
-          Testnet orders can be inspected at dippi.fun/orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
+          Testnet orders can be inspected at /orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
         </p>
 
         <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,234,240,0.4)', display: 'block', marginBottom: '8px' }}>

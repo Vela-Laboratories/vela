@@ -1,7 +1,7 @@
 # Vela Performance Benchmarks
 
 > **Historical snapshot.** The May 2026 measurements below predate the
-> current Dippi code and the October 2026 benchmark-harness corrections.
+> current Vela code and the October 2026 benchmark-harness corrections.
 > They are retained for provenance and must not be presented as current
 > performance. Use `BENCH_REPEATS=3 bash scripts/run_benchmarks.sh` for a
 > fresh run with archived metadata and raw samples.

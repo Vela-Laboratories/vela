@@ -41,10 +41,10 @@ export default function DesignPage() {
       <div>
         <Badge variant="primary" className="mb-3">Design System</Badge>
         <h1 className="text-4xl font-bold text-ink tracking-tight mb-2">
-          Dippi Component Library
+          Vela Component Library
         </h1>
         <p className="text-brown">
-          A friendly Dippi layer around a clear, data-focused trading desk.
+          A friendly Vela layer around a clear, data-focused trading desk.
         </p>
       </div>
 

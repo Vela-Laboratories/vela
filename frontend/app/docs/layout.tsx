@@ -18,7 +18,7 @@ const SIDEBAR_NAV: NavSection[] = [
   {
     section: 'INTRODUCTION',
     items: [
-      { label: 'What is Dippi?', href: '/docs/introduction/what-is-vela' },
+      { label: 'What is Vela?', href: '/docs/introduction/what-is-vela' },
       { label: 'Architecture Overview', href: '/docs/introduction/architecture-overview' },
       { label: 'White Paper', href: '/docs/introduction/white-paper' },
     ],
@@ -271,7 +271,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         <div className="px-6 py-12 md:px-16" style={{ maxWidth: '760px' }}>
           <div className="dippi-docs-note">
             <strong>Public beta on Sepolia</strong>
-            <span>These docs also cover Vela research and planned systems. Dippi is a testnet demo with no real funds or production custody. It does not currently offer an authoritative production ledger, reconciled custody, real SP1 proofs, or enforceable forced inclusion.</span>
+            <span>These docs also cover Vela research and planned systems. Vela is a testnet demo with no real funds or production custody. It does not currently offer an authoritative production ledger, reconciled custody, real SP1 proofs, or enforceable forced inclusion.</span>
           </div>
           {children}
         </div>
