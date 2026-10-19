@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-/// Tier 2 — End-to-end HTTP latency benchmark
+/// Tier 2 — loopback HTTP latency benchmark
 ///
 /// Measures round-trip latency from `reqwest::Client::post().send()` to full
 /// response body received.  Covers: loopback TCP, Axum routing, ECDSA
@@ -8,15 +9,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// Client-side ECDSA signing is performed OUTSIDE the timed window.
 ///
-/// Compare with Hyperliquid colocated figures (official docs):
-///   p50: 200,000 µs (200 ms)   p99: 900,000 µs (900 ms)
-///
-/// Vela's numbers are in-process (loopback, zero network transit).
-/// Hyperliquid's 200 ms floor is driven by HyperBFT consensus; Vela has no
-/// consensus layer.  The correct comparison is execution-layer vs.
-/// execution-layer latency.
+/// These numbers are loopback request/response measurements. They do not
+/// include a remote network path, a financial database commit, or consensus.
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{fs::File, io::Write, path::Path};
 
 use k256::ecdsa::SigningKey;
 use rand::rngs::StdRng;
@@ -27,7 +24,7 @@ use types::{
 };
 
 // ---------------------------------------------------------------------------
-// Markets — the 11 Pyth production feeds
+// Synthetic eleven-market fixture
 // ---------------------------------------------------------------------------
 
 struct MarketSpec {
@@ -125,7 +122,10 @@ const TOTAL_KEYS: usize = S1_KEYS + S2_KEYS + S3_KEYS;
 const WARMUP_SECS: u64 = 30;
 const MEASURE_SECS: u64 = 120;
 const CONCURRENT_CLIENTS: usize = 32;
+const CONCURRENT_THINK_MS: u64 = 50;
 const BURST_COUNT: usize = S3_KEYS;
+static HTTP_FAILURE_DETAILS_LOGGED: AtomicU64 = AtomicU64::new(0);
+static TRANSPORT_FAILURE_DETAILS_LOGGED: AtomicU64 = AtomicU64::new(0);
 
 // ---------------------------------------------------------------------------
 // Keypair
@@ -297,12 +297,52 @@ struct Stats {
     mean_ns: u64,
     stddev_ns: u64,
     count: usize,
+    attempts: usize,
+    statuses: BTreeMap<u16, usize>,
 }
 
-fn compute_stats(timings: &mut Vec<u64>) -> Stats {
+type RequestOutcome = (u64, u16);
+
+fn is_success(status: u16) -> bool {
+    (200..300).contains(&status)
+}
+
+fn compute_stats(scenario: &str, outcomes: &[RequestOutcome]) -> Stats {
+    if let Ok(dir) = std::env::var("VELA_BENCH_RESULTS_DIR") {
+        std::fs::create_dir_all(&dir).expect("create benchmark results directory");
+        let path = Path::new(&dir).join(format!("e2e_http_{scenario}_outcomes.csv"));
+        let mut file = File::create(path).expect("create raw outcome file");
+        writeln!(file, "latency_ns,http_status").expect("write raw outcome header");
+        for (latency_ns, status) in outcomes {
+            writeln!(file, "{latency_ns},{status}").expect("write raw outcome");
+        }
+    }
+    let mut statuses = BTreeMap::new();
+    for (_, status) in outcomes {
+        *statuses.entry(*status).or_insert(0) += 1;
+    }
+    let mut timings: Vec<u64> = outcomes
+        .iter()
+        .filter(|(_, status)| is_success(*status))
+        .map(|(latency_ns, _)| *latency_ns)
+        .collect();
     timings.sort_unstable();
     let n = timings.len();
-    assert!(n > 0, "no timing samples");
+    if n == 0 {
+        return Stats {
+            p50: 0,
+            p99: 0,
+            p999: 0,
+            p9999: 0,
+            min: 0,
+            max: 0,
+            mean_ns: 0,
+            stddev_ns: 0,
+            count: 0,
+            attempts: outcomes.len(),
+            statuses,
+        };
+    }
     let sum: u64 = timings.iter().sum();
     let mean = sum as f64 / n as f64;
     let variance = timings
@@ -327,6 +367,8 @@ fn compute_stats(timings: &mut Vec<u64>) -> Stats {
         mean_ns: mean as u64,
         stddev_ns: variance.sqrt() as u64,
         count: n,
+        attempts: outcomes.len(),
+        statuses,
     }
 }
 
@@ -335,17 +377,38 @@ fn compute_stats(timings: &mut Vec<u64>) -> Stats {
 // ---------------------------------------------------------------------------
 
 #[inline]
-async fn timed_send(client: &reqwest::Client, url: &str, body: Vec<u8>) -> u64 {
+async fn timed_send(client: &reqwest::Client, url: &str, body: Vec<u8>) -> RequestOutcome {
     let t0 = Instant::now();
-    let resp = client
+    let response = client
         .post(url)
         .header("content-type", "application/json")
         .body(body)
         .send()
-        .await
-        .expect("send");
-    let _ = resp.bytes().await.expect("body");
-    t0.elapsed().as_nanos() as u64
+        .await;
+    let Ok(resp) = response else {
+        let latency_ns = t0.elapsed().as_nanos() as u64;
+        if TRANSPORT_FAILURE_DETAILS_LOGGED.fetch_add(1, Ordering::Relaxed) < 10 {
+            eprintln!("[e2e_http] transport failure: {}", response.unwrap_err());
+        }
+        return (latency_ns, 0);
+    };
+    let status = resp.status().as_u16();
+    let body = resp.bytes().await;
+    let latency_ns = t0.elapsed().as_nanos() as u64;
+    let Ok(body) = body else {
+        if TRANSPORT_FAILURE_DETAILS_LOGGED.fetch_add(1, Ordering::Relaxed) < 10 {
+            eprintln!("[e2e_http] response body failure: {}", body.unwrap_err());
+        }
+        return (latency_ns, 0);
+    };
+    if !is_success(status) && HTTP_FAILURE_DETAILS_LOGGED.fetch_add(1, Ordering::Relaxed) < 10 {
+        let detail = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|value| value["error"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unclassified response body".to_string());
+        eprintln!("[e2e_http] HTTP {status}: {detail}");
+    }
+    (latency_ns, status)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,24 +425,28 @@ async fn scenario_single_threaded(
     let mut ki = 0usize;
 
     // Warmup
+    let mut warmup_failures = 0usize;
     let warmup_end = Instant::now() + Duration::from_secs(WARMUP_SECS);
     while Instant::now() < warmup_end {
         nonces[ki] += 1;
         let body = prepare_order(&keypairs[ki], ki, nonces[ki]);
-        let _ = timed_send(client, url, body).await;
+        if !is_success(timed_send(client, url, body).await.1) {
+            warmup_failures += 1;
+        }
         ki = (ki + 1) % n;
     }
+    eprintln!("[e2e_http] S1 warmup failures: {warmup_failures}");
 
     // Measurement
-    let mut timings: Vec<u64> = Vec::with_capacity(200_000);
+    let mut outcomes: Vec<RequestOutcome> = Vec::with_capacity(200_000);
     let measure_end = Instant::now() + Duration::from_secs(MEASURE_SECS);
     while Instant::now() < measure_end {
         nonces[ki] += 1;
         let body = prepare_order(&keypairs[ki], ki, nonces[ki]);
-        timings.push(timed_send(client, url, body).await);
+        outcomes.push(timed_send(client, url, body).await);
         ki = (ki + 1) % n;
     }
-    compute_stats(&mut timings)
+    compute_stats("single", &outcomes)
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +461,7 @@ async fn scenario_concurrent(
     let total = keypairs.len();
     let keys_per_task = total / CONCURRENT_CLIENTS;
     let nonces: Arc<Vec<AtomicU64>> = Arc::new((0..total).map(|_| AtomicU64::new(0)).collect());
+    let warmup_failures = Arc::new(AtomicU64::new(0));
 
     // Warmup
     {
@@ -404,6 +472,7 @@ async fn scenario_concurrent(
             let u = Arc::clone(&url);
             let kp = Arc::clone(&keypairs);
             let ns = Arc::clone(&nonces);
+            let failures = Arc::clone(&warmup_failures);
             let ks = task_id * keys_per_task;
             let ke = ks + keys_per_task;
             handles.push(tokio::spawn(async move {
@@ -411,8 +480,11 @@ async fn scenario_concurrent(
                 while Instant::now() < warmup_end {
                     let nonce = ns[ki].fetch_add(1, Ordering::Relaxed) + 1;
                     let body = prepare_order(&kp[ki], ki, nonce);
-                    let _ = timed_send(&c, &u, body).await;
+                    if !is_success(timed_send(&c, &u, body).await.1) {
+                        failures.fetch_add(1, Ordering::Relaxed);
+                    }
                     ki = ks + (ki - ks + 1) % (ke - ks);
+                    tokio::time::sleep(Duration::from_millis(CONCURRENT_THINK_MS)).await;
                 }
             }));
         }
@@ -420,9 +492,13 @@ async fn scenario_concurrent(
             h.await.unwrap();
         }
     }
+    eprintln!(
+        "[e2e_http] S2 warmup failures: {}",
+        warmup_failures.load(Ordering::Relaxed)
+    );
 
     // Measurement
-    let timings_acc: Arc<std::sync::Mutex<Vec<u64>>> =
+    let outcomes_acc: Arc<std::sync::Mutex<Vec<RequestOutcome>>> =
         Arc::new(std::sync::Mutex::new(Vec::with_capacity(500_000)));
     let measure_end = Instant::now() + Duration::from_secs(MEASURE_SECS);
     let mut handles = Vec::with_capacity(CONCURRENT_CLIENTS);
@@ -431,27 +507,28 @@ async fn scenario_concurrent(
         let u = Arc::clone(&url);
         let kp = Arc::clone(&keypairs);
         let ns = Arc::clone(&nonces);
-        let ts = Arc::clone(&timings_acc);
+        let results = Arc::clone(&outcomes_acc);
         let ks = task_id * keys_per_task;
         let ke = ks + keys_per_task;
         handles.push(tokio::spawn(async move {
-            let mut local: Vec<u64> = Vec::with_capacity(20_000);
+            let mut local: Vec<RequestOutcome> = Vec::with_capacity(20_000);
             let mut ki = ks;
             while Instant::now() < measure_end {
                 let nonce = ns[ki].fetch_add(1, Ordering::Relaxed) + 1;
                 let body = prepare_order(&kp[ki], ki, nonce);
                 local.push(timed_send(&c, &u, body).await);
                 ki = ks + (ki - ks + 1) % (ke - ks);
+                tokio::time::sleep(Duration::from_millis(CONCURRENT_THINK_MS)).await;
             }
-            ts.lock().unwrap().extend_from_slice(&local);
+            results.lock().unwrap().extend_from_slice(&local);
         }));
     }
     for h in handles {
         h.await.unwrap();
     }
 
-    let mut timings = Arc::try_unwrap(timings_acc).unwrap().into_inner().unwrap();
-    compute_stats(&mut timings)
+    let outcomes = Arc::try_unwrap(outcomes_acc).unwrap().into_inner().unwrap();
+    compute_stats("concurrent_32", &outcomes)
 }
 
 // ---------------------------------------------------------------------------
@@ -470,17 +547,17 @@ async fn scenario_burst(
     let t_start = Instant::now();
     let client = Arc::new(client.clone());
     let url = Arc::new(url.to_string());
-    let timings_acc: Arc<std::sync::Mutex<Vec<u64>>> =
+    let outcomes_acc: Arc<std::sync::Mutex<Vec<RequestOutcome>>> =
         Arc::new(std::sync::Mutex::new(Vec::with_capacity(BURST_COUNT)));
 
     let mut handles = Vec::with_capacity(BURST_COUNT);
     for body in bodies {
         let c = Arc::clone(&client);
         let u = Arc::clone(&url);
-        let ts = Arc::clone(&timings_acc);
+        let results = Arc::clone(&outcomes_acc);
         handles.push(tokio::spawn(async move {
-            let elapsed = timed_send(&c, &u, body).await;
-            ts.lock().unwrap().push(elapsed);
+            let outcome = timed_send(&c, &u, body).await;
+            results.lock().unwrap().push(outcome);
         }));
     }
     for h in handles {
@@ -491,8 +568,8 @@ async fn scenario_burst(
         t_start.elapsed().as_secs_f64()
     );
 
-    let mut timings = Arc::try_unwrap(timings_acc).unwrap().into_inner().unwrap();
-    compute_stats(&mut timings)
+    let outcomes = Arc::try_unwrap(outcomes_acc).unwrap().into_inner().unwrap();
+    compute_stats("burst_1000", &outcomes)
 }
 
 // ---------------------------------------------------------------------------
@@ -597,19 +674,19 @@ async fn run() {
     // -----------------------------------------------------------------------
     let tput1 = s1.count as f64 / elapsed_s1;
     let tput2 = s2.count as f64 / elapsed_s2;
-    let tput3 = BURST_COUNT as f64 / elapsed_s3;
+    let tput3 = s3.count as f64 / elapsed_s3;
 
     println!();
-    println!("=== VELA END-TO-END HTTP LATENCY (Tier 2) ===");
+    println!("=== DIPPI LOOPBACK HTTP LATENCY (Tier 2) ===");
     println!("Warmup: {WARMUP_SECS}s/scenario   Measurement: {MEASURE_SECS}s/scenario");
     println!(
-        "Samples: single={} concurrent={} burst={}",
-        s1.count, s2.count, s3.count
+        "Successful samples / attempts: single={}/{} concurrent={}/{} burst={}/{}",
+        s1.count, s1.attempts, s2.count, s2.attempts, s3.count, s3.attempts
     );
     println!();
     println!(
         "{:<22} {:>10} {:>10} {:>10} {:>10} {:>14}",
-        "Scenario", "p50", "p99", "p99.9", "p99.99", "throughput"
+        "Scenario", "p50", "p99", "p99.9", "p99.99", "success/s"
     );
     println!("{}", "-".repeat(82));
     for (label, s, tput) in [
@@ -617,23 +694,27 @@ async fn run() {
         ("concurrent-32", &s2, tput2),
         ("burst-1000", &s3, tput3),
     ] {
+        let fmt = |value: u64| {
+            if s.count == 0 {
+                "n/a".to_string()
+            } else {
+                format!("{} µs", value / 1_000)
+            }
+        };
         println!(
-            "{:<22} {:>8} µs {:>8} µs {:>8} µs {:>8} µs {:>10.0} ops/s",
+            "{:<22} {:>10} {:>10} {:>10} {:>10} {:>11.0}/s",
             label,
-            s.p50 / 1_000,
-            s.p99 / 1_000,
-            s.p999 / 1_000,
-            s.p9999 / 1_000,
+            fmt(s.p50),
+            fmt(s.p99),
+            fmt(s.p999),
+            fmt(s.p9999),
             tput
         );
     }
     println!();
-    println!("HYPERLIQUID BASELINE (official docs, colocated):");
-    println!("  p50: 200,000 µs (200 ms)   p99: 900,000 µs (900 ms)");
-    println!();
-    println!("NOTE: Vela latency is in-process (loopback only, zero network transit).");
-    println!("Hyperliquid's 200 ms floor is driven by HyperBFT consensus.  Vela has no");
-    println!("consensus layer yet; these numbers are execution-layer only.");
+    println!(
+        "Scope: loopback HTTP and local durability, without PostgreSQL or remote network transit."
+    );
     println!();
     println!("--- Additional statistics ---");
     for (label, s) in [
@@ -642,12 +723,19 @@ async fn run() {
         ("burst-1000", &s3),
     ] {
         println!(
-            "  {:<22} min={:.0} µs  mean={:.0} µs  stddev={:.0} µs  max={:.0} µs",
-            label,
-            s.min as f64 / 1_000.0,
-            s.mean_ns as f64 / 1_000.0,
-            s.stddev_ns as f64 / 1_000.0,
-            s.max as f64 / 1_000.0
+            "  {label}: {} successes, {} failures, statuses {:?}",
+            s.count,
+            s.attempts - s.count,
+            s.statuses
         );
+        if s.count > 0 {
+            println!(
+                "    min={:.0} µs  mean={:.0} µs  stddev={:.0} µs  max={:.0} µs",
+                s.min as f64 / 1_000.0,
+                s.mean_ns as f64 / 1_000.0,
+                s.stddev_ns as f64 / 1_000.0,
+                s.max as f64 / 1_000.0
+            );
+        }
     }
 }

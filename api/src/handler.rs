@@ -785,25 +785,7 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
     use std::fmt::Write;
     use std::sync::atomic::Ordering;
 
-    let batch_size_hist = state.batch_metrics.batch_size_histogram_snapshot();
-    let (batch_count, batch_size_sum) = {
-        let n = batch_size_hist.len() as u64;
-        let s: u64 = batch_size_hist.iter().sum();
-        (n, s)
-    };
-
-    // Cumulative-bucket counts for the batch_size histogram. Bucket
-    // boundaries mirror the max_batch_size default (256) with a coarse
-    // ladder — Grafana can pick whatever quantile it wants from these.
-    const BATCH_SIZE_BUCKETS: [u64; 9] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
-    let mut batch_size_bucket_counts = [0u64; BATCH_SIZE_BUCKETS.len()];
-    for &size in &batch_size_hist {
-        for (i, &bound) in BATCH_SIZE_BUCKETS.iter().enumerate() {
-            if size <= bound {
-                batch_size_bucket_counts[i] += 1;
-            }
-        }
-    }
+    let batch_hist = state.batch_metrics.batch_size_histogram_snapshot();
 
     let mut out = String::with_capacity(2048);
 
@@ -1030,31 +1012,41 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
     let _ = writeln!(
         out,
-        "# HELP vela_batch_count_total Batches dispatched (since last histogram drain)."
+        "# HELP vela_batch_count_total Batches dispatched since process start."
     );
     let _ = writeln!(out, "# TYPE vela_batch_count_total counter");
-    let _ = writeln!(out, "vela_batch_count_total {}", batch_count);
+    let _ = writeln!(out, "vela_batch_count_total {}", batch_hist.count);
 
-    let _ = writeln!(out, "# HELP vela_batch_size_sum_total Sum of orders across recorded batches (since last histogram drain).");
+    let _ = writeln!(
+        out,
+        "# HELP vela_batch_size_sum_total Sum of orders across batches since process start."
+    );
     let _ = writeln!(out, "# TYPE vela_batch_size_sum_total counter");
-    let _ = writeln!(out, "vela_batch_size_sum_total {}", batch_size_sum);
+    let _ = writeln!(out, "vela_batch_size_sum_total {}", batch_hist.sum);
 
     // Real Prometheus histogram for batch_size (cumulative buckets).
     let _ = writeln!(
         out,
-        "# HELP vela_batch_size Orders per dispatched batch (histogram since last drain)."
+        "# HELP vela_batch_size Orders per dispatched batch since process start."
     );
     let _ = writeln!(out, "# TYPE vela_batch_size histogram");
-    for (i, &bound) in BATCH_SIZE_BUCKETS.iter().enumerate() {
+    for (i, &bound) in engine::batch_dispatcher::BATCH_SIZE_BUCKETS
+        .iter()
+        .enumerate()
+    {
         let _ = writeln!(
             out,
             "vela_batch_size_bucket{{le=\"{}\"}} {}",
-            bound, batch_size_bucket_counts[i]
+            bound, batch_hist.cumulative_buckets[i]
         );
     }
-    let _ = writeln!(out, "vela_batch_size_bucket{{le=\"+Inf\"}} {}", batch_count);
-    let _ = writeln!(out, "vela_batch_size_sum {}", batch_size_sum);
-    let _ = writeln!(out, "vela_batch_size_count {}", batch_count);
+    let _ = writeln!(
+        out,
+        "vela_batch_size_bucket{{le=\"+Inf\"}} {}",
+        batch_hist.count
+    );
+    let _ = writeln!(out, "vela_batch_size_sum {}", batch_hist.sum);
+    let _ = writeln!(out, "vela_batch_size_count {}", batch_hist.count);
 
     let _ = writeln!(out, "# HELP vela_order_channel_send_failures_total Order-channel sends that failed (dispatcher gone).");
     let _ = writeln!(out, "# TYPE vela_order_channel_send_failures_total counter");
@@ -1817,7 +1809,10 @@ async fn post_order(
     // Amber adds an extra deterministic bump on top of the IEX-style
     // speed bump. Green flows unrestricted.
     let addr_lower = body.address.to_ascii_lowercase();
-    if crate::agent_tox::should_block(&state, &addr_lower).await {
+    let tier = crate::agent_tox::compute_tier(&state, &addr_lower)
+        .await
+        .tier;
+    if tier == crate::agent_tox::ToxicityTier::Red {
         return (
             StatusCode::FORBIDDEN,
             Json(ApiResponse::<()>::err(
@@ -1826,7 +1821,11 @@ async fn post_order(
         )
             .into_response();
     }
-    let tier_extra_bump = crate::agent_tox::extra_bump_for(&state, &addr_lower).await;
+    let tier_extra_bump = if tier == crate::agent_tox::ToxicityTier::Amber {
+        crate::agent_tox::amber_extra_bump_duration()
+    } else {
+        std::time::Duration::ZERO
+    };
 
     // IEX-style speed bump: delay only crossing orders, not resting ones.
     // Amber-tier addresses eat the base bump plus an extra amber delay.

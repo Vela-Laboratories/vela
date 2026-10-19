@@ -1,8 +1,8 @@
 use crate::credit::CreditSystem;
 use crate::{EngineMap, MatchingEngine};
 use types::{
-    AssetId, Balance, CancelOrderRequest, DepositRequest, Market, MarketId, OrderId, OrderSide,
-    PostOrderRequest, Timestamp, UserId, UserMetadata, VelaError, WithdrawalRequest,
+    AssetId, Balance, CancelOrderRequest, DepositRequest, Market, MarketId, NonceWindow, OrderId,
+    OrderSide, PostOrderRequest, Timestamp, UserId, UserMetadata, VelaError, WithdrawalRequest,
 };
 
 #[derive(Clone)]
@@ -83,6 +83,7 @@ impl UserState {
         reserved: &EngineMap<(UserId, AssetId), u64>,
         snap_balances: &EngineMap<(UserId, AssetId), Balance>,
         snap_metadata: &EngineMap<UserId, UserMetadata>,
+        accepted_nonces: &mut EngineMap<UserId, NonceWindow>,
     ) -> Result<(OrderId, AssetId, u64), VelaError> {
         // Validate market exists
         if !self.markets.contains_key(&req.market) {
@@ -107,10 +108,13 @@ impl UserState {
                 referred_users: vec![],
                 fee_tier: 0,
             });
-        // Check nonce would be accepted (non-destructive read)
-        // We simulate by cloning and trying to accept
-        let mut tmp_nonce_window = snap_meta.nonce_window.clone();
-        if !tmp_nonce_window.accept(req.nonce) {
+        // Validate against earlier requests in this batch as well as the
+        // committed snapshot. Do not reserve the nonce on a failed check.
+        let mut next_nonce_window = accepted_nonces
+            .get(&req.user)
+            .cloned()
+            .unwrap_or_else(|| snap_meta.nonce_window.clone());
+        if !next_nonce_window.accept(req.nonce) {
             return Err(VelaError::InvalidNonce);
         }
 
@@ -156,6 +160,8 @@ impl UserState {
             ts,
         )?;
 
+        accepted_nonces.insert(req.user.clone(), next_nonce_window);
+
         // Allocate globally-unique order_id
         let order_id = self.alloc_order_id();
 
@@ -178,7 +184,15 @@ impl UserState {
     ) -> Result<(OrderId, AssetId, u64), VelaError> {
         let snap_balances = self.balances.clone();
         let snap_metadata = self.metadata.clone();
-        self.phase1_check_balance(req, ts, reserved, &snap_balances, &snap_metadata)
+        let mut accepted_nonces = EngineMap::default();
+        self.phase1_check_balance(
+            req,
+            ts,
+            reserved,
+            &snap_balances,
+            &snap_metadata,
+            &mut accepted_nonces,
+        )
     }
 
     /// Phase 1: validate the request, reserve the balance, alloc an order_id.
@@ -192,8 +206,15 @@ impl UserState {
         let reserved = EngineMap::default();
         let snap_balances = self.balances.clone();
         let snap_metadata = self.metadata.clone();
-        let (order_id, spend_asset, order_notional) =
-            self.phase1_check_balance(req, ts, &reserved, &snap_balances, &snap_metadata)?;
+        let mut accepted_nonces = EngineMap::default();
+        let (order_id, spend_asset, order_notional) = self.phase1_check_balance(
+            req,
+            ts,
+            &reserved,
+            &snap_balances,
+            &snap_metadata,
+            &mut accepted_nonces,
+        )?;
 
         // Lock available → locked
         let key = (req.user.clone(), spend_asset);
@@ -219,12 +240,15 @@ impl UserState {
     pub fn phase1_cancel_validate(
         &mut self,
         req: &CancelOrderRequest,
+        accepted_nonces: &mut EngineMap<UserId, NonceWindow>,
     ) -> Result<(OrderId, MarketId), VelaError> {
-        let mut meta = self.get_metadata(&req.user);
-        if !meta.nonce_window.accept(req.nonce) {
+        let mut next_nonce_window = accepted_nonces
+            .get(&req.user)
+            .cloned()
+            .unwrap_or_else(|| self.get_metadata(&req.user).nonce_window);
+        if !next_nonce_window.accept(req.nonce) {
             return Err(VelaError::InvalidNonce);
         }
-        self.metadata.insert(req.user.clone(), meta.clone());
 
         let order_id = if let Some(id) = req.order_id {
             id
@@ -257,8 +281,7 @@ impl UserState {
                 .ok_or(VelaError::OrderNotFound)?
         };
 
-        // Note: we already accepted the nonce above
-        let _ = meta;
+        accepted_nonces.insert(req.user.clone(), next_nonce_window);
 
         Ok((order_id, market_id))
     }

@@ -27,11 +27,19 @@ pub struct BatchedRequest {
 // BatchMetrics
 // ---------------------------------------------------------------------------
 
+pub const BATCH_SIZE_BUCKETS: [u64; 9] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+
+pub struct BatchHistogramSnapshot {
+    pub count: u64,
+    pub sum: u64,
+    pub cumulative_buckets: [u64; BATCH_SIZE_BUCKETS.len()],
+}
+
 /// Thread-safe metrics updated by the dispatcher after every batch.
 pub struct BatchMetrics {
-    /// Raw batch sizes, one entry per dispatch cycle (unbounded; callers may
-    /// snapshot and clear periodically).
-    batch_size_histogram: Mutex<Vec<u64>>,
+    batch_count: AtomicU64,
+    batch_size_sum: AtomicU64,
+    batch_size_buckets: [AtomicU64; BATCH_SIZE_BUCKETS.len()],
     /// Nanoseconds from window-open to delta-commit for the most recent batch.
     last_dispatch_latency_ns: AtomicU64,
     /// Ring buffer for the rolling 1-second orders-per-second window:
@@ -44,7 +52,9 @@ pub struct BatchMetrics {
 impl BatchMetrics {
     pub fn new() -> Arc<Self> {
         Arc::new(BatchMetrics {
-            batch_size_histogram: Mutex::new(Vec::new()),
+            batch_count: AtomicU64::new(0),
+            batch_size_sum: AtomicU64::new(0),
+            batch_size_buckets: std::array::from_fn(|_| AtomicU64::new(0)),
             last_dispatch_latency_ns: AtomicU64::new(0),
             orders_window: Mutex::new(VecDeque::new()),
             financial_commit_failures: AtomicU64::new(0),
@@ -52,10 +62,14 @@ impl BatchMetrics {
     }
 
     pub fn record_batch(&self, batch_size: usize, dispatch_latency_ns: u64) {
-        self.batch_size_histogram
-            .lock()
-            .unwrap()
-            .push(batch_size as u64);
+        let size = batch_size as u64;
+        self.batch_count.fetch_add(1, Ordering::Relaxed);
+        self.batch_size_sum.fetch_add(size, Ordering::Relaxed);
+        for (bound, bucket) in BATCH_SIZE_BUCKETS.iter().zip(&self.batch_size_buckets) {
+            if size <= *bound {
+                bucket.fetch_add(1, Ordering::Relaxed);
+            }
+        }
 
         self.last_dispatch_latency_ns
             .store(dispatch_latency_ns, Ordering::Relaxed);
@@ -94,24 +108,24 @@ impl BatchMetrics {
         self.financial_commit_failures.load(Ordering::Relaxed)
     }
 
-    /// Snapshot of all recorded batch sizes (not sorted).
-    /// Does NOT clear the histogram; use `snapshot_and_clear` for that.
-    pub fn batch_size_histogram_snapshot(&self) -> Vec<u64> {
-        self.batch_size_histogram.lock().unwrap().clone()
-    }
-
-    /// Drain the histogram and return all recorded batch sizes.
-    /// Callers must invoke this periodically to prevent unbounded growth.
-    pub fn snapshot_and_clear(&self) -> Vec<u64> {
-        let mut hist = self.batch_size_histogram.lock().unwrap();
-        std::mem::take(&mut *hist)
+    /// Cumulative counters use constant space regardless of service uptime.
+    pub fn batch_size_histogram_snapshot(&self) -> BatchHistogramSnapshot {
+        BatchHistogramSnapshot {
+            count: self.batch_count.load(Ordering::Relaxed),
+            sum: self.batch_size_sum.load(Ordering::Relaxed),
+            cumulative_buckets: std::array::from_fn(|index| {
+                self.batch_size_buckets[index].load(Ordering::Relaxed)
+            }),
+        }
     }
 }
 
 impl Default for BatchMetrics {
     fn default() -> Self {
         BatchMetrics {
-            batch_size_histogram: Mutex::new(Vec::new()),
+            batch_count: AtomicU64::new(0),
+            batch_size_sum: AtomicU64::new(0),
+            batch_size_buckets: std::array::from_fn(|_| AtomicU64::new(0)),
             last_dispatch_latency_ns: AtomicU64::new(0),
             orders_window: Mutex::new(VecDeque::new()),
             financial_commit_failures: AtomicU64::new(0),
